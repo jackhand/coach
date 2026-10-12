@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#11141a">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Coach">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<title>Coach</title>
+<style>
+:root{--bg:#11141a;--card:#1b2029;--card2:#232a35;--txt:#eef1f5;--mut:#9aa4b2;--acc:#2ecc71;--red:#ff4d4f;--blue:#4da3ff;--line:#2d3542}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--txt);font:17px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 0 0}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 14px 8px;border-bottom:1px solid var(--line)}
+.row{display:flex;gap:8px;align-items:center}
+h1{font-size:22px;margin:0;flex:1}
+select,input,textarea,button{font:inherit;color:var(--txt)}
+select,input,textarea{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:48px;width:100%}
+header select{width:auto;min-height:44px;padding:6px 10px}
+.sub{color:var(--mut);font-size:15px;margin-top:6px}
+main{padding:12px 12px 210px}
+.note{background:#162233;border-left:4px solid var(--blue);border-radius:10px;padding:10px 12px;margin:18px 0 6px;font-size:15px}
+.note b{color:var(--blue)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.chip{background:#20324a;border-radius:999px;padding:3px 10px;font-size:14px}
+.note ul{margin:4px 0 0;padding-left:18px;color:#cfd6df}
+.card{background:var(--card);border:2px solid transparent;border-radius:14px;padding:14px}
+.card.active{border-color:var(--acc)}
+.card h2{font-size:20px;margin:0 0 2px}
+.meta{color:var(--mut);font-size:14px}
+.meta a{color:var(--blue);font-weight:600;text-decoration:none;display:inline-block;padding:6px 0}
+.last{color:var(--mut);font-size:14px;margin-top:4px}
+.sets{margin:10px 0 0;padding:0;list-style:none}
+.sets li{background:var(--card2);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:16px}
+.sets .s1{font-weight:700}
+.sets .s2{color:var(--mut);font-size:14px}
+.btn{border:0;border-radius:12px;min-height:56px;padding:0 18px;font-size:19px;font-weight:700;background:var(--acc);color:#06210f;width:100%;margin-top:10px}
+.btn.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+.btn.red{background:#3a1d20;color:#ffb3b5;border:1px solid #5a2a2e}
+.empty{color:var(--mut);text-align:center;padding:40px 10px}
+#timer{position:fixed;left:0;right:0;bottom:0;z-index:8;background:#0b0e12;border-top:1px solid var(--line);padding:8px 14px calc(10px + env(safe-area-inset-bottom));display:none}
+#timer .t{font-size:64px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;letter-spacing:1px}
+#timer.under .t{color:var(--acc)} #timer.over .t{color:var(--red)}
+#timer.over{background:#1d0c0d}
+#timer .lbl{color:var(--mut);font-size:15px}
+#timer .tgt{font-size:18px;font-weight:700}
+#timer .tb{display:flex;gap:8px;margin-top:6px}
+#timer .tb button{flex:1;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card2);font-size:15px}
+#sheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
+#sheet.open{display:flex}
+#sheet .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto}
+#sheet h3{margin:0 0 10px;font-size:20px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
+#mic{background:var(--blue);color:#04172b}
+#mic.rec{background:var(--red);color:#fff}
+#heard{color:var(--mut);font-size:14px;min-height:20px;margin-top:6px;font-style:italic}
+#lock{padding:40px 20px;text-align:center;display:none}
+.toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#263241;padding:10px 16px;border-radius:10px;z-index:30;display:none;font-size:15px}
+.err{color:#ffb3b5}
+.badge{display:none;border-radius:999px;padding:2px 10px;font-size:13px;margin-left:6px;vertical-align:middle}
+#pending{background:#4a3a10;color:#ffd666} #offline{background:#3a1d20;color:#ffb3b5}
+.sets li.pend{border:1px dashed #ffd666}
+#gear{background:none;border:0;font-size:24px;min-width:44px;min-height:44px;color:var(--mut)}
+#settings{padding:24px 16px;display:none}
+</style>
+</head>
+<body>
+<div id="settings">
+  <h1>Coach setup</h1>
+  <p class="sub">Paste the web app URL from your Apps Script deployment and your key. They stay on this device only.</p>
+  <label for="su">Apps Script web app URL</label>
+  <input id="su" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <label for="sk">Key</label>
+  <input id="sk" placeholder="Key" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <div id="smsg" class="sub"></div>
+  <button class="btn" id="ssave">Save and connect</button>
+  <button class="btn sec" id="scancel">Back</button>
+</div>
+<div id="app" style="display:none">
+<header>
+  <div class="row">
+    <h1>Coach<span class="badge" id="pending"></span><span class="badge" id="offline">offline</span></h1>
+    <select id="prof" aria-label="Profile"><option value="jack">Jack</option><option value="jacky">Jacky</option></select>
+    <select id="day" aria-label="Day"></select>
+    <button id="gear" aria-label="Settings">&#9881;</button>
+  </div>
+  <div class="sub" id="sub"></div>
+</header>
+<main id="main"><div class="empty">Loading...</div></main>
+</div>
+<div id="timer">
+  <div class="row" style="align-items:flex-end">
+    <div style="flex:1">
+      <div class="lbl">Rest <span id="tex"></span></div>
+      <div class="t" id="tt">0:00</div>
+    </div>
+    <div style="text-align:right">
+      <div class="lbl">Target</div>
+      <div class="tgt" id="ttg">-</div>
+    </div>
+  </div>
+  <div class="tb"><button id="tundo">Undo last set</button><button id="tclear">Hide timer</button></div>
+</div>
+
+<div id="sheet">
+  <div class="in">
+    <h3 id="sh">Log set</h3>
+    <button class="btn" id="mic" type="button">Tap and speak</button>
+    <div id="heard"></div>
+    <div class="grid">
+      <div><label for="fl">Load (lb)</label><input id="fl" inputmode="decimal" autocomplete="off"></div>
+      <div><label for="fr">Reps</label><input id="fr" inputmode="numeric" autocomplete="off"></div>
+    </div>
+    <label for="ff">Failure type</label>
+    <select id="ff"></select>
+    <label for="fn">Notes</label>
+    <textarea id="fn" rows="2" placeholder="How it felt, left arm, etc."></textarea>
+    <div id="ferr" class="err"></div>
+    <button class="btn" id="fsave">Save set</button>
+    <button class="btn sec" id="fcancel">Cancel</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="parse.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
