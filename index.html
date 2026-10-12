@@ -32,7 +32,19 @@ main{padding:12px 12px 210px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
 .chip{background:#20324a;border-radius:999px;padding:3px 10px;font-size:14px}
 .note ul{margin:4px 0 0;padding-left:18px;color:#cfd6df}
-.card{background:var(--card);border:2px solid transparent;border-radius:14px;padding:14px}
+.card{background:var(--card);border:2px solid #1f5a3a;border-radius:14px;padding:14px;margin:16px 0}
+.card .note{margin:10px 0 6px}
+.setup{font-size:14px;color:#cfd6df;background:var(--card2);border-radius:10px;padding:8px 10px;margin-top:6px}
+.setup b{color:var(--acc)}
+.ed{float:right;color:var(--blue);font-size:13px;font-weight:600}
+.sets li[data-sid]{cursor:pointer}
+.seg{display:flex;gap:6px}.seg button{flex:1;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card2)}
+.seg button.on{background:var(--acc);color:#06210f;font-weight:700}
+#ftimer{font-weight:800;font-size:22px;margin-bottom:6px;font-variant-numeric:tabular-nums}
+#ftimer.under{color:var(--acc)}#ftimer.over{color:var(--red)}
+.btn.fin{background:var(--blue);color:#04172b;margin-top:22px}
+.done{text-align:center;color:var(--acc);padding:20px 8px;font-weight:600}
+#fbw{color:var(--mut);font-size:14px;margin-top:4px}
 .card.active{border-color:var(--acc)}
 .card h2{font-size:20px;margin:0 0 2px}
 .meta{color:var(--mut);font-size:14px}
@@ -81,6 +93,8 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <input id="su" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" autocapitalize="off" spellcheck="false">
   <label for="sk">Key</label>
   <input id="sk" placeholder="Key" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <label for="sbw">Body weight (lb), for dips and other bodyweight moves</label>
+  <input id="sbw" inputmode="decimal" autocomplete="off" placeholder="e.g. 187">
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
@@ -108,18 +122,29 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
       <div class="tgt" id="ttg">-</div>
     </div>
   </div>
-  <div class="tb"><button id="tundo">Undo last set</button><button id="tclear">Hide timer</button></div>
+  <div class="tb"><button id="tundo">Undo last set</button><button id="tmute">Sound on</button><button id="tclear">Hide timer</button></div>
 </div>
 
 <div id="sheet">
   <div class="in">
+    <div id="ftimer"></div>
     <h3 id="sh">Log set</h3>
     <button class="btn" id="mic" type="button">Tap and speak</button>
     <div id="heard"></div>
     <div class="grid">
-      <div><label for="fl">Load (lb)</label><input id="fl" inputmode="decimal" autocomplete="off"></div>
-      <div><label for="fr">Reps</label><input id="fr" inputmode="numeric" autocomplete="off"></div>
+      <div><label for="fl" id="fll">Load (lb)</label><input id="fl" inputmode="decimal" autocomplete="off"></div>
+      <div id="repsbox"><label for="fr">Reps</label><input id="fr" inputmode="numeric" autocomplete="off"></div>
     </div>
+    <div id="fbw"></div>
+    <div id="sides" style="display:none">
+      <div class="grid">
+        <div><label for="frl">Left reps</label><input id="frl" inputmode="numeric" autocomplete="off"></div>
+        <div><label for="frr">Right reps</label><input id="frr" inputmode="numeric" autocomplete="off"></div>
+      </div>
+      <button class="btn sec" id="fsame" type="button">Same both sides</button>
+    </div>
+    <label>Drop sets after this set</label>
+    <div class="seg" id="fd"><button type="button" data-d="0">0</button><button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button></div>
     <label for="ff">Failure type</label>
     <select id="ff"></select>
     <label for="fn">Notes</label>
@@ -127,6 +152,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
     <div id="ferr" class="err"></div>
     <button class="btn" id="fsave">Save set</button>
     <button class="btn sec" id="fcancel">Cancel</button>
+    <button class="btn red" id="fdel" style="display:none">Delete set</button>
   </div>
 </div>
 <div class="toast" id="toast"></div>

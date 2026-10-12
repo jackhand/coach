@@ -61,7 +61,10 @@
       const aliases = cells[1].split(',').map(a => a.trim()).filter(Boolean);
       const keys = new Set([norm(cells[0]), norm(stripParens(cells[0]))]);
       aliases.forEach(a => { keys.add(norm(a)); keys.add(norm(stripParens(a))); });
-      lib.push({ name: cells[0], aliases, muscles: cells[2], video: /^https?:\/\//.test(cells[3]) ? cells[3] : '', keys: [...keys] });
+      const types = (cells[5] || '').toLowerCase().split(/[,\s]+/).filter(Boolean);
+      lib.push({ name: cells[0], aliases, muscles: cells[2], video: /^https?:\/\//.test(cells[3]) ? cells[3] : '', keys: [...keys],
+        rest_muscle: (cells[4] || '').toLowerCase() || norm(String(cells[2] || '').split(/[,(]/)[0]),
+        types, single: types.includes('single'), bodyweight: types.includes('bodyweight'), setup: cells[6] || '', cue: cells[7] || '' });
     }
     return lib;
   }
@@ -74,6 +77,10 @@
       const e = lookup(lib, ex.name) || lookup(lib, ex.full_name);
       ex.canonical = e ? e.name : ex.name; ex.video = e ? e.video : ''; ex.muscles = e ? e.muscles : '';
       ex.match_keys = e ? e.keys : [norm(ex.name)];
+      ex.rest_muscle = e ? e.rest_muscle : norm(ex.name); ex.types = e ? e.types : [];
+      ex.single = !!(e && e.single) || /\b(single|one)[ -](arm|leg)\b|\bper (arm|leg|side)\b/i.test(ex.full_name + ' ' + ex.details);
+      ex.bodyweight = !!(e && e.bodyweight); ex.setup = e ? e.setup : ''; ex.cue = e ? e.cue : '';
+      const sm = (ex.note.sets || '').match(/^(\d+)\s*x/i); ex.planned_sets = sm ? +sm[1] : 3;
     }));
     return days;
   }
