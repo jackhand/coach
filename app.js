@@ -151,10 +151,12 @@ function setsHTML(ex) {
     const reps = (r.left_reps || r.right_reps) ? 'L' + (r.left_reps || '?') + ' R' + (r.right_reps || '?') : r.reps;
     return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(r.load || '-') + (r.load && ex.bodyweight ? '<small> +</small>' : '') + '</span><span class="val">' + esc(reps) + ' ' + trend(ex, r, i) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
   }).join('');
+  const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
+    const tb = tq && (tq.all || i === n - 1) ? '<button class="tq" data-tq="' + tq.keys.join(',') + '" aria-label="Technique info">' + tq.keys.map(k => TECH[k].tag).join('/') + '</button>' : '';
     const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && sg.reps) || '';
     const isNext = i === rs.length;
-    h += '<li class="plan"><div class="srow"><span class="sn">' + (i + 1) + '</span>' +
+    h += '<li class="plan"><div class="srow"><span class="sn">' + (i + 1) + tb + '</span>' +
       '<span class="val sug">' + esc(w) + '</span><span class="val sug">' + esc(r) + '</span>' +
       '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +
       '<button class="lg' + (half && isNext ? ' half' : '') + '" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '>' + (half && isNext ? '&#189;' : '') + '</button></div>' +
@@ -162,6 +164,36 @@ function setsHTML(ex) {
   }
   return h;
 }
+
+// ---------- Intensity techniques read from the program text ----------
+const TECH = {
+  drop: { tag: 'DROP', name: 'Drop set', re: /\bdrop(?:\s*-?\s*sets?)?\b/i,
+    info: 'Go to failure, then cut the weight about 20-30% and go to failure again right away, no rest. Repeat for each drop.',
+    log: 'Log the first (heavy) set\'s weight and reps, then set the Drop sets counter to how many drops you did (1, 2 or 3).' },
+  myo: { tag: 'MYO', name: 'Myo-reps', re: /\bmyo[- ]?reps?\b/i,
+    info: 'Activation set to failure (usually 12-20 reps), then rest about 5 deep breaths and do mini-sets of 3-5 reps, same weight, until you can\'t get 3.',
+    log: 'Pick Myo-reps as the failure type. Log the activation set\'s weight and reps, and put the mini-sets in the note, like "myo 4+4+3".' },
+  rack: { tag: 'RACK', name: 'Run the rack', re: /\brun(?:ning)? the rack\b/i,
+    info: 'After the last set, keep going down the dumbbell rack (or machine stack) one step at a time, doing reps to failure at each weight with little or no rest.',
+    log: 'Log the first set, set the Drop sets counter to how many weight steps you did, and put details in the note if you want.' },
+  partial: { tag: 'PART', name: 'Partials', re: /\bpartials?\b|\blengthened partials?\b/i,
+    info: 'At failure, keep going with partial reps in the stretched part of the range until you can\'t move it.',
+    log: 'Log the full reps; add the partials in the note, like "+5 partials".' }
+};
+function techFor(ex) {
+  const t = String(ex.details || ''), keys = Object.keys(TECH).filter(k => TECH[k].re.test(t));
+  if (!keys.length) return null;
+  return { keys, all: !/\blast set\b/i.test(t) };
+}
+function openTech(keys) {
+  const ks = keys.split(',').filter(k => TECH[k]);
+  $('tqh').textContent = ks.length > 1 ? ks.map(k => TECH[k].name).join(' or ') + ' (pick one)' : TECH[ks[0]].name;
+  $('tqb').innerHTML = ks.map(k => '<div class="hd"><b>' + esc(TECH[k].name) + '</b><br>' + esc(TECH[k].info) + '<br><i>How to log:</i> ' + esc(TECH[k].log) + '</div>').join('');
+  $('tech').classList.add('open'); pushLayer('tech', () => $('tech').classList.remove('open'));
+}
+const closeTech = () => { $('tech').classList.remove('open'); popLayer('tech'); };
+$('tqclose').onclick = closeTech;
+$('tech').addEventListener('click', e => { if (e.target.id === 'tech') closeTech(); });
 
 // ---------- Per-exercise settings (equipment setup), body weight ----------
 const SK = () => 'coach_settings_' + (testOn() ? 'test_' : '') + P;
@@ -473,6 +505,7 @@ function render() {
   main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
   enableDrag(main);
   main.onclick = e => {
+    const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
     const wc = e.target.closest('td[data-w]'); if (wc) { setView(wc.dataset.w); sig = ''; applyState(S, true); window.scrollTo(0, 0); return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
