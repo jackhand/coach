@@ -226,7 +226,8 @@ function wStatus() {
   const add = (sx, pending) => {
     let id = sx.day; if (!wParse(id) && sx.date && DAYS.includes(sx.day)) id = 'W' + weekOf(sx.date) + '-' + sx.day;
     if (!wParse(id)) return;
-    st[id] = { state: /skip/i.test(sx.notes || '') ? 'skipped' : 'done', at: pending ? 'pending' : sx.finished_at };
+    const dm = /duration_min=(\d+)/.exec(sx.notes || '');
+    st[id] = { state: /skip/i.test(sx.notes || '') ? 'skipped' : 'done', at: pending ? 'pending' : sx.finished_at, ts: pending ? +sx.client_ts : Date.parse(sx.finished_at), dur: dm ? +dm[1] : null };
   };
   (S.sessions || []).forEach(x => add(x, false));
   const q = testOn() ? getRQ().concat(getQ()) : getQ();
@@ -516,14 +517,31 @@ function renderFinish() {
   const ws = wStatus()[viewId], f = ws && ws.state === 'done' ? ws.at : null;
   const h = ws && ws.state === 'skipped' ? '' : !f && !canLog() ? '' : f ? '<div class="done">Workout finished' + (f === 'pending' ? ' (syncing)' : ' at ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '. Coach will send your recap.</div>'
     : '<button class="btn fin" id="finish">Finish workout</button>';
-  if (w.innerHTML !== h) { w.innerHTML = h; const b = $('finish'); if (b) b.onclick = finishWorkout; }
+  const full = '<div id="wdur" class="wdur"></div>' + h;
+  if (w.innerHTML.replace(/<div id="wdur"[^>]*>[^<]*<\/div>/, '<div id="wdur" class="wdur"></div>') !== full) { w.innerHTML = full; const b = $('finish'); if (b) b.onclick = finishWorkout; }
+  tickDur();
 }
+const fmtDur = min => min >= 60 ? Math.floor(min / 60) + ' h ' + String(min % 60).padStart(2, '0') + ' min' : min + ' min';
+const fmtHMS = sec => { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec % 60).padStart(2, '0'); };
+function workoutStart() { const rs = workoutRows().map(tsOf).filter(Boolean); return rs.length ? Math.min.apply(null, rs) : null; }
+function durText() { // workout timer: first logged set -> Finish
+  const ws = wStatus()[viewId], st = workoutStart();
+  if (ws && ws.state === 'skipped') return '';
+  if (ws && ws.state === 'done') {
+    const min = ws.dur != null ? ws.dur : st && ws.ts ? Math.max(0, Math.round((ws.ts - st) / 60000)) : null;
+    return min == null ? '' : 'Total workout time: ' + fmtDur(min);
+  }
+  return st && canLog() ? 'Workout time: ' + fmtHMS((Date.now() - st) / 1000) : '';
+}
+function tickDur() { const d = $('wdur'); if (d && S) { const t = durText(); if (d.textContent !== t) d.textContent = t; } }
+setInterval(tickDur, 1000);
 function workoutRows() { return viewRows().filter(r => widOf(r) === viewId); }
 function finishWorkout() {
   const rs = workoutRows();
   if (!confirm('Finish ' + wLabel(viewId) + '? ' + rs.length + ' sets logged.')) return;
   const ex = new Set(rs.map(r => P_.norm(r.exercise)));
-  enqueue({ action: 'finish', session: { session_id: uid(), client_ts: Date.now(), date: S.today, day: viewId, sets: String(rs.length), exercises: String(ex.size) } });
+  const now = Date.now(), st = workoutStart(), dur = st ? Math.max(0, Math.round((now - st) / 60000)) : null;
+  enqueue({ action: 'finish', session: { session_id: uid(), client_ts: now, date: S.today, day: viewId, sets: String(rs.length), exercises: String(ex.size), notes: dur != null ? 'duration_min=' + dur : '' } });
   const t = getT(); if (t) { t.hidden = true; setT(t); }
   sig = ''; applyState(S, true); toast('Workout finished. Nice work.', 3000);
 }
