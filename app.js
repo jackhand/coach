@@ -120,11 +120,11 @@ function setsHTML(ex) {
     const bits = [FT_LABEL[r.failure_type] || r.failure_type, +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '',
       r.total_load ? ('total ' + r.total_load + ' lb') : '',
       r.pending ? 'pending sync' : (r.rest_time ? 'rest ' + r.rest_time : ''), e ? ('e1RM ' + e.ep + ' Epley / ' + e.br + ' Brzycki') : ''].filter(Boolean).join(' · ');
-    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="s1"><span class="ck">&#10003;</span>Set ' + (i + 1) + ': ' + esc(setTxt(r)) + (r.load && ex.bodyweight ? ' added' : '') + ' ' + trend(ex, r, i) + '<span class="ed">edit</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="s1"><span class="tag done">&#10003; Done</span>Set ' + (i + 1) + ': ' + esc(setTxt(r)) + (r.load && ex.bodyweight ? ' added' : '') + ' ' + trend(ex, r, i) + '<span class="ed">edit</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
   }).join('');
   for (let i = rs.length; i < n; i++) {
     const sg = suggest(ex, i);
-    h += '<li class="plan"><div class="s1"><span class="ck"></span>Set ' + (i + 1) + (sg ? ': ' + esc(sg.load || '-') + ' x ' + esc(sg.reps) + (ex.single ? ' per side' : '') : '') + '</div>' + (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + '</div>' : '') + '</li>';
+    h += '<li class="plan"><div class="s1"><span class="tag todo">To do</span>Set ' + (i + 1) + (sg ? ': ' + esc(sg.load || '-') + ' x ' + esc(sg.reps) + (ex.single ? ' per side' : '') : '') + '</div>' + (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + '</div>' : '') + '</li>';
   }
   return h;
 }
@@ -231,54 +231,83 @@ function anchor(el, offset, targetY) {
 }
 let dragCleanup = [];
 const winOn = (t, f, o) => { window.addEventListener(t, f, o); dragCleanup.push(() => window.removeEventListener(t, f, o)); };
+// One drag at a time. Started by a long-press on the heading, or immediately from the ≡ handle.
+let drag = null;
+function saveOrder(main, moved) {
+  const names = [...main.querySelectorAll('.card')].map(c => c.dataset.name);
+  putSetting('order', dayKeyOf(), JSON.stringify(names));
+  setTimeout(() => {
+    sig = ''; render();
+    const c = [...$('main').querySelectorAll('.card')].find(x => x.dataset.name === moved);
+    if (c) { const r = c.getBoundingClientRect(); if (r.top < 80 || r.top > innerHeight - 260) window.scrollBy(0, r.top - 90); }
+    toast('Order saved for today');
+  }, DRAG_ANIM + 40);
+}
+function startDrag(main, card, y, pointerId, h) {
+  if (drag) return;
+  drag = { main, card, lastY: y, auto: null };
+  card.classList.add('dragging'); document.body.classList.add('dragmode');
+  if (h && pointerId != null) { try { h.setPointerCapture(pointerId); } catch (x) {} }
+  if (navigator.vibrate) { try { navigator.vibrate(30); } catch (x) {} }
+  anchor(card, y - card.getBoundingClientRect().top, () => drag ? drag.lastY : y);
+  main.classList.add('collapsed');
+  drag.auto = setInterval(() => {
+    if (!drag) return;
+    const dy = drag.lastY < 110 ? -14 : drag.lastY > innerHeight - 230 ? 14 : 0;
+    if (dy) { window.scrollBy(0, dy); dragSwap(); }
+  }, 30);
+}
+function dragSwap() {
+  const { main, card, lastY } = drag, cards = [...main.querySelectorAll('.card')];
+  for (const c of cards) {
+    if (c === card) continue; const r = c.getBoundingClientRect(), mid = r.top + r.height / 2;
+    if (lastY < mid && cards.indexOf(c) < cards.indexOf(card)) { c.before(card); return; }
+    if (lastY > mid && cards.indexOf(c) > cards.indexOf(card)) { c.after(card); return; }
+  }
+}
+function dragMove(y, e) { if (!drag) return; if (e && e.cancelable) e.preventDefault(); drag.lastY = y; dragSwap(); }
+function endDrag() {
+  if (!drag) return;
+  const { main, card, auto } = drag; clearInterval(auto);
+  card.classList.remove('dragging'); document.body.classList.remove('dragmode');
+  const top = Math.max(90, card.getBoundingClientRect().top);
+  drag = null;
+  anchor(card, 0, () => top); main.classList.remove('collapsed');
+  saveOrder(main, card.dataset.name);
+}
 function enableDrag(main) {
   dragCleanup.forEach(f => f()); dragCleanup = [];
+  let timer = null, pend = null;
+  const cancelPress = () => { clearTimeout(timer); timer = null; pend = null; };
   main.querySelectorAll('.card h2').forEach(h => {
-    let timer = null, card = null, on = false;
+    const card = h.closest('.card');
     h.addEventListener('pointerdown', e => {
-      if (e.target.closest('.menu-btn')) return;
-      card = h.closest('.card');
-      const y0 = e.clientY;
-      timer = setTimeout(() => { on = true; lastY = y0; card.classList.add('dragging'); anchor(card, y0 - card.getBoundingClientRect().top, () => lastY); main.classList.add('collapsed'); try { h.setPointerCapture(e.pointerId); } catch (x) {} if (navigator.vibrate) navigator.vibrate(30); }, 450);
+      if (e.target.closest('.menu-btn') || drag) return;
+      if (e.target.closest('.grip')) { e.preventDefault(); startDrag(main, card, e.clientY, e.pointerId, h); return; }
+      cancelPress(); pend = { x: e.clientX, y: e.clientY };
+      timer = setTimeout(() => { timer = null; if (pend) startDrag(main, card, pend.y, e.pointerId, h); }, 450);
     });
-    let lastY = 0, auto = null;
-    const swap = () => {
-      const cards = [...main.querySelectorAll('.card')];
-      for (const c of cards) {
-        if (c === card) continue; const r = c.getBoundingClientRect(), mid = r.top + r.height / 2;
-        if (lastY < mid && cards.indexOf(c) < cards.indexOf(card)) { c.before(card); return; }
-        if (lastY > mid && cards.indexOf(c) > cards.indexOf(card)) { c.after(card); return; }
-      }
-    };
-    const move = e => {
-      if (!on) return; e.preventDefault(); lastY = e.clientY; swap();
-      if (!auto) auto = setInterval(() => {
-        if (!on) { clearInterval(auto); auto = null; return; }
-        const dy = lastY < 110 ? -14 : lastY > innerHeight - 230 ? 14 : 0;
-        if (dy) { window.scrollBy(0, dy); swap(); }
-      }, 30);
-    };
-    h.addEventListener('pointermove', move); winOn('pointermove', e => { if (on && e.target !== h) move(e); }, { passive: false });
-    const end = () => {
-      clearTimeout(timer); timer = null; if (auto) { clearInterval(auto); auto = null; }
-      if (on) {
-        on = false; card.classList.remove('dragging');
-        const names = [...main.querySelectorAll('.card')].map(c => c.dataset.name), moved = card.dataset.name;
-        putSetting('order', dayKeyOf(), JSON.stringify(names));
-        const top = Math.max(90, card.getBoundingClientRect().top);
-        anchor(card, 0, () => top); main.classList.remove('collapsed');
-        setTimeout(() => {
-          sig = ''; render();
-          const c = [...main.querySelectorAll('.card')].find(x => x.dataset.name === moved);
-          if (c) { const r = c.getBoundingClientRect(); if (r.top < 80 || r.top > innerHeight - 260) window.scrollBy(0, r.top - 90); }
-          toast('Order saved for today');
-        }, DRAG_ANIM + 40);
-      }
-    };
-    h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
-    winOn('pointerup', () => { if (on || timer) end(); }); winOn('pointercancel', () => { if (on || timer) end(); });
     h.addEventListener('contextmenu', e => e.preventDefault());
+    h.addEventListener('selectstart', e => e.preventDefault());
   });
+  winOn('pointermove', e => {
+    if (drag) return dragMove(e.clientY, e);
+    if (pend) { pend.y = e.clientY; if (Math.hypot(e.clientX - pend.x, e.clientY - pend.y) > 40) cancelPress(); }
+  }, { passive: false });
+  // Touch fallback: some Android builds deliver touch events but drop pointer moves after a long-press.
+  winOn('touchmove', e => { if (drag && e.touches[0]) dragMove(e.touches[0].clientY, e); }, { passive: false });
+  const up = () => { cancelPress(); endDrag(); };
+  winOn('pointerup', up); winOn('pointercancel', () => { cancelPress(); if (drag) endDrag(); });
+  winOn('touchend', up); winOn('touchcancel', up);
+  winOn('contextmenu', e => { if (drag || pend) e.preventDefault(); });
+}
+function moveCard(ex, dir) {
+  const names = cardsFor().map(x => x.canonical), i = names.indexOf(ex.canonical), j = i + dir;
+  if (j < 0 || j >= names.length) return toast(dir < 0 ? 'Already first' : 'Already last');
+  [names[i], names[j]] = [names[j], names[i]];
+  putSetting('order', dayKeyOf(), JSON.stringify(names)); sig = ''; render();
+  const c = [...$('main').querySelectorAll('.card')].find(x => x.dataset.name === ex.canonical); if (c) c.scrollIntoView({ block: 'center' });
+  toast('Moved ' + (dir < 0 ? 'up' : 'down'));
 }
 // Exercise menu
 let menuEx = null;
@@ -298,6 +327,8 @@ $('mskip').onclick = () => {
   setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left)); toast('Skipped ' + left + (left === 1 ? ' set' : ' sets'));
 };
 $('mnote').onclick = () => { const ex = menuEx; closeMenu(); const v = prompt('Note for ' + ex.canonical + ' today:', dayVal(ex, 'note') || ''); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
+$('mup').onclick = () => { const ex = menuEx; closeMenu(); moveCard(ex, -1); };
+$('mdown').onclick = () => { const ex = menuEx; closeMenu(); moveCard(ex, 1); };
 $('mhist').onclick = () => { const ex = menuEx; closeMenu(); openHistory(ex); };
 document.querySelectorAll('#mpain button').forEach(b => b.onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'pain', b.dataset.p === 'none' ? '' : b.dataset.p); toast('Joint pain: ' + b.dataset.p); });
 function openHistory(ex) {
@@ -331,7 +362,7 @@ function render() {
     const n = ex.note, chips = [n.sets, n.failure, n.rest].filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
-    return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip">&#8942;&#8942;</span>' + (i + 1) + '. ' + esc(ex.canonical) + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
+    return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span>' + (i + 1) + '. ' + esc(ex.canonical) + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
