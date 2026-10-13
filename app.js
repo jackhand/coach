@@ -24,6 +24,7 @@ function hideToast() { const t = $('toast'); clearTimeout(t._h); t.style.display
 
 // ---------- Back button: every open layer (settings, sheets, menus) owns one history entry ----------
 const layers = []; let ignorePop = 0;
+try { history.scrollRestoration = 'manual'; } catch (e) {} // closing a sheet (history.back) must not restore an old scroll position
 function pushLayer(name, close) {
   if (layers.some(l => l.name === name)) return;
   layers.push({ name, close }); history.pushState({ coach: name }, '');
@@ -239,7 +240,10 @@ function isPreview(id) {
 const canOpen = id => { const nx = loggableId(); return testOn() || !nx || wIndex(id) <= wIndex(nx) || isPreview(id); };
 function openWorkout(id) {
   if (!canOpen(id)) return toast('Finish or skip ' + wLabel(loggableId()) + ' first. Workouts go in order.', 4000);
-  setView(id); sig = ''; applyState(S, true); window.scrollTo(0, 0); return true;
+  const changed = id !== viewId;
+  setView(id); sig = ''; applyState(S, true);
+  if (changed) { const top = () => window.scrollTo(0, 0); top(); requestAnimationFrame(top); setTimeout(top, 60); setTimeout(top, 250); jset('coach_scroll', { p: P, day: viewId, y: 0 }); }
+  return true;
 }
 const wParse = id => { const m = /^W(\d+)-([a-z]+)$/.exec(id || ''); return m ? { w: +m[1], day: m[2] } : null; };
 const wIndex = id => { const p = wParse(id); return p ? (p.w - 1) * 10 + DAYS.indexOf(p.day) : -1; };
