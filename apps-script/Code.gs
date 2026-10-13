@@ -10,7 +10,7 @@ const HEALTH_FOLDER_ID = '11ZqEDGtCu4jD-zLe8nIA5ZBN-NwJIPU0'; // Drive > Health
 const COACH_FOLDER_ID = '1D-r9zyMclFmyt9OgthgF-1zKnyUSVjSG';  // Drive > Health > Coach
 const SHEET_NAME = 'Coach Log';
 const PROFILES = ['jack', 'jacky'];
-const VERSION = 3;
+const VERSION = 4;
 const COLS = ['date', 'exercise', 'load', 'reps', 'failure_type', 'rest_time', 'notes', 'set_id', 'logged_at',
   'drops', 'added_load', 'bodyweight', 'total_load', 'left_reps', 'right_reps', 'edited_at', 'workout'];
 const SESSION_COLS = ['date', 'finished_at', 'day', 'sets', 'exercises', 'notes', 'session_id'];
@@ -66,6 +66,7 @@ function doPost(e) {
     if (b.action === 'log') return json_(logSet_(profile, b.set || {}));
     if (b.action === 'undo') return json_(undo_(profile, String(b.set_id || '')));
     if (b.action === 'edit') return json_(edit_(profile, String(b.set_id || ''), b.fields || {}));
+    if (b.action === 'session_edit') return json_(sessionEdit_(profile, String(b.session_id || ''), b.fields || {}, !!b.delete));
     if (b.action === 'finish') return json_(finish_(profile, b.session || {}));
     if (b.action === 'setting') return json_(setSetting_(profile, String(b.scope || ''), String(b.key || ''), b.value));
     if (b.action === 'putfile') return json_(putFile_(String(b.name || ''), String(b.content || '')));
@@ -209,6 +210,30 @@ function edit_(profile, setId, f) {
     vals[COLS.indexOf('edited_at')] = new Date().toISOString();
     rng.setNumberFormat('@').setValues([vals]);
     const o = {}; COLS.forEach(function (c, j) { o[c] = vals[j]; });
+    return { ok: true, row: o };
+  }
+  return { ok: false, error: 'not found' };
+}
+
+/** Fix a finish/skip record: edit finished_at, day, notes, sets, exercises, or delete it. */
+function sessionEdit_(profile, sid, f, del) {
+  if (!sid) return { ok: false, error: 'session_id required' };
+  const sh = ensureTab_(getSheet_(), 'sessions_' + profile, SESSION_COLS);
+  const last = sh.getLastRow(); if (last < 2) return { ok: false, error: 'not found' };
+  const idc = SESSION_COLS.indexOf('session_id') + 1;
+  const ids = sh.getRange(2, idc, last - 1, 1).getDisplayValues();
+  for (let i = ids.length - 1; i >= 0; i--) {
+    if (ids[i][0] !== sid) continue;
+    if (del) { sh.deleteRow(i + 2); return { ok: true, deleted: sid }; }
+    const rng = sh.getRange(i + 2, 1, 1, SESSION_COLS.length), vals = rng.getDisplayValues()[0];
+    ['finished_at', 'day', 'notes', 'sets', 'exercises'].forEach(function (c) {
+      if (!Object.prototype.hasOwnProperty.call(f, c)) return;
+      let v = clean_(f[c], c === 'notes' ? 500 : 40);
+      if (c === 'finished_at') { const t = Date.parse(v); if (!t) return; v = new Date(t).toISOString(); vals[SESSION_COLS.indexOf('date')] = Utilities.formatDate(new Date(t), TZ, 'yyyy-MM-dd'); }
+      vals[SESSION_COLS.indexOf(c)] = v;
+    });
+    rng.setNumberFormat('@').setValues([vals]);
+    const o = {}; SESSION_COLS.forEach(function (c, j) { o[c] = vals[j]; });
     return { ok: true, row: o };
   }
   return { ok: false, error: 'not found' };
