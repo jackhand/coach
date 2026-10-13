@@ -120,11 +120,11 @@ function setsHTML(ex) {
     const bits = [FT_LABEL[r.failure_type] || r.failure_type, +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '',
       r.total_load ? ('total ' + r.total_load + ' lb') : '',
       r.pending ? 'pending sync' : (r.rest_time ? 'rest ' + r.rest_time : ''), e ? ('e1RM ' + e.ep + ' Epley / ' + e.br + ' Brzycki') : ''].filter(Boolean).join(' · ');
-    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="s1"><span class="tag done">&#10003; Done</span>Set ' + (i + 1) + ': ' + esc(setTxt(r)) + (r.load && ex.bodyweight ? ' added' : '') + ' ' + trend(ex, r, i) + '<span class="ed">edit</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="s1">Set ' + (i + 1) + ': ' + esc(setTxt(r)) + (r.load && ex.bodyweight ? ' added' : '') + ' ' + trend(ex, r, i) + '<span class="ed">edit</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
   }).join('');
   for (let i = rs.length; i < n; i++) {
     const sg = suggest(ex, i);
-    h += '<li class="plan"><div class="s1"><span class="tag todo">To do</span>Set ' + (i + 1) + (sg ? ': ' + esc(sg.load || '-') + ' x ' + esc(sg.reps) + (ex.single ? ' per side' : '') : '') + '</div>' + (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + '</div>' : '') + '</li>';
+    h += '<li class="plan"><button class="rm" data-rm="' + esc(ex.canonical) + '" aria-label="Remove this set">&#10005;</button><div class="s1">Set ' + (i + 1) + (sg ? ': ' + esc(sg.load || '-') + ' x ' + esc(sg.reps) + (ex.single ? ' per side' : '') : '') + '</div>' + (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + '</div>' : '') + '</li>';
   }
   return h;
 }
@@ -143,7 +143,12 @@ function bodyweight() { const v = parseFloat(getSetting('profile', 'bodyweight')
 function setupFor(ex) { const v = getSetting(ex.canonical, 'equipment'); return v != null ? v : (ex.setup || ''); }
 
 // ---------- Session order, per-day exercise state, suggestions, trends, meso ----------
-const dayKeyOf = () => S.today + '|' + dayKey;
+// Date of the day being viewed, in the current Mon-Sun week (so Tuesday edits made on Monday land on Tuesday's date).
+function viewDate() {
+  const t = new Date(S.today + 'T12:00:00'), off = DAYS.indexOf(dayKey) - ((t.getDay() + 6) % 7);
+  t.setDate(t.getDate() + off); return t.toISOString().slice(0, 10);
+}
+const dayKeyOf = () => viewDate() + '|' + dayKey;
 function baseCards() { const d = days[dayKey]; return d ? d.exercises : []; }
 function cardsFor() {
   const base = baseCards(); let ord = null;
@@ -152,8 +157,8 @@ function cardsFor() {
   const pos = n => { const i = ord.indexOf(n); return i < 0 ? 999 + base.findIndex(x => x.canonical === n) : i; };
   return base.slice().sort((a, b) => pos(a.canonical) - pos(b.canonical));
 }
-const dayVal = (ex, k) => getSetting(ex.canonical, k + ':' + S.today);
-function setDayVal(ex, k, v) { putSetting(ex.canonical, k + ':' + S.today, v); sig = ''; applyState(S, false); }
+const dayVal = (ex, k) => getSetting(ex.canonical, k + ':' + viewDate());
+function setDayVal(ex, k, v) { putSetting(ex.canonical, k + ':' + viewDate(), v); sig = ''; applyState(S, false); }
 function plannedCount(ex) { return Math.max(0, (ex.planned_sets || 3) + (+dayVal(ex, 'extra') || 0) - (+dayVal(ex, 'skip') || 0)); }
 function repRange(ex) { const m = (ex.note.sets || '').match(/x\s*(\d+)(?:\s*-\s*(\d+))?/i); return m ? [+m[1], +(m[2] || m[1])] : [8, 12]; }
 const LOWER = /quad|hamstring|glute|leg|calf|calves|adductor|abductor/i;
@@ -301,6 +306,13 @@ function enableDrag(main) {
   winOn('touchend', up); winOn('touchcancel', up);
   winOn('contextmenu', e => { if (drag || pend) e.preventDefault(); });
 }
+function removePlanned(name) {
+  const ex = cardsFor().find(x => x.canonical === name); if (!ex) return;
+  const extra = +dayVal(ex, 'extra') || 0;
+  if (extra > 0) setDayVal(ex, 'extra', extra > 1 ? String(extra - 1) : '');
+  else setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + 1));
+  toast('Set removed');
+}
 // Exercise menu
 let menuEx = null;
 function openMenu(i) {
@@ -367,7 +379,7 @@ function render() {
   main.querySelectorAll('[data-su]').forEach(el => el.onclick = () => editSetup(+el.dataset.su));
   main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
   enableDrag(main);
-  main.onclick = e => { const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
+  main.onclick = e => { const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
   renderFinish(); markActive();
 }
 function update() {

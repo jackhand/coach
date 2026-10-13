@@ -48,7 +48,8 @@ main{padding:12px 12px 210px}
 .card h2{background:#1f5a3a;color:#eafff2;border-radius:10px;padding:8px 10px;margin:-4px -4px 6px;display:flex;align-items:center;gap:6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .grip{font-size:26px;line-height:1;min-width:44px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);border-radius:8px;touch-action:none;cursor:grab}.menu-btn{margin-left:auto;background:none;border:0;font-size:24px;min-width:44px;min-height:40px;color:#eafff2}
 .card.dragging{opacity:.85;box-shadow:0 0 0 3px var(--acc);transform:scale(1.02)}
-.sets li.plan{background:transparent;border:1px dashed var(--line);color:var(--mut)}
+.sets li.plan{background:transparent;border:1px dashed var(--line);color:var(--mut);opacity:.75;position:relative;padding-right:52px}
+.rm{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:44px;height:44px;border:0;border-radius:10px;background:none;color:var(--mut);font-size:18px}
 .tag{display:inline-block;font-size:12px;font-weight:700;border-radius:6px;padding:1px 6px;margin-right:8px;vertical-align:1px}
 .tag.done{background:var(--acc);color:#06210f}.tag.todo{border:1px dashed var(--mut);color:var(--mut)}
 body.dragmode{overscroll-behavior:none;user-select:none;-webkit-user-select:none}
@@ -122,7 +123,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
-  <div class="sub" style="text-align:center;margin-top:12px">App version 6</div>
+  <div class="sub" style="text-align:center;margin-top:12px">App version 7</div>
 </div>
 <div id="app" style="display:none">
 <header>
