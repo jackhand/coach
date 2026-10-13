@@ -301,14 +301,6 @@ function enableDrag(main) {
   winOn('touchend', up); winOn('touchcancel', up);
   winOn('contextmenu', e => { if (drag || pend) e.preventDefault(); });
 }
-function moveCard(ex, dir) {
-  const names = cardsFor().map(x => x.canonical), i = names.indexOf(ex.canonical), j = i + dir;
-  if (j < 0 || j >= names.length) return toast(dir < 0 ? 'Already first' : 'Already last');
-  [names[i], names[j]] = [names[j], names[i]];
-  putSetting('order', dayKeyOf(), JSON.stringify(names)); sig = ''; render();
-  const c = [...$('main').querySelectorAll('.card')].find(x => x.dataset.name === ex.canonical); if (c) c.scrollIntoView({ block: 'center' });
-  toast('Moved ' + (dir < 0 ? 'up' : 'down'));
-}
 // Exercise menu
 let menuEx = null;
 function openMenu(i) {
@@ -327,8 +319,6 @@ $('mskip').onclick = () => {
   setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left)); toast('Skipped ' + left + (left === 1 ? ' set' : ' sets'));
 };
 $('mnote').onclick = () => { const ex = menuEx; closeMenu(); const v = prompt('Note for ' + ex.canonical + ' today:', dayVal(ex, 'note') || ''); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
-$('mup').onclick = () => { const ex = menuEx; closeMenu(); moveCard(ex, -1); };
-$('mdown').onclick = () => { const ex = menuEx; closeMenu(); moveCard(ex, 1); };
 $('mhist').onclick = () => { const ex = menuEx; closeMenu(); openHistory(ex); };
 document.querySelectorAll('#mpain button').forEach(b => b.onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'pain', b.dataset.p === 'none' ? '' : b.dataset.p); toast('Joint pain: ' + b.dataset.p); });
 function openHistory(ex) {
