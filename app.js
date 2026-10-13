@@ -96,9 +96,8 @@ function viewRows() {
     .map(r => edits[r.set_id] ? Object.assign({}, r, edits[r.set_id], { pending: true }) : r)
     .sort((a, b) => tsOf(a) - tsOf(b));
 }
-function cardsFor() { const d = days[dayKey]; return d ? d.exercises : []; }
 function keysOf(ex) { return new Set(ex.match_keys.concat([P_.norm(ex.canonical), P_.norm(ex.name)])); }
-function exFor(name) { const n = P_.norm(name); for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
+function exFor(name) { const n = P_.norm(name); for (const ex of (days[dayKey] ? days[dayKey].exercises : [])) if (keysOf(ex).has(n)) return ex; for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
 function rowsFor(ex, today) {
   const keys = keysOf(ex);
   return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? r.date === S.today : r.date < S.today));
@@ -114,14 +113,20 @@ function lastTime(ex) {
   return 'Last time (' + d + '): ' + rs.filter(r => r.date === d).map(setTxt).join(', ');
 }
 function setsHTML(ex) {
-  const rs = rowsFor(ex, true); if (!rs.length) return '<li class="s2 none">No sets logged today.</li>';
-  return rs.map((r, i) => {
+  const rs = rowsFor(ex, true), n = Math.max(plannedCount(ex), rs.length);
+  if (!n) return '<li class="s2 none">Skipped today.</li>';
+  let h = rs.map((r, i) => {
     const e = P_.e1rm(loadOf(r), r.reps);
     const bits = [FT_LABEL[r.failure_type] || r.failure_type, +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '',
       r.total_load ? ('total ' + r.total_load + ' lb') : '',
       r.pending ? 'pending sync' : (r.rest_time ? 'rest ' + r.rest_time : ''), e ? ('e1RM ' + e.ep + ' Epley / ' + e.br + ' Brzycki') : ''].filter(Boolean).join(' · ');
-    return '<li data-sid="' + esc(r.set_id) + '"' + (r.pending ? ' class="pend"' : '') + '><div class="s1">Set ' + (i + 1) + ': ' + esc(setTxt(r)) + (r.load && ex.bodyweight ? ' added' : '') + '<span class="ed">edit</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="s1"><span class="ck">&#10003;</span>Set ' + (i + 1) + ': ' + esc(setTxt(r)) + (r.load && ex.bodyweight ? ' added' : '') + ' ' + trend(ex, r, i) + '<span class="ed">edit</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
   }).join('');
+  for (let i = rs.length; i < n; i++) {
+    const sg = suggest(ex, i);
+    h += '<li class="plan"><div class="s1"><span class="ck"></span>Set ' + (i + 1) + (sg ? ': ' + esc(sg.load || '-') + ' x ' + esc(sg.reps) + (ex.single ? ' per side' : '') : '') + '</div>' + (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + '</div>' : '') + '</li>';
+  }
+  return h;
 }
 
 // ---------- Per-exercise settings (equipment setup), body weight ----------
@@ -137,6 +142,163 @@ function putSetting(scope, key, value) {
 function bodyweight() { const v = parseFloat(getSetting('profile', 'bodyweight')); return v > 0 ? v : null; }
 function setupFor(ex) { const v = getSetting(ex.canonical, 'equipment'); return v != null ? v : (ex.setup || ''); }
 
+// ---------- Session order, per-day exercise state, suggestions, trends, meso ----------
+const dayKeyOf = () => S.today + '|' + dayKey;
+function baseCards() { const d = days[dayKey]; return d ? d.exercises : []; }
+function cardsFor() {
+  const base = baseCards(); let ord = null;
+  try { ord = JSON.parse(getSetting('order', dayKeyOf()) || 'null'); } catch (e) {}
+  if (!Array.isArray(ord)) return base;
+  const pos = n => { const i = ord.indexOf(n); return i < 0 ? 999 + base.findIndex(x => x.canonical === n) : i; };
+  return base.slice().sort((a, b) => pos(a.canonical) - pos(b.canonical));
+}
+const dayVal = (ex, k) => getSetting(ex.canonical, k + ':' + S.today);
+function setDayVal(ex, k, v) { putSetting(ex.canonical, k + ':' + S.today, v); sig = ''; applyState(S, false); }
+function plannedCount(ex) { return Math.max(0, (ex.planned_sets || 3) + (+dayVal(ex, 'extra') || 0) - (+dayVal(ex, 'skip') || 0)); }
+function repRange(ex) { const m = (ex.note.sets || '').match(/x\s*(\d+)(?:\s*-\s*(\d+))?/i); return m ? [+m[1], +(m[2] || m[1])] : [8, 12]; }
+const LOWER = /quad|hamstring|glute|leg|calf|calves|adductor|abductor/i;
+const FAIL = ['technical', 'true', 'drop set', 'myo-reps'];
+function lastSession(ex) {
+  const rs = rowsFor(ex, false); if (!rs.length) return null;
+  const d = rs.reduce((m, r) => r.date > m ? r.date : m, '');
+  return { date: d, rows: rs.filter(r => r.date === d) };
+}
+const r5 = (w, step) => Math.max(step, Math.round(w / step) * step);
+const EQUIP = [[/barbell|\bbb\b|smith/i, 1], [/dumbbell|\bdb\b/i, 0.38], [/machine|pec deck|hack|leg press/i, 0.9], [/cable|rope/i, 0.45]];
+const eqFactor = n => { for (const [re, f] of EQUIP) if (re.test(n)) return f; return 0.8; };
+function suggest(ex, idx) {
+  const [lo, hi] = repRange(ex), inc = LOWER.test(ex.rest_muscle + ' ' + ex.muscles) ? 10 : 5;
+  const ls = lastSession(ex);
+  if (ls) {
+    const r = ls.rows[Math.min(idx, ls.rows.length - 1)], w = parseFloat(r.load), reps = parseInt(r.reps, 10) || 0;
+    if (!(w >= 0)) return { load: r.load, reps: String(Math.min(hi, reps + 1)), why: 'last time ' + setTxt(r) };
+    if (reps >= hi && FAIL.includes(r.failure_type)) return { load: String(w + (ex.bodyweight && !w ? 0 : inc)), reps: String(lo), why: 'top of range hit: +' + inc + ' lb' };
+    return { load: String(w), reps: String(Math.min(hi, reps + 1)), why: 'same weight, aim +1 rep (last ' + setTxt(r) + ')' };
+  }
+  if (ex.bodyweight) return null;
+  // Never done: estimate from the best e1RM on a similar exercise (same rest muscle), scaled by equipment.
+  let best = null;
+  for (const d of Object.values(days)) for (const o of d.exercises) {
+    if (o === ex || o.canonical === ex.canonical || o.rest_muscle !== ex.rest_muscle || o.bodyweight) continue;
+    for (const r of viewRows().filter(x => keysOf(o).has(P_.norm(x.exercise)))) {
+      const e = P_.e1rm(loadOf(r), r.reps); if (!e) continue;
+      const v = (e.ep + e.br) / 2 * eqFactor(ex.canonical) / eqFactor(o.canonical)
+        * ((ex.types || []).includes('isolation') && !(o.types || []).includes('isolation') ? 0.6 : 1);
+      if (!best || v > best.v) best = { v, from: o.canonical };
+    }
+  }
+  if (!best) return null;
+  const reps = Math.round((lo + hi) / 2);
+  return { load: String(r5(best.v / (1 + reps / 30), 5)), reps: String(reps), why: 'from ' + best.from, est: true };
+}
+function trend(ex, r, i) {
+  const ls = lastSession(ex); if (!ls || !ls.rows[i]) return '';
+  const p = ls.rows[i], a = P_.e1rm(loadOf(r), r.reps), b = P_.e1rm(loadOf(p), p.reps);
+  let d;
+  if (a && b) d = a.ep - b.ep; else d = (parseFloat(loadOf(r)) || 0) - (parseFloat(loadOf(p)) || 0) || (parseInt(r.reps, 10) - parseInt(p.reps, 10));
+  return d > 0 ? '<span class="tr up">&#9650;</span>' : d < 0 ? '<span class="tr dn">&#9660;</span>' : '<span class="tr eq">&#9654;</span>';
+}
+// Mesocycle grid: settings profile.meso = {"start":"YYYY-MM-DD","weeks":N,"deload":N} (written by Coach), else Week 1 only.
+function mesoCfg() {
+  let m = null; try { m = JSON.parse(getSetting('profile', 'meso') || 'null'); } catch (e) {}
+  if (!m || !m.start) {
+    const t = new Date(S.today + 'T12:00:00'); t.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+    m = { start: t.toISOString().slice(0, 10), weeks: 1, deload: 0 };
+  }
+  return m;
+}
+function mesoHTML() {
+  const m = mesoCfg(), tdays = DAYS.filter(d => days[d]); if (!tdays.length) return '';
+  const start = new Date(m.start + 'T12:00:00'), today = new Date(S.today + 'T12:00:00');
+  const done = new Set((S.sessions || []).map(s => s.date).concat(viewRows().map(r => r.date)));
+  let h = '<table class="meso"><tr><th></th>' + tdays.map(d => '<th>' + d[0].toUpperCase() + d.slice(1, 3) + '</th>').join('') + '</tr>';
+  for (let w = 0; w < (m.weeks || 1); w++) {
+    h += '<tr><th>' + (m.deload && w + 1 === +m.deload ? 'DL' : 'W' + (w + 1)) + '</th>' + tdays.map(d => {
+      const dt = new Date(start); dt.setDate(start.getDate() + w * 7 + DAYS.indexOf(d)); const iso = dt.toISOString().slice(0, 10);
+      const cls = [done.has(iso) ? 'ok' : '', iso === S.today ? 'cur' : '', dt < today && !done.has(iso) ? 'miss' : ''].filter(Boolean).join(' ');
+      return '<td class="' + cls + '">' + (done.has(iso) ? '&#10003;' : '') + '</td>';
+    }).join('') + '</tr>';
+  }
+  return h + '</table>';
+}
+// Drag to reorder: long-press the green heading, then drag up/down.
+let dragCleanup = [];
+const winOn = (t, f, o) => { window.addEventListener(t, f, o); dragCleanup.push(() => window.removeEventListener(t, f, o)); };
+function enableDrag(main) {
+  dragCleanup.forEach(f => f()); dragCleanup = [];
+  main.querySelectorAll('.card h2').forEach(h => {
+    let timer = null, card = null, on = false;
+    h.addEventListener('pointerdown', e => {
+      if (e.target.closest('.menu-btn')) return;
+      card = h.closest('.card');
+      timer = setTimeout(() => { on = true; card.classList.add('dragging'); try { h.setPointerCapture(e.pointerId); } catch (x) {} if (navigator.vibrate) navigator.vibrate(30); }, 450);
+    });
+    let lastY = 0, auto = null;
+    const swap = () => {
+      const cards = [...main.querySelectorAll('.card')];
+      for (const c of cards) {
+        if (c === card) continue; const r = c.getBoundingClientRect(), mid = r.top + r.height / 2;
+        if (lastY < mid && cards.indexOf(c) < cards.indexOf(card)) { c.before(card); return; }
+        if (lastY > mid && cards.indexOf(c) > cards.indexOf(card)) { c.after(card); return; }
+      }
+    };
+    const move = e => {
+      if (!on) return; e.preventDefault(); lastY = e.clientY; swap();
+      if (!auto) auto = setInterval(() => {
+        if (!on) { clearInterval(auto); auto = null; return; }
+        const dy = lastY < 110 ? -14 : lastY > innerHeight - 230 ? 14 : 0;
+        if (dy) { window.scrollBy(0, dy); swap(); }
+      }, 30);
+    };
+    h.addEventListener('pointermove', move); winOn('pointermove', e => { if (on && e.target !== h) move(e); }, { passive: false });
+    const end = () => {
+      clearTimeout(timer); timer = null; if (auto) { clearInterval(auto); auto = null; }
+      if (on) {
+        on = false; card.classList.remove('dragging');
+        const names = [...main.querySelectorAll('.card')].map(c => c.dataset.name);
+        putSetting('order', dayKeyOf(), JSON.stringify(names)); sig = ''; render(); toast('Order saved for today');
+      }
+    };
+    h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
+    winOn('pointerup', () => { if (on || timer) end(); }); winOn('pointercancel', () => { if (on || timer) end(); });
+    h.addEventListener('contextmenu', e => e.preventDefault());
+  });
+}
+// Exercise menu
+let menuEx = null;
+function openMenu(i) {
+  menuEx = cardsFor()[i]; $('mh').textContent = menuEx.canonical;
+  const p = dayVal(menuEx, 'pain') || 'none';
+  document.querySelectorAll('#mpain button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+  $('menu').classList.add('open');
+}
+function closeMenu() { $('menu').classList.remove('open'); }
+$('menu').addEventListener('click', e => { if (e.target.id === 'menu') closeMenu(); });
+$('mclose').onclick = closeMenu;
+$('madd').onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'extra', String((+dayVal(ex, 'extra') || 0) + 1)); toast('Set added'); };
+$('mskip').onclick = () => {
+  const ex = menuEx, left = plannedCount(ex) - rowsFor(ex, true).length; closeMenu();
+  if (left <= 0) return toast('No sets left to skip');
+  setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left)); toast('Skipped ' + left + (left === 1 ? ' set' : ' sets'));
+};
+$('mnote').onclick = () => { const ex = menuEx; closeMenu(); const v = prompt('Note for ' + ex.canonical + ' today:', dayVal(ex, 'note') || ''); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
+$('mhist').onclick = () => { const ex = menuEx; closeMenu(); openHistory(ex); };
+document.querySelectorAll('#mpain button').forEach(b => b.onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'pain', b.dataset.p === 'none' ? '' : b.dataset.p); toast('Joint pain: ' + b.dataset.p); });
+function openHistory(ex) {
+  const rs = viewRows().filter(r => keysOf(ex).has(P_.norm(r.exercise)));
+  const by = {}; rs.forEach(r => (by[r.date] = by[r.date] || []).push(r));
+  const ds = Object.keys(by).sort().reverse();
+  $('hh').textContent = ex.canonical + ' history';
+  $('hb').innerHTML = ds.length ? ds.map(d => {
+    const best = by[d].map(r => P_.e1rm(loadOf(r), r.reps)).filter(Boolean).reduce((m, e) => Math.max(m, e.ep), 0);
+    const pain = getSetting(ex.canonical, 'pain:' + d), note = getSetting(ex.canonical, 'note:' + d);
+    return '<div class="hd"><b>' + esc(d) + '</b>' + (best ? ' · best e1RM ' + best : '') + (pain ? ' · pain ' + esc(pain) : '') + '<br>' + by[d].map(r => esc(setTxt(r)) + (+r.drops ? ' +' + r.drops + 'D' : '')).join(', ') + (note ? '<br><i>' + esc(note) + '</i>' : '') + '</div>';
+  }).join('') : '<div class="s2">No history yet.</div>';
+  $('hist').classList.add('open');
+}
+$('hclose').onclick = () => $('hist').classList.remove('open');
+$('hist').addEventListener('click', e => { if (e.target.id === 'hist') $('hist').classList.remove('open'); });
+
 // ---------- Render ----------
 function btnLabel(ex) {
   const t = getT();
@@ -149,11 +311,13 @@ function render() {
   $('prof').value = P;
   if (!d) { $('sub').textContent = ''; main.innerHTML = '<div class="empty">' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet.<br>Ask Coach to write it, or pick another day.' : 'No program file found for this profile yet.<br>Ask Coach to write one.') + '</div>'; return; }
   $('sub').textContent = d.title + (d.week ? ' · ' + d.week.split('.')[0] : '');
-  main.innerHTML = d.exercises.map((ex, i) => {
+  main.innerHTML = '<div id="meso">' + mesoHTML() + '</div>' + cardsFor().map((ex, i) => {
     const n = ex.note, chips = [n.sets, n.failure, n.rest].filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
-    return '<div class="card" id="c' + i + '"><h2>' + ex.n + '. ' + esc(ex.canonical) + '</h2>' +
+    return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip">&#8942;&#8942;</span>' + (i + 1) + '. ' + esc(ex.canonical) + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2>' +
+      (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
+      (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
       '<div class="note"><b>Coach:</b><div class="chips">' + chips + '</div>' + extra + '</div>' +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || 'tap to add (seat, pins, angle)') + '</span> <span class="ed">edit</span></div>' +
@@ -164,11 +328,14 @@ function render() {
     '<div id="finwrap"></div>';
   main.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => setDone(+b.dataset.i));
   main.querySelectorAll('[data-su]').forEach(el => el.onclick = () => editSetup(+el.dataset.su));
+  main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
+  enableDrag(main);
   main.onclick = e => { const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
   renderFinish(); markActive();
 }
 function update() {
   cardsFor().forEach((ex, i) => { const s = $('s' + i), l = $('l' + i), b = $('b' + i); if (s) { const h = setsHTML(ex); if (s.innerHTML !== h) s.innerHTML = h; } if (l) l.textContent = lastTime(ex); if (b) b.textContent = btnLabel(ex); });
+  const mz = $('meso'); if (mz) { const mh = mesoHTML(); if (mz.innerHTML !== mh) mz.innerHTML = mh; }
   renderFinish(); markActive();
 }
 function finishedToday() {
@@ -259,8 +426,8 @@ function nextTarget(name) {
   const normal = ex.note.rest_target_sec || 120;
   const list = cardsFor(), idx = list.indexOf(ex);
   const done = idx >= 0 ? rowsFor(ex, true).length : 0;
-  if (idx < 0 || done < ex.planned_sets) return { target: normal, next: idx < 0 ? '' : 'next: ' + ex.canonical + ' set ' + (done + 1) };
-  const nx = list[idx + 1];
+  if (idx < 0 || done < plannedCount(ex)) return { target: normal, next: idx < 0 ? '' : 'next: ' + ex.canonical + ' set ' + (done + 1) };
+  const nx = list.slice(idx + 1).concat(list.slice(0, idx)).find(x => rowsFor(x, true).length < plannedCount(x));
   if (!nx) return { target: normal, next: 'last exercise done' };
   if (nx.rest_muscle && nx.rest_muscle === ex.rest_muscle) return { target: nx.note.rest_target_sec || normal, next: 'next: ' + nx.canonical + ' (same muscle)' };
   return { target: SWITCH_REST, next: 'next: ' + nx.canonical + ' (new muscle)' };
@@ -360,8 +527,11 @@ function openForm(i, ts, row) {
   const today = row ? [] : rowsFor(ex, true), prev = today.length ? today[today.length - 1] : null;
   $('sh').textContent = (row ? 'Edit: ' : '') + ex.canonical;
   $('fll').textContent = ex.bodyweight ? 'Added weight (vest/belt, 0 if none)' : 'Load (lb)';
-  $('fl').value = row ? (row.load || '') : prev ? prev.load : (ex.bodyweight ? '0' : '');
-  $('fr').value = row ? row.reps : ''; $('fn').value = row ? (row.notes || '') : ''; $('ferr').textContent = '';
+  const sg = row ? null : suggest(ex, today.length);
+  $('fl').value = row ? (row.load || '') : sg && sg.load ? sg.load : prev ? prev.load : (ex.bodyweight ? '0' : '');
+  $('fr').value = row ? row.reps : (sg && !ex.single ? sg.reps : '');
+  if (!row && ex.single && sg) { $('frl').placeholder = sg.reps; $('frr').placeholder = sg.reps; }
+  $('fsug').textContent = sg ? (sg.est ? 'Estimate: ' : 'Suggested: ') + (sg.load || '-') + ' x ' + sg.reps + ' (' + sg.why + '). Change it if you did something else.' : ''; $('fn').value = row ? (row.notes || '') : ''; $('ferr').textContent = '';
   $('frl').value = row ? (row.left_reps || '') : ''; $('frr').value = row ? (row.right_reps || '') : '';
   showSides(!!ex.single); setDrops(row ? (+row.drops || 0) : 0);
   $('fbw').textContent = ''; bwLine();

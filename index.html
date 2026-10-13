@@ -45,6 +45,24 @@ main{padding:12px 12px 210px}
 .btn.fin{background:var(--blue);color:#04172b;margin-top:22px}
 .done{text-align:center;color:var(--acc);padding:20px 8px;font-weight:600}
 #fbw{color:var(--mut);font-size:14px;margin-top:4px}
+.card h2{background:#1f5a3a;color:#eafff2;border-radius:10px;padding:8px 10px;margin:-4px -4px 6px;display:flex;align-items:center;gap:6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.grip{opacity:.6;font-size:16px}.menu-btn{margin-left:auto;background:none;border:0;font-size:24px;min-width:44px;min-height:40px;color:#eafff2}
+.card.dragging{opacity:.85;box-shadow:0 0 0 3px var(--acc);transform:scale(1.02)}
+.sets li.plan{background:transparent;border:1px dashed var(--line);color:var(--mut)}
+.ck{display:inline-block;width:20px;height:20px;border:2px solid var(--line);border-radius:5px;margin-right:8px;vertical-align:-4px;text-align:center;font-size:14px;line-height:16px}
+.logged .ck{background:var(--acc);border-color:var(--acc);color:#06210f}
+.tr{font-size:13px;margin-left:4px}.tr.up{color:var(--acc)}.tr.dn{color:var(--red)}.tr.eq{color:var(--mut)}
+.est{color:#ffd666;font-weight:600}
+.pain{color:#ffb3b5;font-size:14px;margin-top:4px}.dnote{color:#ffd666;font-size:14px;margin-top:4px}
+.meso{border-collapse:separate;border-spacing:4px;margin:4px auto 0;font-size:13px}
+.meso th{color:var(--mut);font-weight:600}.meso td{width:38px;height:26px;background:var(--card2);border-radius:6px;text-align:center}
+.meso td.ok{background:var(--acc);color:#06210f}.meso td.cur{outline:2px solid var(--blue)}.meso td.miss{background:#3a2a1d}
+#menu,#hist{position:fixed;inset:0;z-index:22;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
+#menu.open,#hist.open{display:flex}
+#menu .in,#hist .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
+.hd{background:var(--card2);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:15px}
+#fsug{color:#ffd666;font-size:14px;margin-top:4px}
+
 .card.active{border-color:var(--acc)}
 .card h2{font-size:20px;margin:0 0 2px}
 .meta{color:var(--mut);font-size:14px}
@@ -135,6 +153,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
       <div><label for="fl" id="fll">Load (lb)</label><input id="fl" inputmode="decimal" autocomplete="off"></div>
       <div id="repsbox"><label for="fr">Reps</label><input id="fr" inputmode="numeric" autocomplete="off"></div>
     </div>
+    <div id="fsug"></div>
     <div id="fbw"></div>
     <div id="sides" style="display:none">
       <div class="grid">
@@ -155,6 +174,17 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
     <button class="btn red" id="fdel" style="display:none">Delete set</button>
   </div>
 </div>
+<div id="menu"><div class="in">
+  <h3 id="mh"></h3>
+  <button class="btn sec" id="madd">Add a set</button>
+  <button class="btn sec" id="mskip">Skip remaining sets</button>
+  <button class="btn sec" id="mnote">Note for today</button>
+  <button class="btn sec" id="mhist">History</button>
+  <label>Joint pain today</label>
+  <div class="seg" id="mpain"><button type="button" data-p="none">None</button><button type="button" data-p="mild">Mild</button><button type="button" data-p="moderate">Moderate</button><button type="button" data-p="severe">Severe</button></div>
+  <button class="btn sec" id="mclose">Close</button>
+</div></div>
+<div id="hist"><div class="in"><h3 id="hh"></h3><div id="hb"></div><button class="btn sec" id="hclose">Close</button></div></div>
 <div class="toast" id="toast"></div>
 
 <script src="parse.js"></script>
