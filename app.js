@@ -227,6 +227,11 @@ function mesoCfg() {
   return m;
 }
 function mesoHTML() {
+  const f = isToday() && finishedToday();
+  const bar = f ? '<div class="donebar">&#10003; Workout done' + (f === 'pending' ? ' (syncing)' : ' · ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '<small>Sets stay editable: tap any set.</small></div>' : '';
+  return bar + mesoGrid();
+}
+function mesoGrid() {
   const m = mesoCfg(), tdays = DAYS.filter(d => days[d]); if (!tdays.length) return '';
   const start = new Date(m.start + 'T12:00:00'), today = new Date(S.today + 'T12:00:00');
   const done = new Set((S.sessions || []).map(s => s.date).concat(viewRows().map(r => r.date)));
