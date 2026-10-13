@@ -112,19 +112,33 @@ function lastTime(ex) {
   const d = rs.reduce((m, r) => r.date > m ? r.date : m, '');
   return 'Last time (' + d + '): ' + rs.filter(r => r.date === d).map(setTxt).join(', ');
 }
+// Row drafts: values typed into planned rows, kept across refreshes. key = date|exercise|set index
+const drafts = {};
+const dKey = (ex, i) => viewDate() + '|' + ex.canonical + '|' + i;
 function setsHTML(ex) {
   const rs = rowsFor(ex, true), n = Math.max(plannedCount(ex), rs.length);
   if (!n) return '<li class="s2 none">Skipped today.</li>';
-  let h = rs.map((r, i) => {
+  const name = esc(ex.canonical), t = getT();
+  const half = ex.single && t && t.firstSide && P_.norm(t.exercise) === P_.norm(ex.canonical);
+  let h = '<li class="shead"><span>SET</span><span>WEIGHT</span><span>REPS</span><span></span><span>LOG</span></li>';
+  h += rs.map((r, i) => {
     const e = P_.e1rm(loadOf(r), r.reps);
     const bits = [FT_LABEL[r.failure_type] || r.failure_type, +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '',
       r.total_load ? ('total ' + r.total_load + ' lb') : '',
       r.pending ? 'pending sync' : (r.rest_time ? 'rest ' + r.rest_time : ''), e ? ('e1RM ' + e.ep + ' Epley / ' + e.br + ' Brzycki') : ''].filter(Boolean).join(' · ');
-    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="s1">Set ' + (i + 1) + ': ' + esc(setTxt(r)) + (r.load && ex.bodyweight ? ' added' : '') + ' ' + trend(ex, r, i) + '<span class="ed">edit</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
+    const reps = (r.left_reps || r.right_reps) ? 'L' + (r.left_reps || '?') + ' R' + (r.right_reps || '?') : r.reps;
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(r.load || '-') + (r.load && ex.bodyweight ? '<small> +</small>' : '') + '</span><span class="val">' + esc(reps) + ' ' + trend(ex, r, i) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
   }).join('');
   for (let i = rs.length; i < n; i++) {
-    const sg = suggest(ex, i);
-    h += '<li class="plan"><button class="rm" data-rm="' + esc(ex.canonical) + '" aria-label="Remove this set">&#10005;</button><div class="s1">Set ' + (i + 1) + (sg ? ': ' + esc(sg.load || '-') + ' x ' + esc(sg.reps) + (ex.single ? ' per side' : '') : '') + '</div>' + (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + '</div>' : '') + '</li>';
+    const sg = suggest(ex, i), d = drafts[dKey(ex, i)] || {};
+    const w = d.load != null ? d.load : (sg && sg.load) || '', r = d.reps != null ? d.reps : (sg && sg.reps) || '';
+    const isNext = i === rs.length;
+    h += '<li class="plan"><div class="srow"><span class="sn">' + (i + 1) + '</span>' +
+      '<input class="pin" data-pw="' + i + '" data-ex="' + name + '" inputmode="decimal" placeholder="' + (ex.bodyweight ? '+lb' : 'lb') + '" value="' + esc(w) + '">' +
+      '<input class="pin" data-pr="' + i + '" data-ex="' + name + '" inputmode="numeric" placeholder="reps" value="' + esc(r) + '">' +
+      '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +
+      '<button class="lg' + (half && isNext ? ' half' : '') + '" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + (isNext && isToday() ? '' : ' disabled') + '>' + (half && isNext ? '&#189;' : '') + '</button></div>' +
+      (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + (ex.single ? ' · reps per side' : '') + '</div>' : '') + '</li>';
   }
   return h;
 }
@@ -372,18 +386,23 @@ function render() {
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || 'tap to add (seat, pins, angle)') + '</span> <span class="ed">edit</span></div>' +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
-      '<button class="btn" id="b' + i + '" data-i="' + i + '">' + btnLabel(ex) + '</button></div></div>';
+      '<button class="btn" id="b' + i + '" data-i="' + i + '"' + (isToday() ? '' : ' disabled') + '>' + btnLabel(ex) + '</button></div></div>';
   }).join('') + (d.footer && d.footer.length ? '<div class="note">' + d.footer.map(esc).join('<br>') + '</div>' : '') +
     '<div id="finwrap"></div>';
   main.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => setDone(+b.dataset.i));
   main.querySelectorAll('[data-su]').forEach(el => el.onclick = () => editSetup(+el.dataset.su));
   main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
   enableDrag(main);
-  main.onclick = e => { const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
+  main.oninput = e => { const el = e.target, ex = el.dataset.ex && cardsFor().find(x => x.canonical === el.dataset.ex); if (!ex) return;
+    if (el.dataset.pw != null) (drafts[dKey(ex, +el.dataset.pw)] = drafts[dKey(ex, +el.dataset.pw)] || {}).load = el.value;
+    if (el.dataset.pr != null) (drafts[dKey(ex, +el.dataset.pr)] = drafts[dKey(ex, +el.dataset.pr)] || {}).reps = el.value; };
+  main.onclick = e => { if (e.target.closest('.pin')) return;
+    const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
+    const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
   renderFinish(); markActive();
 }
 function update() {
-  cardsFor().forEach((ex, i) => { const s = $('s' + i), l = $('l' + i), b = $('b' + i); if (s) { const h = setsHTML(ex); if (s.innerHTML !== h) s.innerHTML = h; } if (l) l.textContent = lastTime(ex); if (b) b.textContent = btnLabel(ex); });
+  cardsFor().forEach((ex, i) => { const s = $('s' + i), l = $('l' + i), b = $('b' + i); if (s) { const h = setsHTML(ex); if (s.innerHTML !== h && !(s.contains(document.activeElement) && document.activeElement.tagName === 'INPUT')) s.innerHTML = h; } if (l) l.textContent = lastTime(ex); if (b) b.textContent = btnLabel(ex); });
   const mz = $('meso'); if (mz) { const mh = mesoHTML(); if (mz.innerHTML !== mh) mz.innerHTML = mh; }
   renderFinish(); markActive();
 }
@@ -545,7 +564,16 @@ ffSel.innerHTML = FT.map(v => '<option value="' + esc(v) + '">' + esc(FT_LABEL[v
 let editId = null, doneTs = 0, drops = 0, prevRest = null;
 function setDrops(n) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); }
 document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
+let rowPrefill = null;
+const isToday = () => !!S && viewDate() === S.today;
+function logRow(name, idx, li) {
+  const list = cardsFor(), i = list.findIndex(x => x.canonical === name); if (i < 0) return;
+  const w = li.querySelector('[data-pw]'), r = li.querySelector('[data-pr]');
+  rowPrefill = { load: w ? w.value.trim() : '', reps: r ? r.value.trim() : '', key: dKey(list[i], idx) };
+  setDone(i);
+}
 function setDone(i) {
+  if (!isToday()) return toast('You can only log sets on today\'s workout.');
   audio(); // unlock audio on a user tap (needed on iPhone and Chrome)
   const ex = cardsFor()[i], now = Date.now(), t = getT();
   const same = t && P_.norm(t.exercise) === P_.norm(ex.canonical);
@@ -553,7 +581,7 @@ function setDone(i) {
     prevRest = t && !t.hidden ? (now - t.start) / 1000 : null;
     const nt = nextTarget(ex.canonical);
     setT({ start: now, exercise: ex.canonical, target: nt.target, next: 'other side counts as rest', firstSide: true, prevRest });
-    update(); toast('Timer running. Do the other side.'); return;
+    rowPrefill = null; update(); toast('Timer running. Do the other side.'); return;
   }
   let ts = now;
   if (same && t.firstSide) { ts = t.start; prevRest = t.prevRest; }
@@ -589,8 +617,18 @@ function openForm(i, ts, row) {
   if (SR) $('heard').textContent = '';
   const f = (ex.note.failure || '').toLowerCase();
   ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : prev && FT.includes(prev.failure_type) ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
+  if (rowPrefill && !row) {
+    if (rowPrefill.load) $('fl').value = rowPrefill.load;
+    if (rowPrefill.reps) { if (ex.single) { $('frl').value = rowPrefill.reps; $('frr').value = rowPrefill.reps; } else $('fr').value = rowPrefill.reps; }
+    bwLine();
+  }
+  formKey = !row && rowPrefill ? rowPrefill.key : null; rowPrefill = null;
+  setPain(dayVal(ex, 'pain') || 'none');
   $('sheet').classList.add('open'); tick();
 }
+let formKey = null, formPain = 'none';
+function setPain(p) { formPain = p; document.querySelectorAll('#fp button').forEach(b => b.classList.toggle('on', b.dataset.p === p)); }
+document.querySelectorAll('#fp button').forEach(b => b.onclick = () => setPain(b.dataset.p));
 function openEdit(sid) { const r = viewRows().find(x => x.set_id === sid); if (r) openForm(-1, tsOf(r), r); }
 $('fsame').onclick = () => { $('frr').value = $('frl').value; };
 function closeForm() { $('sheet').classList.remove('open'); formEx = null; editId = null; stopRec(); if (S) applyState(S, false); }
@@ -598,7 +636,9 @@ $('fcancel').onclick = closeForm;
 $('fdel').onclick = () => { const id = editId; if (!confirm('Delete this set?')) return; closeForm(); deleteSet(id, false); };
 $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeForm(); });
 $('fsave').onclick = () => {
-  const ex = formEx; let reps = $('fr').value.trim(), L = '', R = '';
+  const ex = formEx;
+  if (ex && ex.canonical && (dayVal(ex, 'pain') || 'none') !== formPain) putSetting(ex.canonical, 'pain:' + viewDate(), formPain === 'none' ? '' : formPain);
+  if (formKey) delete drafts[formKey]; let reps = $('fr').value.trim(), L = '', R = '';
   if (ex.single) {
     L = $('frl').value.trim(); R = $('frr').value.trim();
     if (!L && !R) { $('ferr').textContent = 'Enter reps for at least one side.'; return; }
