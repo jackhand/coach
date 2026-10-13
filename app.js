@@ -406,6 +406,7 @@ let menuEx = null;
 function openMenu(i) {
   menuEx = cardsFor()[i]; $('mh').textContent = menuEx.canonical;
   const p = dayVal(menuEx, 'pain') || 'none';
+  $('mskip').textContent = +dayVal(menuEx, 'skip') > 0 ? 'Undo skip sets' : 'Skip remaining sets';
   document.querySelectorAll('#mpain button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
   $('menu').classList.add('open'); pushLayer('menu', () => $('menu').classList.remove('open'));
 }
@@ -414,6 +415,7 @@ $('menu').addEventListener('click', e => { if (e.target.id === 'menu') closeMenu
 $('mclose').onclick = () => closeMenu();
 $('madd').onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'extra', String((+dayVal(ex, 'extra') || 0) + 1)); toast('Set added'); };
 $('mskip').onclick = () => {
+  if (+dayVal(menuEx, 'skip') > 0) { const ex = menuEx; closeMenu(); setDayVal(ex, 'skip', ''); toast('Skipped sets restored'); return; }
   const ex = menuEx, left = plannedCount(ex) - rowsFor(ex, true).length; closeMenu();
   if (left <= 0) return toast('No sets left to skip');
   setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left)); toast('Skipped ' + left + (left === 1 ? ' set' : ' sets'));
@@ -591,10 +593,14 @@ function nextTarget(name) {
   if (nx.rest_muscle && nx.rest_muscle === ex.rest_muscle) return { target: nx.note.rest_target_sec || normal, next: 'next: ' + nx.canonical + ' (same muscle)' };
   return { target: SWITCH_REST, next: 'next: ' + nx.canonical + ' (new muscle)' };
 }
+const TIMER_MAX = 3600 * 1000; // older than 60 min: no rest timer
+function recentLast() {
+  const rs = viewRows().filter(r => r.logged_at && Date.now() - tsOf(r) < TIMER_MAX);
+  return rs.length ? rs[rs.length - 1] : null;
+}
 function syncTimer() {
-  const today = viewRows().filter(r => r.date === S.today && r.logged_at);
-  if (!today.length) return;
-  const last = today[today.length - 1];
+  const last = recentLast();
+  if (!last) { const t = getT(); if (t && !t.firstSide && Date.now() - t.start > TIMER_MAX) setT(null); return; }
   const ts = tsOf(last), t = getT();
   if (!t || (ts > t.start + 5000 && !t.firstSide && !formEx)) { const nt = nextTarget(last.exercise); setT({ start: ts, exercise: last.exercise, target: nt.target, next: nt.next, hidden: !!finishedToday() }); }
 }
@@ -613,13 +619,14 @@ function beep(final) {
   g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(final ? 0.09 : 0.05, now + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, now + (final ? 0.25 : 0.09));
   o.connect(g).connect(a.destination); o.start(now); o.stop(now + 0.3);
 }
-function muteLbl() { $('tmute').textContent = LS.getItem('coach_mute') === '1' ? 'Sound off' : 'Sound on'; }
+function muteLbl() { $('tmute').textContent = LS.getItem('coach_mute') === '1' ? 'Sound is off' : 'Sound is on'; }
 $('tmute').onclick = () => { LS.setItem('coach_mute', LS.getItem('coach_mute') === '1' ? '0' : '1'); muteLbl(); audio(); };
 muteLbl();
 function tick() {
   const t = getT(), el = $('timer');
   if (!t || t.hidden || $('app').style.display === 'none') { el.style.display = 'none'; return; }
   const sec = (Date.now() - t.start) / 1000;
+  if (sec * 1000 > TIMER_MAX) { LS.removeItem(TKEY()); el.style.display = 'none'; return; }
   el.style.display = 'block'; $('tt').textContent = fmt(sec); $('ttg').textContent = fmt(t.target);
   $('tex').textContent = (t.firstSide ? 'since first side of ' : 'after ') + t.exercise + (t.next ? ' · ' + t.next : '');
   el.className = sec <= t.target ? 'under' : 'over';
@@ -641,16 +648,18 @@ function deleteSet(sid, ask) {
   const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === sid);
   if (pi >= 0) { q.splice(pi, 1); setQ(q.filter(x => !(x.action === 'edit' && x.set_id === sid))); }
   else { setQ(q.filter(x => !(x.action === 'edit' && x.set_id === sid))); enqueue({ action: 'undo', set_id: sid }); }
-  const rest = viewRows().filter(x => x.date === S.today);
   const t = getT();
   if (t && !t.firstSide) {
-    if (rest.length) { const l = rest[rest.length - 1]; const nt = nextTarget(l.exercise); setT({ start: tsOf(l), exercise: l.exercise, target: nt.target, next: nt.next }); } else setT(null);
+    const l = recentLast();
+    if (l) { const nt = nextTarget(l.exercise); setT({ start: tsOf(l), exercise: l.exercise, target: nt.target, next: nt.next }); } else setT(null);
   }
   update(); toast('Removed');
 }
 
 // ---------- Set done / log form ----------
 const ffSel = $('ff');
+const FT_OPTS = FT.filter(v => v !== 'drop set');
+const ftOptions = extra => { ffSel.innerHTML = FT_OPTS.concat(extra ? [extra] : []).map(v => '<option value="' + esc(v) + '">' + esc(FT_LABEL[v] || v) + '</option>').join(''); };
 ffSel.innerHTML = FT.map(v => '<option value="' + esc(v) + '">' + esc(FT_LABEL[v]) + '</option>').join('');
 let editId = null, doneTs = 0, drops = 0, prevRest = null;
 function setDrops(n) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); }
@@ -705,14 +714,16 @@ function openForm(i, ts, row) {
   $('fsave').textContent = row ? 'Save changes' : 'Save set';
   if (SR) $('heard').textContent = '';
   const f = (ex.note.failure || '').toLowerCase();
-  ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : prev && FT.includes(prev.failure_type) ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
+  ftOptions(row && row.failure_type === 'drop set' ? 'drop set' : null);
+  ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : prev && FT_OPTS.includes(prev.failure_type) ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
   if (rowPrefill && !row) {
     if (rowPrefill.load) $('fl').value = rowPrefill.load;
     if (rowPrefill.reps) { if (ex.single) { $('frl').value = rowPrefill.reps; $('frr').value = rowPrefill.reps; } else $('fr').value = rowPrefill.reps; }
     bwLine();
   }
   formKey = !row && rowPrefill ? rowPrefill.key : null; rowPrefill = null;
-  setPain(dayVal(ex, 'pain') || 'none');
+  setPain(row ? (dayVal(ex, 'pain') || 'none') : 'none');
+  $('sheet').querySelector('.in').scrollTop = 0;
   $('sheet').classList.add('open'); pushLayer('sheet', () => closeForm(true)); tick();
 }
 let formKey = null, formPain = 'none';
@@ -726,7 +737,7 @@ $('fdel').onclick = () => { const id = editId; if (!confirm('Delete this set?'))
 $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeForm(); });
 $('fsave').onclick = () => {
   const ex = formEx;
-  if (ex && ex.canonical && (dayVal(ex, 'pain') || 'none') !== formPain) putSetting(ex.canonical, 'pain:' + viewId, formPain === 'none' ? '' : formPain);
+  if (ex && ex.canonical && (dayVal(ex, 'pain') || 'none') !== formPain && (editId || formPain !== 'none')) putSetting(ex.canonical, 'pain:' + viewId, formPain === 'none' ? '' : formPain);
   let reps = $('fr').value.trim(), L = '', R = '';
   if (ex.single) {
     L = $('frl').value.trim(); R = $('frr').value.trim();
@@ -796,7 +807,7 @@ $('mic').onclick = () => {
   try { rec.start(); } catch (err) { $('heard').textContent = 'Could not start voice: ' + err.message; }
 };
 function fill(txt) { const p = P_.parseSpeech(txt);
-  if (p.load != null) $('fl').value = p.load; if (p.reps != null) $('fr').value = p.reps; if (p.ft) ffSel.value = p.ft; if (p.notes) $('fn').value = p.notes;
+  if (p.load != null) $('fl').value = p.load; if (p.reps != null) $('fr').value = p.reps; if (p.ft === 'drop set') { ffSel.value = 'true'; setDrops(Math.max(1, drops)); } else if (p.ft) ffSel.value = p.ft; if (p.notes) $('fn').value = p.notes;
   $('heard').textContent = 'Heard: "' + txt + '". Check and edit, then Save.'; }
 
 // ---------- Boot ----------
