@@ -167,18 +167,12 @@ function setsHTML(ex) {
 
 // ---------- Intensity techniques read from the program text ----------
 const TECH = {
-  drop: { tag: 'DROP', name: 'Drop set', re: /\bdrop(?:\s*-?\s*sets?)?\b/i,
-    info: 'Go to failure, then cut the weight about 20-30% and go to failure again right away, no rest. Repeat for each drop.',
+  drop: { tag: 'DROP', name: 'Drop set', re: /\bdrop(?:\s*-?\s*sets?)?\b|\brun(?:ning)? the rack\b/i,
+    info: 'Go to failure, then cut the weight about 20-30% (or go down the rack one step) and go to failure again right away, no rest. Repeat for each drop.',
     log: 'Log the first (heavy) set\'s weight and reps, then set the Drop sets counter to how many drops you did (1, 2 or 3).' },
   myo: { tag: 'MYO', name: 'Myo-reps', re: /\bmyo[- ]?reps?\b/i,
     info: 'Activation set to failure (usually 12-20 reps), then rest about 5 deep breaths and do mini-sets of 3-5 reps, same weight, until you can\'t get 3.',
-    log: 'Pick Myo-reps as the failure type. Log the activation set\'s weight and reps, and put the mini-sets in the note, like "myo 4+4+3".' },
-  rack: { tag: 'RACK', name: 'Run the rack', re: /\brun(?:ning)? the rack\b/i,
-    info: 'After the last set, keep going down the dumbbell rack (or machine stack) one step at a time, doing reps to failure at each weight with little or no rest.',
-    log: 'Log the first set, set the Drop sets counter to how many weight steps you did, and put details in the note if you want.' },
-  partial: { tag: 'PART', name: 'Partials', re: /\bpartials?\b|\blengthened partials?\b/i,
-    info: 'At failure, keep going with partial reps in the stretched part of the range until you can\'t move it.',
-    log: 'Log the full reps; add the partials in the note, like "+5 partials".' }
+    log: 'Pick Myo-reps as the failure type. Log the activation set\'s weight and reps, and put the mini-sets in the note, like "myo 4+4+3".' }
 };
 function techFor(ex) {
   const t = String(ex.details || ''), keys = Object.keys(TECH).filter(k => TECH[k].re.test(t));
