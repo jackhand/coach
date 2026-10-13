@@ -61,6 +61,11 @@ main{padding:12px 12px 210px}
 #menu.open,#hist.open{display:flex}
 #menu .in,#hist .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
 .hd{background:var(--card2);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:15px}
+.cbody{max-height:3000px;overflow:hidden;transition:max-height .28s ease,opacity .2s ease}
+main.collapsed .cbody{max-height:0;opacity:0}
+main.collapsed .card{padding-bottom:4px;margin:6px 0;transition:margin .28s ease}
+main.collapsed .card h2{margin-bottom:0}
+main.collapsed #meso{display:none}
 #fsug{color:#ffd666;font-size:14px;margin-top:4px}
 
 .card.active{border-color:var(--acc)}

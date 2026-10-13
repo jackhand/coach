@@ -222,6 +222,13 @@ function mesoHTML() {
   return h + '</table>';
 }
 // Drag to reorder: long-press the green heading, then drag up/down.
+const DRAG_ANIM = 280;
+// Keep an element's top at a target screen position while cards collapse or expand.
+function anchor(el, offset, targetY) {
+  const until = performance.now() + DRAG_ANIM + 60;
+  const step = () => { const d = el.getBoundingClientRect().top - (targetY() - offset); if (Math.abs(d) > 0.5) window.scrollBy(0, d); if (performance.now() < until) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
 let dragCleanup = [];
 const winOn = (t, f, o) => { window.addEventListener(t, f, o); dragCleanup.push(() => window.removeEventListener(t, f, o)); };
 function enableDrag(main) {
@@ -231,7 +238,8 @@ function enableDrag(main) {
     h.addEventListener('pointerdown', e => {
       if (e.target.closest('.menu-btn')) return;
       card = h.closest('.card');
-      timer = setTimeout(() => { on = true; card.classList.add('dragging'); try { h.setPointerCapture(e.pointerId); } catch (x) {} if (navigator.vibrate) navigator.vibrate(30); }, 450);
+      const y0 = e.clientY;
+      timer = setTimeout(() => { on = true; lastY = y0; card.classList.add('dragging'); anchor(card, y0 - card.getBoundingClientRect().top, () => lastY); main.classList.add('collapsed'); try { h.setPointerCapture(e.pointerId); } catch (x) {} if (navigator.vibrate) navigator.vibrate(30); }, 450);
     });
     let lastY = 0, auto = null;
     const swap = () => {
@@ -255,8 +263,16 @@ function enableDrag(main) {
       clearTimeout(timer); timer = null; if (auto) { clearInterval(auto); auto = null; }
       if (on) {
         on = false; card.classList.remove('dragging');
-        const names = [...main.querySelectorAll('.card')].map(c => c.dataset.name);
-        putSetting('order', dayKeyOf(), JSON.stringify(names)); sig = ''; render(); toast('Order saved for today');
+        const names = [...main.querySelectorAll('.card')].map(c => c.dataset.name), moved = card.dataset.name;
+        putSetting('order', dayKeyOf(), JSON.stringify(names));
+        const top = Math.max(90, card.getBoundingClientRect().top);
+        anchor(card, 0, () => top); main.classList.remove('collapsed');
+        setTimeout(() => {
+          sig = ''; render();
+          const c = [...main.querySelectorAll('.card')].find(x => x.dataset.name === moved);
+          if (c) { const r = c.getBoundingClientRect(); if (r.top < 80 || r.top > innerHeight - 260) window.scrollBy(0, r.top - 90); }
+          toast('Order saved for today');
+        }, DRAG_ANIM + 40);
       }
     };
     h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
@@ -315,7 +331,7 @@ function render() {
     const n = ex.note, chips = [n.sets, n.failure, n.rest].filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
-    return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip">&#8942;&#8942;</span>' + (i + 1) + '. ' + esc(ex.canonical) + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2>' +
+    return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip">&#8942;&#8942;</span>' + (i + 1) + '. ' + esc(ex.canonical) + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
@@ -323,7 +339,7 @@ function render() {
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || 'tap to add (seat, pins, angle)') + '</span> <span class="ed">edit</span></div>' +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
-      '<button class="btn" id="b' + i + '" data-i="' + i + '">' + btnLabel(ex) + '</button></div>';
+      '<button class="btn" id="b' + i + '" data-i="' + i + '">' + btnLabel(ex) + '</button></div></div>';
   }).join('') + (d.footer && d.footer.length ? '<div class="note">' + d.footer.map(esc).join('<br>') + '</div>' : '') +
     '<div id="finwrap"></div>';
   main.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => setDone(+b.dataset.i));
