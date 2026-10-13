@@ -1,6 +1,6 @@
 // Coach service worker: caches the app shell only. Backend data is never cached here.
-const CACHE = 'coach-shell-v20';
-const SHELL = ['./', 'index.html', 'app.js', 'parse.js', 'exlist.js', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const CACHE = 'coach-shell-v21';
+const SHELL = ['./', 'index.html', 'app.js?v=21', 'parse.js?v=21', 'exlist.js?v=21', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
@@ -12,9 +12,9 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // backend calls go straight to network
   // Network first so updates show up; cache fallback when offline.
   e.respondWith(
-    fetch(e.request).then(r => {
+    fetch(e.request.mode === 'navigate' ? new Request(e.request.url, { cache: 'no-cache', credentials: 'same-origin' }) : new Request(e.request, { cache: 'no-cache' })).then(r => {
       if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
       return r;
-    }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(m => m || caches.match('./')))
+    }).catch(() => caches.match(e.request).then(m => m || caches.match('./')))
   );
 });

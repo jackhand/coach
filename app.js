@@ -1,5 +1,6 @@
 (function () {
 'use strict';
+try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 const LS = localStorage;
@@ -1094,4 +1095,6 @@ badge();
 if (!U || !K) showSettings(); else { load(true); flush(); }
 setInterval(() => { if (U && K && document.visibilityState === 'visible' && !flushing) load(); }, 20000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && U && K) { load(); flush(); tick(); } });
+window.coachReady = true;
+} catch (err) { if (window.coachFatal) window.coachFatal((err && err.message) || err); throw err; }
 })();
