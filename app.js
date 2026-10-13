@@ -425,7 +425,7 @@ function mesoCfg() {
 function mesoHTML() {
   const tb = testOn() ? '<div class="testbar">TEST MODE · nothing is saved to your log</div>' : '';
   const ws = wStatus()[viewId], f = ws && ws.state === 'done' ? ws.at : null;
-  const bar = ws && ws.state === 'skipped' ? '<div class="skipbar">Workout skipped</div>' : f ? '<div class="donebar">&#10003; Workout done' + (f === 'pending' ? ' (syncing)' : ' · ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '<small>Sets stay editable: tap any set.</small></div>' : '';
+  const bar = ws && ws.state === 'skipped' ? '<div class="skipbar">Workout skipped</div>' : f ? '<div class="donebar">&#10003; Workout done' + (f === 'pending' ? ' (syncing)' : ' · ' + new Date(f).toLocaleTimeString('en-US', { timeZone: NY, hour: 'numeric', minute: '2-digit' })) + '<div class="donedt">' + esc(doneText()) + '</div><small>Sets stay editable: tap any set.</small></div>' : '';
   const ro = !ws && !canLog() ? '<div class="robar">View only. Next up: ' + esc(wLabel(loggableId())) + '</div>' : '';
   return tb + bar + ro;
 }
@@ -668,14 +668,14 @@ function render() {
   const nx = loggableId();
   $('prof').value = P;
   if (!d) {
-    $('sub').textContent = wShortId(viewId) + ' · unplanned';
+    $('sub').textContent = subWeek() + ' - Unplanned (' + dayKey[0].toUpperCase() + dayKey.slice(1) + ')';
     const ws = wStatus()[viewId];
     main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div class="empty"><b>Unplanned</b><br>' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet. Ask Coach to write it.' : 'No program file found for this profile yet. Ask Coach to write one.') + '</div>' +
       (!ws && canLog() ? '<button class="btn sec" id="uskip">Skip this workout</button>' : '');
     main.onclick = e => { if (e.target.closest('#uskip')) skipWorkout(); };
     return;
   }
-  $('sub').textContent = wShortId(viewId) + ' · ' + d.title;
+  $('sub').textContent = subWeek() + ' - ' + titleCase(d.title);
   main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + cardsFor().map((ex, i) => {
     const n = ex.note, chips = [n.sets, n.failure, n.rest].filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra);
@@ -712,7 +712,7 @@ function finishedToday() { const x = wStatus()[viewId]; return x ? x.at : null; 
 function renderFinish() {
   const w = $('finwrap'); if (!w || !S) return;
   const ws = wStatus()[viewId], f = ws && ws.state === 'done' ? ws.at : null;
-  const h = ws && ws.state === 'skipped' ? '' : !f && !canLog() ? '' : f ? '<div class="done">Workout finished' + (f === 'pending' ? ' (syncing)' : ' at ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '. Coach will send your recap.</div>'
+  const h = ws && ws.state === 'skipped' ? '' : !f && !canLog() ? '' : f ? '<div class="done">Workout finished' + (f === 'pending' ? ' (syncing)' : ' at ' + new Date(f).toLocaleTimeString('en-US', { timeZone: NY, hour: 'numeric', minute: '2-digit' })) + '. Coach will send your recap.</div>'
     : '<button class="btn fin" id="finish">Finish workout</button>';
   const full = '<div id="wdur" class="wdur"></div>' + h;
   if (w.innerHTML.replace(/<div id="wdur"[^>]*>[^<]*<\/div>/, '<div id="wdur" class="wdur"></div>') !== full) { w.innerHTML = full; const b = $('finish'); if (b) b.onclick = finishWorkout; }
@@ -732,12 +732,19 @@ function wstartHTML() {
 }
 function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); }
 function updWstart() { const z = $('wstart'); if (!z) return; const h = wstartHTML(); if (z.innerHTML.replace(/<b id="wstt">[^<]*<\/b>/, '<b id="wstt"></b>') !== h) z.innerHTML = h; tickDur(); }
+const NY = 'America/New_York';
+function doneText() { // 'Done Tue, Oct 13 · 49 min' from the finish time in New York
+  const ws = wStatus()[viewId]; if (!ws || ws.state !== 'done') return '';
+  const st = workoutStart(), min = ws.dur != null ? ws.dur : st && ws.ts ? Math.max(0, Math.round((ws.ts - st) / 60000)) : null;
+  const day = ws.ts ? new Date(ws.ts).toLocaleDateString('en-US', { timeZone: NY, weekday: 'short', month: 'short', day: 'numeric' }) : '';
+  return ['Done' + (day ? ' ' + day : ''), min == null ? '' : fmtDur(min)].filter(Boolean).join(' · ');
+}
 function durText() { // workout timer: first logged set -> Finish
   const ws = wStatus()[viewId], st = workoutStart();
   if (ws && ws.state === 'skipped') return '';
   if (ws && ws.state === 'done') {
     const min = ws.dur != null ? ws.dur : st && ws.ts ? Math.max(0, Math.round((ws.ts - st) / 60000)) : null;
-    return min == null ? '' : 'Total workout time: ' + fmtDur(min);
+    return doneText();
   }
   return st && canLog() ? 'Workout time: ' + fmtHMS((Date.now() - st) / 1000) : '';
 }
@@ -795,6 +802,13 @@ async function load(initial) {
 }
 let scrollT; window.addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(() => jset('coach_scroll', { p: P, day: viewId, y: window.scrollY }), 150); }, { passive: true });
 // Meso calendar sheet (header calendar icon), back button closes it
+const subWeek = () => { const w = viewWeek(); return isDeload(w) ? 'Deload Week' : 'Week ' + wib(w); };
+const SMALLW = new Set(['and', 'or', 'of', 'the', 'a', 'an', 'to', 'for', 'with', 'in', 'on', 'at', 'by']);
+function titleCase(t) { // 'legs and abs (about 60 min)' -> 'Legs and Abs (about 60 mins)'
+  const m = /^([^(]*)(\(.*\))?\s*$/.exec(String(t)), head = (m[1] || '').trim(), par = (m[2] || '').replace(/\bmin\b/g, 'mins');
+  const h = head.split(/(\s+)/).map((w, i) => /^\s+$/.test(w) || (i && SMALLW.has(w.toLowerCase())) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
+  return h + (par ? ' ' + par : '');
+}
 const wShortId = id => { const p = wParse(id); return p ? wShort(p.w) + ' ' + p.day[0].toUpperCase() + p.day.slice(1, 3) : ''; };
 function openCal() { if (!S) return;
   const nx = loggableId(), ws = wStatus()[viewId];

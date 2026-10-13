@@ -145,6 +145,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
 .meso td.lock{opacity:.35}.meso td.unpl{border:1px dashed var(--mut)}#calw .meso{font-size:15px}#calw .meso td{width:46px;height:34px}
 #cal{color:var(--txt);display:inline-flex;align-items:center;justify-content:center}
 .calnow{text-align:center;font-weight:700;margin-bottom:6px}.calnow small{display:block;color:var(--mut);font-weight:600}
+.donedt{font-size:15px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -161,7 +162,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
-  <div class="sub" style="text-align:center;margin-top:12px">App version 21</div>
+  <div class="sub" style="text-align:center;margin-top:12px">App version 22</div>
 </div>
 <div id="app" style="display:none">
 <header>
@@ -270,8 +271,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=21"></script>
-<script src="exlist.js?v=21"></script>
-<script src="app.js?v=21"></script>
+<script src="parse.js?v=22"></script>
+<script src="exlist.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
