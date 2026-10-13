@@ -19,14 +19,14 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--txt);font:17px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 body{padding:env(safe-area-inset-top) 0 0}
-header{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 14px 8px;border-bottom:1px solid var(--line)}
+header{position:sticky;top:var(--th,0px);z-index:5;background:var(--bg);padding:10px 14px 8px;border-bottom:1px solid var(--line)}
 .row{display:flex;gap:8px;align-items:center}
 h1{font-size:22px;margin:0;flex:1}
 select,input,textarea,button{font:inherit;color:var(--txt)}
 select,input,textarea{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:48px;width:100%}
 header select{width:auto;min-height:44px;padding:6px 10px}
 .sub{color:var(--mut);font-size:15px;margin-top:6px}
-main{padding:12px 12px 210px}
+main{padding:12px 12px 120px}
 .note{background:#162233;border-left:4px solid var(--blue);border-radius:10px;padding:10px 12px;margin:18px 0 6px;font-size:15px}
 .note b{color:var(--blue)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
@@ -101,17 +101,18 @@ main.collapsed #meso{display:none}
 .btn.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
 .btn.red{background:#3a1d20;color:#ffb3b5;border:1px solid #5a2a2e}
 .empty{color:var(--mut);text-align:center;padding:40px 10px}
-#timer{position:fixed;left:0;right:0;bottom:0;z-index:8;background:#0b0e12;border-top:1px solid var(--line);padding:8px 14px calc(10px + env(safe-area-inset-bottom));display:none}
-#timer .t{font-size:64px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;letter-spacing:1px}
+#timer{position:fixed;left:0;right:0;top:0;z-index:30;background:#0b0e12;border-bottom:1px solid var(--line);padding:calc(6px + env(safe-area-inset-top)) 14px 6px;display:none}
+body.timer-on{padding-top:var(--th,0px)}
+#timer .t{font-size:44px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;letter-spacing:1px}
 #timer.under .t{color:var(--acc)} #timer.over .t{color:var(--red)}
 #timer.over{background:#1d0c0d}
 #timer .lbl{color:var(--mut);font-size:15px}
 #timer .tgt{font-size:18px;font-weight:700}
-#timer .tb{display:flex;gap:8px;margin-top:6px}
-#timer .tb button{flex:1;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card2);font-size:15px}
+#timer .tb{display:flex;gap:8px;margin-top:4px}
+#timer .tb button{flex:1;min-height:38px;border-radius:10px;border:1px solid var(--line);background:var(--card2);font-size:15px}
 #sheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
 #sheet.open{display:flex}
-#sheet .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:92vh;overflow:auto}
+#sheet .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:calc(100dvh - var(--th,0px) - 12px);overflow:auto;overscroll-behavior:contain}
 #sheet h3{margin:0 0 10px;font-size:20px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
@@ -142,7 +143,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
-  <div class="sub" style="text-align:center;margin-top:12px">App version 12</div>
+  <div class="sub" style="text-align:center;margin-top:12px">App version 13</div>
 </div>
 <div id="app" style="display:none">
 <header>

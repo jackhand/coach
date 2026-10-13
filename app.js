@@ -622,12 +622,17 @@ function beep(final) {
 function muteLbl() { $('tmute').textContent = LS.getItem('coach_mute') === '1' ? 'Sound is off' : 'Sound is on'; }
 $('tmute').onclick = () => { LS.setItem('coach_mute', LS.getItem('coach_mute') === '1' ? '0' : '1'); muteLbl(); audio(); };
 muteLbl();
+let thPx = -1;
+function timerBar(on) { // reserve space so the fixed top timer never covers the header or the log popup
+  const h = on ? $('timer').offsetHeight : 0;
+  if (h !== thPx) { thPx = h; document.documentElement.style.setProperty('--th', h + 'px'); document.body.classList.toggle('timer-on', !!h); }
+}
 function tick() {
   const t = getT(), el = $('timer');
-  if (!t || t.hidden || $('app').style.display === 'none') { el.style.display = 'none'; return; }
+  if (!t || t.hidden || $('app').style.display === 'none') { el.style.display = 'none'; timerBar(false); return; }
   const sec = (Date.now() - t.start) / 1000;
-  if (sec * 1000 > TIMER_MAX) { LS.removeItem(TKEY()); el.style.display = 'none'; return; }
-  el.style.display = 'block'; $('tt').textContent = fmt(sec); $('ttg').textContent = fmt(t.target);
+  if (sec * 1000 > TIMER_MAX) { LS.removeItem(TKEY()); el.style.display = 'none'; timerBar(false); return; }
+  el.style.display = 'block'; timerBar(true); $('tt').textContent = fmt(sec); $('ttg').textContent = fmt(t.target);
   $('tex').textContent = (t.firstSide ? 'since first side of ' : 'after ') + t.exercise + (t.next ? ' · ' + t.next : '');
   el.className = sec <= t.target ? 'under' : 'over';
   const fs = $('ftimer'); if (fs) { fs.textContent = 'Rest ' + fmt(sec) + ' / ' + fmt(t.target); fs.className = sec <= t.target ? 'under' : 'over'; }
@@ -710,7 +715,7 @@ function openForm(i, ts, row) {
   $('frl').value = row ? (row.left_reps || '') : ''; $('frr').value = row ? (row.right_reps || '') : '';
   showSides(!!ex.single); setDrops(row ? (+row.drops || 0) : 0);
   $('fbw').textContent = ''; bwLine();
-  $('fdel').style.display = row ? 'block' : 'none'; $('ftimer').style.display = row ? 'none' : 'block';
+  $('fdel').style.display = row ? 'block' : 'none'; $('ftimer').style.display = 'none';
   $('fsave').textContent = row ? 'Save changes' : 'Save set';
   if (SR) $('heard').textContent = '';
   const f = (ex.note.failure || '').toLowerCase();
@@ -723,14 +728,19 @@ function openForm(i, ts, row) {
   }
   formKey = !row && rowPrefill ? rowPrefill.key : null; rowPrefill = null;
   setPain(row ? (dayVal(ex, 'pain') || 'none') : 'none');
-  $('sheet').querySelector('.in').scrollTop = 0;
-  $('sheet').classList.add('open'); pushLayer('sheet', () => closeForm(true)); tick();
+  $('sheet').classList.add('open'); sheetTop(); pushLayer('sheet', () => closeForm(true)); tick();
 }
 let formKey = null, formPain = 'none';
 function setPain(p) { formPain = p; document.querySelectorAll('#fp button').forEach(b => b.classList.toggle('on', b.dataset.p === p)); }
 document.querySelectorAll('#fp button').forEach(b => b.onclick = () => setPain(b.dataset.p));
 function openEdit(sid) { const r = viewRows().find(x => x.set_id === sid); if (r) openForm(-1, tsOf(r), r); }
 $('fsame').onclick = () => { $('frr').value = $('frl').value; };
+function sheetTop() { // after open, layout, and keyboard: put the popup at its top
+  const inn = $('sheet').querySelector('.in');
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  const go = () => { inn.scrollTop = 0; $('sheet').scrollTop = 0; inn.querySelectorAll('*').forEach(e => { if (e.scrollTop) e.scrollTop = 0; }); };
+  go(); requestAnimationFrame(() => { go(); requestAnimationFrame(go); }); setTimeout(go, 80); setTimeout(go, 250);
+}
 function closeForm(fromPop) { $('sheet').classList.remove('open'); formEx = null; editId = null; stopRec(); if (fromPop !== true) popLayer('sheet'); if (S) applyState(S, false); }
 $('fcancel').onclick = closeForm;
 $('fdel').onclick = () => { const id = editId; if (!confirm('Delete this set?')) return; closeForm(); deleteSet(id, false); };
