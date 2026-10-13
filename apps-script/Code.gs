@@ -10,12 +10,12 @@ const HEALTH_FOLDER_ID = '11ZqEDGtCu4jD-zLe8nIA5ZBN-NwJIPU0'; // Drive > Health
 const COACH_FOLDER_ID = '1D-r9zyMclFmyt9OgthgF-1zKnyUSVjSG';  // Drive > Health > Coach
 const SHEET_NAME = 'Coach Log';
 const PROFILES = ['jack', 'jacky'];
-const VERSION = 2;
+const VERSION = 3;
 const COLS = ['date', 'exercise', 'load', 'reps', 'failure_type', 'rest_time', 'notes', 'set_id', 'logged_at',
-  'drops', 'added_load', 'bodyweight', 'total_load', 'left_reps', 'right_reps', 'edited_at'];
+  'drops', 'added_load', 'bodyweight', 'total_load', 'left_reps', 'right_reps', 'edited_at', 'workout'];
 const SESSION_COLS = ['date', 'finished_at', 'day', 'sets', 'exercises', 'notes', 'session_id'];
 const SETTING_COLS = ['scope', 'key', 'value', 'updated_at'];
-const EDITABLE = ['exercise', 'load', 'reps', 'failure_type', 'notes', 'drops', 'added_load', 'bodyweight', 'total_load', 'left_reps', 'right_reps'];
+const EDITABLE = ['exercise', 'load', 'reps', 'failure_type', 'notes', 'drops', 'added_load', 'bodyweight', 'total_load', 'left_reps', 'right_reps', 'workout'];
 const FILE_RE = /^(jack|jacky)-(program|exercise-library)\.md$/;
 const MAX_ROWS_RETURNED = 400;
 
@@ -277,7 +277,7 @@ function logSet_(profile, s) {
     failure_type: clean_(s.failure_type, 30), rest_time: rest, notes: clean_(s.notes, 500),
     set_id: setId, logged_at: when.toISOString(),
     drops: clean_(s.drops, 5), added_load: clean_(s.added_load, 30), bodyweight: clean_(s.bodyweight, 30),
-    total_load: clean_(s.total_load, 30), left_reps: clean_(s.left_reps, 30), right_reps: clean_(s.right_reps, 30), edited_at: ''
+    total_load: clean_(s.total_load, 30), left_reps: clean_(s.left_reps, 30), right_reps: clean_(s.right_reps, 30), edited_at: '', workout: clean_(s.workout, 20)
   };
   const r = sh.getLastRow() + 1;
   sh.getRange(r, 1, 1, COLS.length).setNumberFormat('@').setValues([COLS.map(function (c) { return row[c]; })]);

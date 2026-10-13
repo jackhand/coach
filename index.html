@@ -68,6 +68,11 @@ body.dragmode{overscroll-behavior:none;user-select:none;-webkit-user-select:none
 .testbar{background:#ff8c1a;color:#1f1200;font-weight:800;border-radius:12px;padding:10px 12px;margin:4px 0 8px;text-align:center;letter-spacing:.5px}
 .tgl{display:flex;gap:10px;align-items:center;color:var(--txt);font-size:16px;margin:16px 0}.tgl input{width:26px;min-height:26px;height:26px}
 .val.sug{color:var(--mut);opacity:.7;font-weight:600}
+.hbtn{background:none;border:0;min-width:40px;min-height:44px;padding:0;font-size:24px;color:var(--mut);flex:none}
+header h1{min-width:0;overflow:hidden;white-space:nowrap}header select{min-width:0;flex:none;max-width:34%}#gear{flex:none}
+.skipbar{background:#3a3f4a;color:#cfd6df;font-weight:800;border-radius:12px;padding:10px 12px;margin:4px 0 8px;text-align:center}
+.robar{background:#20324a;color:#cfe3ff;font-weight:700;border-radius:12px;padding:10px 12px;margin:4px 0 8px;text-align:center}
+.meso td{cursor:pointer}.meso td.skip{background:#4a4f5a;color:#cfd6df}.meso td.view{box-shadow:inset 0 0 0 2px #fff}
 .donebar{background:var(--acc);color:#06210f;font-weight:800;border-radius:12px;padding:10px 12px;margin:4px 0 8px;text-align:center}.donebar small{display:block;font-weight:600;font-size:13px}
 .meso{border-collapse:separate;border-spacing:4px;margin:4px auto 0;font-size:13px}
 .meso th{color:var(--mut);font-weight:600}.meso td{width:38px;height:26px;background:var(--card2);border-radius:6px;text-align:center}
@@ -137,7 +142,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
-  <div class="sub" style="text-align:center;margin-top:12px">App version 10</div>
+  <div class="sub" style="text-align:center;margin-top:12px">App version 11</div>
 </div>
 <div id="app" style="display:none">
 <header>
@@ -145,6 +150,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
     <h1>Coach<span class="badge" id="pending"></span><span class="badge" id="offline">offline</span></h1>
     <select id="prof" aria-label="Profile"><option value="jack">Jack</option><option value="jacky">Jacky</option></select>
     <select id="day" aria-label="Day"></select>
+    <button id="dmenu" class="hbtn" aria-label="Workout menu: skip workout" title="Skip this workout">&#8943;</button>
     <button id="gear" aria-label="Settings">&#9881;</button>
   </div>
   <div class="sub" id="sub"></div>

@@ -13,6 +13,27 @@ const jset = (k, v) => LS.setItem(k, JSON.stringify(v));
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 function toast(m, ms) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms || 2400); }
 
+// ---------- Back button: every open layer (settings, sheets, menus) owns one history entry ----------
+const layers = []; let ignorePop = 0;
+function pushLayer(name, close) {
+  if (layers.some(l => l.name === name)) return;
+  layers.push({ name, close }); history.pushState({ coach: name }, '');
+}
+function popLayer(name) { // closed from the UI: drop the matching history entry
+  const i = layers.findIndex(l => l.name === name); if (i < 0) return;
+  layers.splice(i, 1); ignorePop++; history.back();
+}
+function swapLayer(from, name, close) { // menu -> history: reuse the entry so states don't pile up
+  const i = layers.findIndex(l => l.name === from);
+  if (i < 0) return pushLayer(name, close);
+  layers[i] = { name, close }; history.replaceState({ coach: name }, '');
+}
+const layerOpen = name => layers.some(l => l.name === name);
+window.addEventListener('popstate', () => {
+  if (ignorePop) { ignorePop--; return; }
+  const l = layers.pop(); if (l) l.close();
+});
+
 // ---------- Config (hash setup link: #u=...&k=...) ----------
 if (location.hash.length > 1) {
   const h = new URLSearchParams(location.hash.slice(1));
@@ -24,7 +45,7 @@ if (location.hash.length > 1) {
 window.addEventListener('hashchange', () => { if (/[#&](u|k)=/.test(location.hash)) location.reload(); });
 let U = LS.getItem('coach_u') || '', K = LS.getItem('coach_k') || '';
 let P = LS.getItem('coach_p') || 'jack';
-let S = null, days = {}, dayKey = null, sig = '', formEx = null, firstRender = true;
+let S = null, days = {}, dayKey = null, viewId = null, sig = '', formEx = null, firstRender = true;
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 
@@ -105,7 +126,7 @@ function keysOf(ex) { return new Set(ex.match_keys.concat([P_.norm(ex.canonical)
 function exFor(name) { const n = P_.norm(name); for (const ex of (days[dayKey] ? days[dayKey].exercises : [])) if (keysOf(ex).has(n)) return ex; for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
 function rowsFor(ex, today) {
   const keys = keysOf(ex);
-  return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? r.date === viewDate() : r.date < viewDate()));
+  return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? widOf(r) === viewId : wIndex(widOf(r)) < wIndex(viewId)));
 }
 const loadOf = r => r.total_load || r.load;
 function setTxt(r) {
@@ -113,9 +134,8 @@ function setTxt(r) {
   return (r.load || '-') + ' x ' + r.reps;
 }
 function lastTime(ex) {
-  const rs = rowsFor(ex, false); if (!rs.length) return '';
-  const d = rs.reduce((m, r) => r.date > m ? r.date : m, '');
-  return 'Last time (' + d + '): ' + rs.filter(r => r.date === d).map(setTxt).join(', ');
+  const ls = lastSession(ex); if (!ls) return '';
+  return 'Last time (' + wLabel(ls.date) + ', ' + ls.rows[0].date + '): ' + ls.rows.map(setTxt).join(', ');
 }
 function setsHTML(ex) {
   const rs = rowsFor(ex, true), n = Math.max(plannedCount(ex), rs.length);
@@ -159,12 +179,58 @@ function bodyweight() { const v = parseFloat(getSetting('profile', 'bodyweight')
 function setupFor(ex) { const v = getSetting(ex.canonical, 'equipment'); return v != null ? v : (ex.setup || ''); }
 
 // ---------- Session order, per-day exercise state, suggestions, trends, meso ----------
-// Date of the day being viewed, in the current Mon-Sun week (so Tuesday edits made on Monday land on Tuesday's date).
-function viewDate() {
-  const t = new Date(S.today + 'T12:00:00'), off = DAYS.indexOf(dayKey) - ((t.getDay() + 6) % 7);
-  t.setDate(t.getDate() + off); return t.toISOString().slice(0, 10);
+// ---------- Workouts (RP style): W<week>-<day>, done in order regardless of calendar date ----------
+const trainDays = () => DAYS.filter(d => days[d]);
+const wParse = id => { const m = /^W(\d+)-([a-z]+)$/.exec(id || ''); return m ? { w: +m[1], day: m[2] } : null; };
+const wIndex = id => { const p = wParse(id); return p ? (p.w - 1) * 10 + DAYS.indexOf(p.day) : -1; };
+const mondayOf = iso => { const t = new Date(iso + 'T12:00:00'); t.setDate(t.getDate() - ((t.getDay() + 6) % 7)); return t.toISOString().slice(0, 10); };
+const weekdayOf = iso => DAYS[(new Date(iso + 'T12:00:00').getDay() + 6) % 7];
+function weekOf(iso) { const st = new Date(mesoCfg().start + 'T12:00:00'), d = new Date(iso + 'T12:00:00'); return Math.max(1, Math.floor((d - st) / 604800000) + 1); }
+// Workout of a logged set: stored id, else inferred (older rows): week from date, day from the program day containing the exercise.
+function widOf(r) {
+  if (r.workout && wParse(r.workout)) return r.workout;
+  if (!r.date) return '';
+  const n = P_.norm(r.exercise), wd = weekdayOf(r.date), td = trainDays();
+  const has = d => days[d] && days[d].exercises.some(ex => keysOf(ex).has(n));
+  const day = has(wd) ? wd : (td.find(has) || wd);
+  return 'W' + weekOf(r.date) + '-' + day;
 }
-const dayKeyOf = () => viewDate() + '|' + dayKey;
+function wStatus() {
+  const st = {};
+  const add = (sx, pending) => {
+    let id = sx.day; if (!wParse(id) && sx.date && DAYS.includes(sx.day)) id = 'W' + weekOf(sx.date) + '-' + sx.day;
+    if (!wParse(id)) return;
+    st[id] = { state: /skip/i.test(sx.notes || '') ? 'skipped' : 'done', at: pending ? 'pending' : sx.finished_at };
+  };
+  (S.sessions || []).forEach(x => add(x, false));
+  const q = testOn() ? getRQ().concat(getQ()) : getQ();
+  q.filter(x => x.profile === P && x.action === 'finish').forEach(x => add(x.session, true));
+  return st;
+}
+function workouts() {
+  const m = mesoCfg(), td = trainDays(), st = wStatus(); let weeks = Math.max(1, +m.weeks || 1);
+  const list = n => { const a = []; for (let w = 1; w <= n; w++) for (const d of td) a.push({ id: 'W' + w + '-' + d, w, day: d, st: st['W' + w + '-' + d] }); return a; };
+  let L = list(weeks);
+  while (L.length && L.every(x => x.st) && weeks < 52) L = list(++weeks); // always keep one open week ahead
+  return L;
+}
+function loggableId() { const x = workouts().find(w => !w.st); return x ? x.id : null; }
+const canLog = () => !!S && (testOn() || viewId === loggableId());
+const isToday = canLog;
+function setView(id) { viewId = id; const p = wParse(id); dayKey = p ? p.day : dayKey; }
+const wLabel = id => { const p = wParse(id); return p ? 'Week ' + p.w + ' ' + p.day[0].toUpperCase() + p.day.slice(1, 3) : id; };
+// One-time move of old date-based keys (v7-v10) to workout ids.
+function migrateKeys(obj) {
+  let ch = false;
+  Object.keys(obj).forEach(scope => Object.keys(obj[scope] || {}).forEach(k => {
+    let m = /^(.*):(\d{4}-\d{2}-\d{2})$/.exec(k), nk = null;
+    if (m) nk = m[1] + ':W' + weekOf(m[2]) + '-' + weekdayOf(m[2]);
+    else if ((m = /^(\d{4}-\d{2}-\d{2})\|([a-z]+)$/.exec(k))) nk = 'W' + weekOf(m[1]) + '-' + m[2];
+    if (nk) { if (obj[scope][nk] == null) obj[scope][nk] = obj[scope][k]; delete obj[scope][k]; ch = true; }
+  }));
+  return ch;
+}
+const dayKeyOf = () => viewId;
 function baseCards() { const d = days[dayKey]; return d ? d.exercises : []; }
 function cardsFor() {
   const base = baseCards(); let ord = null;
@@ -173,16 +239,16 @@ function cardsFor() {
   const pos = n => { const i = ord.indexOf(n); return i < 0 ? 999 + base.findIndex(x => x.canonical === n) : i; };
   return base.slice().sort((a, b) => pos(a.canonical) - pos(b.canonical));
 }
-const dayVal = (ex, k) => getSetting(ex.canonical, k + ':' + viewDate());
-function setDayVal(ex, k, v) { putSetting(ex.canonical, k + ':' + viewDate(), v); sig = ''; applyState(S, false); }
+const dayVal = (ex, k) => getSetting(ex.canonical, k + ':' + viewId);
+function setDayVal(ex, k, v) { putSetting(ex.canonical, k + ':' + viewId, v); sig = ''; applyState(S, false); }
 function plannedCount(ex) { return Math.max(0, (ex.planned_sets || 3) + (+dayVal(ex, 'extra') || 0) - (+dayVal(ex, 'skip') || 0)); }
 function repRange(ex) { const m = (ex.note.sets || '').match(/x\s*(\d+)(?:\s*-\s*(\d+))?/i); return m ? [+m[1], +(m[2] || m[1])] : [8, 12]; }
 const LOWER = /quad|hamstring|glute|leg|calf|calves|adductor|abductor/i;
 const FAIL = ['technical', 'true', 'drop set', 'myo-reps'];
 function lastSession(ex) {
   const rs = rowsFor(ex, false); if (!rs.length) return null;
-  const d = rs.reduce((m, r) => r.date > m ? r.date : m, '');
-  return { date: d, rows: rs.filter(r => r.date === d) };
+  const d = rs.reduce((m, r) => wIndex(widOf(r)) > wIndex(m) ? widOf(r) : m, widOf(rs[0]));
+  return { date: d, rows: rs.filter(r => widOf(r) === d) };
 }
 const r5 = (w, step) => Math.max(step, Math.round(w / step) * step);
 const EQUIP = [[/barbell|\bbb\b|smith/i, 1], [/dumbbell|\bdb\b/i, 0.38], [/machine|pec deck|hack|leg press/i, 0.9], [/cable|rope/i, 0.45]];
@@ -223,27 +289,27 @@ function trend(ex, r, i) {
 function mesoCfg() {
   let m = null; try { m = JSON.parse(getSetting('profile', 'meso') || 'null'); } catch (e) {}
   if (!m || !m.start) {
-    const t = new Date(S.today + 'T12:00:00'); t.setDate(t.getDate() - ((t.getDay() + 6) % 7));
-    m = { start: t.toISOString().slice(0, 10), weeks: 1, deload: 0 };
+    const first = (S.rows || []).map(r => r.date).filter(Boolean).sort()[0] || S.today;
+    m = { start: mondayOf(first), weeks: 1, deload: 0 };
   }
   return m;
 }
 function mesoHTML() {
   const tb = testOn() ? '<div class="testbar">TEST MODE · nothing is saved to your log</div>' : '';
-  const f = isToday() && finishedToday();
-  const bar = f ? '<div class="donebar">&#10003; Workout done' + (f === 'pending' ? ' (syncing)' : ' · ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '<small>Sets stay editable: tap any set.</small></div>' : '';
-  return tb + bar + mesoGrid();
+  const ws = wStatus()[viewId], f = ws && ws.state === 'done' ? ws.at : null;
+  const bar = ws && ws.state === 'skipped' ? '<div class="skipbar">Workout skipped</div>' : f ? '<div class="donebar">&#10003; Workout done' + (f === 'pending' ? ' (syncing)' : ' · ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '<small>Sets stay editable: tap any set.</small></div>' : '';
+  const ro = !ws && !canLog() ? '<div class="robar">View only. Next up: ' + esc(wLabel(loggableId())) + '</div>' : '';
+  return tb + bar + ro + mesoGrid();
 }
 function mesoGrid() {
-  const m = mesoCfg(), tdays = DAYS.filter(d => days[d]); if (!tdays.length) return '';
-  const start = new Date(m.start + 'T12:00:00'), today = new Date(S.today + 'T12:00:00');
-  const done = new Set((S.sessions || []).map(s => s.date).concat(viewRows().map(r => r.date)));
-  let h = '<table class="meso"><tr><th></th>' + tdays.map(d => '<th>' + d[0].toUpperCase() + d.slice(1, 3) + '</th>').join('') + '</tr>';
-  for (let w = 0; w < (m.weeks || 1); w++) {
-    h += '<tr><th>' + (m.deload && w + 1 === +m.deload ? 'DL' : 'W' + (w + 1)) + '</th>' + tdays.map(d => {
-      const dt = new Date(start); dt.setDate(start.getDate() + w * 7 + DAYS.indexOf(d)); const iso = dt.toISOString().slice(0, 10);
-      const cls = [done.has(iso) ? 'ok' : '', iso === S.today ? 'cur' : '', dt < today && !done.has(iso) ? 'miss' : ''].filter(Boolean).join(' ');
-      return '<td class="' + cls + '">' + (done.has(iso) ? '&#10003;' : '') + '</td>';
+  const m = mesoCfg(), td = trainDays(); if (!td.length) return '';
+  const L = workouts(), nx = loggableId(), weeks = L.length / td.length;
+  let h = '<table class="meso"><tr><th></th>' + td.map(d => '<th>' + d[0].toUpperCase() + d.slice(1, 3) + '</th>').join('') + '</tr>';
+  for (let w = 1; w <= weeks; w++) {
+    h += '<tr><th>' + (m.deload && w === +m.deload ? 'DL' : 'W' + w) + '</th>' + td.map(d => {
+      const id = 'W' + w + '-' + d, x = L.find(y => y.id === id);
+      const cls = [x.st ? (x.st.state === 'skipped' ? 'skip' : 'ok') : '', id === nx ? 'cur' : '', id === viewId ? 'view' : ''].filter(Boolean).join(' ');
+      return '<td class="' + cls + '" data-w="' + id + '">' + (x.st ? (x.st.state === 'skipped' ? '&#8211;' : '&#10003;') : '') + '</td>';
     }).join('') + '</tr>';
   }
   return h + '</table>';
@@ -341,11 +407,11 @@ function openMenu(i) {
   menuEx = cardsFor()[i]; $('mh').textContent = menuEx.canonical;
   const p = dayVal(menuEx, 'pain') || 'none';
   document.querySelectorAll('#mpain button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
-  $('menu').classList.add('open');
+  $('menu').classList.add('open'); pushLayer('menu', () => $('menu').classList.remove('open'));
 }
-function closeMenu() { $('menu').classList.remove('open'); }
+function closeMenu(keepHistory) { $('menu').classList.remove('open'); if (!keepHistory) popLayer('menu'); }
 $('menu').addEventListener('click', e => { if (e.target.id === 'menu') closeMenu(); });
-$('mclose').onclick = closeMenu;
+$('mclose').onclick = () => closeMenu();
 $('madd').onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'extra', String((+dayVal(ex, 'extra') || 0) + 1)); toast('Set added'); };
 $('mskip').onclick = () => {
   const ex = menuEx, left = plannedCount(ex) - rowsFor(ex, true).length; closeMenu();
@@ -353,9 +419,9 @@ $('mskip').onclick = () => {
   setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left)); toast('Skipped ' + left + (left === 1 ? ' set' : ' sets'));
 };
 $('mnote').onclick = () => { const ex = menuEx; closeMenu(); const v = prompt('Note for ' + ex.canonical + ' today:', dayVal(ex, 'note') || ''); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
-$('mhist').onclick = () => { const ex = menuEx; closeMenu(); openHistory(ex); };
+$('mhist').onclick = () => { const ex = menuEx; closeMenu(true); openHistory(ex, true); };
 document.querySelectorAll('#mpain button').forEach(b => b.onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'pain', b.dataset.p === 'none' ? '' : b.dataset.p); toast('Joint pain: ' + b.dataset.p); });
-function openHistory(ex) {
+function openHistory(ex, fromMenu) {
   const rs = viewRows().filter(r => keysOf(ex).has(P_.norm(r.exercise)));
   const by = {}; rs.forEach(r => (by[r.date] = by[r.date] || []).push(r));
   const ds = Object.keys(by).sort().reverse();
@@ -366,9 +432,12 @@ function openHistory(ex) {
     return '<div class="hd"><b>' + esc(d) + '</b>' + (best ? ' · best e1RM ' + best : '') + (pain ? ' · pain ' + esc(pain) : '') + '<br>' + by[d].map(r => esc(setTxt(r)) + (+r.drops ? ' +' + r.drops + 'D' : '')).join(', ') + (note ? '<br><i>' + esc(note) + '</i>' : '') + '</div>';
   }).join('') : '<div class="s2">No history yet.</div>';
   $('hist').classList.add('open');
+  const close = () => $('hist').classList.remove('open');
+  if (fromMenu) swapLayer('menu', 'hist', close); else pushLayer('hist', close);
 }
-$('hclose').onclick = () => $('hist').classList.remove('open');
-$('hist').addEventListener('click', e => { if (e.target.id === 'hist') $('hist').classList.remove('open'); });
+const closeHist = () => { $('hist').classList.remove('open'); popLayer('hist'); };
+$('hclose').onclick = closeHist;
+$('hist').addEventListener('click', e => { if (e.target.id === 'hist') closeHist(); });
 
 // ---------- Render ----------
 function btnLabel(ex) {
@@ -378,7 +447,8 @@ function btnLabel(ex) {
 }
 function render() {
   const main = $('main'), d = days[dayKey];
-  $('day').innerHTML = DAYS.map(x => '<option value="' + x + '"' + (x === dayKey ? ' selected' : '') + '>' + x[0].toUpperCase() + x.slice(1, 3) + (x === S.weekday ? ' (today)' : '') + (days[x] ? '' : ' -') + '</option>').join('');
+  const nx = loggableId();
+  $('day').innerHTML = workouts().map(x => '<option value="' + x.id + '"' + (x.id === viewId ? ' selected' : '') + '>' + 'W' + x.w + ' ' + x.day[0].toUpperCase() + x.day.slice(1, 3) + (x.st ? (x.st.state === 'skipped' ? ' skipped' : ' done') : x.id === nx ? ' (next)' : '') + '</option>').join('');
   $('prof').value = P;
   if (!d) { $('sub').textContent = ''; main.innerHTML = '<div class="empty">' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet.<br>Ask Coach to write it, or pick another day.' : 'No program file found for this profile yet.<br>Ask Coach to write one.') + '</div>'; return; }
   $('sub').textContent = d.title + (d.week ? ' · ' + d.week.split('.')[0] : '');
@@ -401,6 +471,7 @@ function render() {
   main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
   enableDrag(main);
   main.onclick = e => {
+    const wc = e.target.closest('td[data-w]'); if (wc) { setView(wc.dataset.w); sig = ''; applyState(S, true); window.scrollTo(0, 0); return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
   renderFinish(); markActive();
@@ -410,26 +481,31 @@ function update() {
   const mz = $('meso'); if (mz) { const mh = mesoHTML(); if (mz.innerHTML !== mh) mz.innerHTML = mh; }
   renderFinish(); markActive();
 }
-function finishedToday() {
-  const q = getQ().some(x => x.profile === P && x.action === 'finish' && x.session.date === S.today);
-  const s = (S.sessions || []).filter(x => x.date === S.today);
-  return s.length ? s[s.length - 1].finished_at : (q ? 'pending' : null);
-}
+function finishedToday() { const x = wStatus()[viewId]; return x ? x.at : null; }
 function renderFinish() {
   const w = $('finwrap'); if (!w || !S) return;
-  const f = finishedToday(), isToday = dayKey === S.weekday;
-  const h = !isToday ? '' : f ? '<div class="done">Workout finished' + (f === 'pending' ? ' (syncing)' : ' at ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '. Coach will send your recap.</div>'
+  const ws = wStatus()[viewId], f = ws && ws.state === 'done' ? ws.at : null;
+  const h = ws && ws.state === 'skipped' ? '' : !f && !canLog() ? '' : f ? '<div class="done">Workout finished' + (f === 'pending' ? ' (syncing)' : ' at ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '. Coach will send your recap.</div>'
     : '<button class="btn fin" id="finish">Finish workout</button>';
   if (w.innerHTML !== h) { w.innerHTML = h; const b = $('finish'); if (b) b.onclick = finishWorkout; }
 }
+function workoutRows() { return viewRows().filter(r => widOf(r) === viewId); }
 function finishWorkout() {
-  const today = viewRows().filter(r => r.date === S.today);
-  if (!confirm('Finish today\'s workout? ' + today.length + ' sets logged.')) return;
-  const ex = new Set(today.map(r => P_.norm(r.exercise)));
-  enqueue({ action: 'finish', session: { session_id: uid(), client_ts: Date.now(), date: S.today, day: dayKey, sets: String(today.length), exercises: String(ex.size) } });
+  const rs = workoutRows();
+  if (!confirm('Finish ' + wLabel(viewId) + '? ' + rs.length + ' sets logged.')) return;
+  const ex = new Set(rs.map(r => P_.norm(r.exercise)));
+  enqueue({ action: 'finish', session: { session_id: uid(), client_ts: Date.now(), date: S.today, day: viewId, sets: String(rs.length), exercises: String(ex.size) } });
   const t = getT(); if (t) { t.hidden = true; setT(t); }
-  update(); toast('Workout finished. Nice work.', 3000);
+  sig = ''; applyState(S, true); toast('Workout finished. Nice work.', 3000);
 }
+function skipWorkout() {
+  if (!canLog()) return toast('Only the next workout (' + wLabel(loggableId()) + ') can be skipped.');
+  if (workoutRows().length) return toast('This workout has logged sets. Use Finish workout instead.');
+  if (!confirm('Skip ' + wLabel(viewId) + '? The next workout becomes available.')) return;
+  enqueue({ action: 'finish', session: { session_id: uid(), client_ts: Date.now(), date: S.today, day: viewId, sets: '0', exercises: '0', notes: 'skipped' } });
+  setView(loggableId() || viewId); sig = ''; applyState(S, true); window.scrollTo(0, 0); toast('Workout skipped');
+}
+$('dmenu').onclick = skipWorkout;
 function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
   const v = prompt('Equipment setup for ' + ex.canonical + ' (seat, pins, bench angle):', cur);
@@ -438,14 +514,15 @@ function editSetup(i) {
 }
 function applyState(st, initial) {
   S = st; S.rows = S.rows || []; days = P_.enrich(P_.parseProgram(st.program), P_.parseLibrary(st.library));
-  $('settings').style.display = 'none'; $('app').style.display = 'block';
-  const saved = jget('coach_day', null);
-  if (!dayKey) dayKey = (saved && saved.date === S.today && saved.p === P) ? saved.day : S.weekday;
-  const nsig = P + '|' + dayKey + '|' + JSON.stringify(days[dayKey] || null) + '|' + JSON.stringify(S.settings || {});
+  if (!layerOpen('settings')) { $('settings').style.display = 'none'; $('app').style.display = 'block'; }
+  const ls = localSet(); if (migrateKeys(ls)) jset(SK(), ls);
+  if (S.settings) migrateKeys(S.settings);
+  if (!viewId || !wParse(viewId)) setView(loggableId() || ('W1-' + (trainDays()[0] || S.weekday)));
+  const nsig = P + '|' + viewId + '|' + JSON.stringify(wStatus()) + '|' + JSON.stringify(days[dayKey] || null) + '|' + JSON.stringify(S.settings || {});
   if (nsig !== sig) { if (!formEx || initial) { const y = window.scrollY; render(); sig = nsig; if (!firstRender) window.scrollTo(0, y); } }
   else update();
   syncTimer();
-  if (firstRender) { firstRender = false; const s = jget('coach_scroll', null); if (s && s.p === P && s.day === dayKey) requestAnimationFrame(() => window.scrollTo(0, s.y)); }
+  if (firstRender) { firstRender = false; const s = jget('coach_scroll', null); if (s && s.p === P && s.day === viewId) requestAnimationFrame(() => window.scrollTo(0, s.y)); }
 }
 async function load(initial) {
   if (!U || !K) return showSettings();
@@ -461,12 +538,14 @@ async function load(initial) {
     if (!S) { $('app').style.display = 'block'; $('main').innerHTML = '<div class="empty">Cannot reach the backend and nothing cached yet.<br>' + esc(e.message) + '</div>'; }
   }
 }
-let scrollT; window.addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(() => jset('coach_scroll', { p: P, day: dayKey, y: window.scrollY }), 150); }, { passive: true });
-$('day').onchange = e => { dayKey = e.target.value; jset('coach_day', { date: S.today, day: dayKey, p: P }); sig = ''; applyState(S, true); window.scrollTo(0, 0); };
-$('prof').onchange = e => { P = e.target.value; LS.setItem('coach_p', P); dayKey = null; sig = ''; S = null; firstRender = true; load(true); };
+let scrollT; window.addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(() => jset('coach_scroll', { p: P, day: viewId, y: window.scrollY }), 150); }, { passive: true });
+$('day').onchange = e => { setView(e.target.value); sig = ''; applyState(S, true); window.scrollTo(0, 0); };
+$('prof').onchange = e => { P = e.target.value; LS.setItem('coach_p', P); dayKey = null; viewId = null; sig = ''; S = null; firstRender = true; load(true); };
 
 // ---------- Settings ----------
+function hideSettings(fromPop) { if (S) { $('settings').style.display = 'none'; $('app').style.display = 'block'; tick(); } if (!fromPop) popLayer('settings'); }
 function showSettings(msg) {
+  if (S) pushLayer('settings', () => hideSettings(true));
   $('app').style.display = 'none'; $('settings').style.display = 'block'; $('timer').style.display = 'none';
   $('su').value = U; $('sk').value = K; $('stest').checked = testOn(); $('smsg').textContent = msg || '';
   $('sbw').value = S ? (bodyweight() || '') : '';
@@ -478,7 +557,7 @@ $('stest').onchange = e => {
     if (!confirm('Turn off test mode and discard all test sets?')) { e.target.checked = true; return; }
     LS.removeItem('coach_test'); LS.removeItem('coach_testq'); LS.removeItem('coach_settings_test_' + P); LS.removeItem(TKEY()); toast('Test mode off, test data discarded');
   }
-  sig = ''; if (S) { $('settings').style.display = 'none'; $('app').style.display = 'block'; applyState(S, true); }
+  sig = ''; if (S) { hideSettings(); applyState(S, true); }
 };
 $('ssave').onclick = async () => {
   U = $('su').value.trim(); K = $('sk').value.trim();
@@ -487,13 +566,13 @@ $('ssave').onclick = async () => {
   const bw = parseFloat($('sbw').value);
   try {
     const st = await apiGet(); if (!st.ok) { $('smsg').textContent = 'Backend said: ' + st.error; return; }
-    jset('coach_cache_' + P, st); sig = ''; S = null; firstRender = true; applyState(st, true);
+    jset('coach_cache_' + P, st); sig = ''; S = null; firstRender = true; popLayer('settings'); applyState(st, true);
     if (bw > 0 && bw !== bodyweight()) putSetting('profile', 'bodyweight', String(bw));
     toast('Connected'); flush();
   }
   catch (e) { $('smsg').textContent = 'Could not reach it: ' + e.message; }
 };
-$('scancel').onclick = () => { if (S) { $('settings').style.display = 'none'; $('app').style.display = 'block'; } };
+$('scancel').onclick = () => hideSettings();
 
 // ---------- Rest timer ----------
 // Target depends on what comes next: same muscle = that exercise's normal rest, different muscle = 75 s.
@@ -577,14 +656,13 @@ let editId = null, doneTs = 0, drops = 0, prevRest = null;
 function setDrops(n) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); }
 document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
 let rowPrefill = null;
-const isToday = () => !!S && (testOn() || viewDate() === S.today);
 function logRow(name, idx, li) {
   const list = cardsFor(), i = list.findIndex(x => x.canonical === name); if (i < 0) return;
   rowPrefill = null;
   setDone(i);
 }
 function setDone(i) {
-  if (!isToday()) return toast('You can only log sets on today\'s workout.');
+  if (!canLog()) return toast('Next up is ' + wLabel(loggableId()) + '. Finish or skip it first.');
   audio(); // unlock audio on a user tap (needed on iPhone and Chrome)
   const ex = cardsFor()[i], now = Date.now(), t = getT();
   const same = t && P_.norm(t.exercise) === P_.norm(ex.canonical);
@@ -635,20 +713,20 @@ function openForm(i, ts, row) {
   }
   formKey = !row && rowPrefill ? rowPrefill.key : null; rowPrefill = null;
   setPain(dayVal(ex, 'pain') || 'none');
-  $('sheet').classList.add('open'); tick();
+  $('sheet').classList.add('open'); pushLayer('sheet', () => closeForm(true)); tick();
 }
 let formKey = null, formPain = 'none';
 function setPain(p) { formPain = p; document.querySelectorAll('#fp button').forEach(b => b.classList.toggle('on', b.dataset.p === p)); }
 document.querySelectorAll('#fp button').forEach(b => b.onclick = () => setPain(b.dataset.p));
 function openEdit(sid) { const r = viewRows().find(x => x.set_id === sid); if (r) openForm(-1, tsOf(r), r); }
 $('fsame').onclick = () => { $('frr').value = $('frl').value; };
-function closeForm() { $('sheet').classList.remove('open'); formEx = null; editId = null; stopRec(); if (S) applyState(S, false); }
+function closeForm(fromPop) { $('sheet').classList.remove('open'); formEx = null; editId = null; stopRec(); if (fromPop !== true) popLayer('sheet'); if (S) applyState(S, false); }
 $('fcancel').onclick = closeForm;
 $('fdel').onclick = () => { const id = editId; if (!confirm('Delete this set?')) return; closeForm(); deleteSet(id, false); };
 $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeForm(); });
 $('fsave').onclick = () => {
   const ex = formEx;
-  if (ex && ex.canonical && (dayVal(ex, 'pain') || 'none') !== formPain) putSetting(ex.canonical, 'pain:' + viewDate(), formPain === 'none' ? '' : formPain);
+  if (ex && ex.canonical && (dayVal(ex, 'pain') || 'none') !== formPain) putSetting(ex.canonical, 'pain:' + viewId, formPain === 'none' ? '' : formPain);
   let reps = $('fr').value.trim(), L = '', R = '';
   if (ex.single) {
     L = $('frl').value.trim(); R = $('frr').value.trim();
@@ -670,12 +748,12 @@ $('fsave').onclick = () => {
     else enqueue({ action: 'edit', set_id: editId, fields });
     closeForm(); toast('Set updated'); return;
   }
-  const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical }, fields);
+  const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical, workout: viewId }, fields);
   const before = viewRows();
-  enqueue({ action: 'log', date: viewDate(), set });
+  enqueue({ action: 'log', date: S.today, set });
   const nt = nextTarget(ex.canonical), t = getT();
   if (t) { t.target = nt.target; t.next = nt.next; t.firstSide = false; t.hidden = false; t.exercise = ex.canonical; setT(t); }
-  $('sheet').classList.remove('open'); formEx = null; stopRec();
+  $('sheet').classList.remove('open'); formEx = null; stopRec(); popLayer('sheet');
   update(); feedback(ex, set, before, prevRest, t ? t.target : 120);
 };
 
