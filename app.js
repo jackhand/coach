@@ -222,7 +222,18 @@ function setupFor(ex) { const v = getSetting(ex.canonical, 'equipment'); return 
 
 // ---------- Session order, per-day exercise state, suggestions, trends, meso ----------
 // ---------- Workouts (RP style): W<week>-<day>, done in order regardless of calendar date ----------
-const trainDays = () => DAYS.filter(d => days[d]);
+// Training days: setting profile.train_days ("monday,tuesday,..."), else Mon-Fri plus any written weekend day.
+// Days without a written session still count (shown as unplanned, can be skipped), so the meso runs in order.
+function trainDays() {
+  let td = String(getSetting('profile', 'train_days') || '').toLowerCase().split(/[ ,]+/).filter(d => DAYS.includes(d));
+  if (!td.length) td = DAYS.slice(0, 5);
+  return DAYS.filter(d => td.includes(d) || days[d]);
+}
+const canOpen = id => { const nx = loggableId(); return testOn() || !nx || wIndex(id) <= wIndex(nx); };
+function openWorkout(id) {
+  if (!canOpen(id)) return toast('Finish or skip ' + wLabel(loggableId()) + ' first. Workouts go in order.', 4000);
+  setView(id); sig = ''; applyState(S, true); window.scrollTo(0, 0); return true;
+}
 const wParse = id => { const m = /^W(\d+)-([a-z]+)$/.exec(id || ''); return m ? { w: +m[1], day: m[2] } : null; };
 const wIndex = id => { const p = wParse(id); return p ? (p.w - 1) * 10 + DAYS.indexOf(p.day) : -1; };
 const mondayOf = iso => { const t = new Date(iso + 'T12:00:00'); t.setDate(t.getDate() - ((t.getDay() + 6) % 7)); return t.toISOString().slice(0, 10); };
@@ -415,7 +426,7 @@ function mesoHTML() {
   const ws = wStatus()[viewId], f = ws && ws.state === 'done' ? ws.at : null;
   const bar = ws && ws.state === 'skipped' ? '<div class="skipbar">Workout skipped</div>' : f ? '<div class="donebar">&#10003; Workout done' + (f === 'pending' ? ' (syncing)' : ' · ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '<small>Sets stay editable: tap any set.</small></div>' : '';
   const ro = !ws && !canLog() ? '<div class="robar">View only. Next up: ' + esc(wLabel(loggableId())) + '</div>' : '';
-  return tb + bar + ro + mesoGrid();
+  return tb + bar + ro;
 }
 function mesoGrid() {
   const td = trainDays(); if (!td.length) return '';
@@ -424,7 +435,7 @@ function mesoGrid() {
   for (let w = w0; w < w0 + BL(); w++) {
     h += '<tr><th>' + (isDeload(w) ? 'DL' : 'W' + wib(w)) + '</th>' + td.map(d => {
       const id = 'W' + w + '-' + d, x = L.find(y => y.id === id) || { id, st: null };
-      const cls = [x.st ? (x.st.state === 'skipped' ? 'skip' : 'ok') : '', id === nx ? 'cur' : '', id === viewId ? 'view' : ''].filter(Boolean).join(' ');
+      const cls = [x.st ? (x.st.state === 'skipped' ? 'skip' : 'ok') : '', id === nx ? 'cur' : '', id === viewId ? 'view' : '', canOpen(id) ? '' : 'lock', days[d] ? '' : 'unpl'].filter(Boolean).join(' ');
       return '<td class="' + cls + '" data-w="' + id + '">' + (x.st ? (x.st.state === 'skipped' ? '&#8211;' : '&#10003;') : '') + '</td>';
     }).join('') + '</tr>';
   }
@@ -654,9 +665,16 @@ function btnLabel(ex) {
 function render() {
   const main = $('main'), d = days[dayKey];
   const nx = loggableId();
-  $('day').innerHTML = workouts().map(x => '<option value="' + x.id + '"' + (x.id === viewId ? ' selected' : '') + '>' + wShort(x.w) + ' ' + x.day[0].toUpperCase() + x.day.slice(1, 3) + (x.st ? (x.st.state === 'skipped' ? ' skipped' : ' done') : x.id === nx ? ' (next)' : '') + '</option>').join('');
+  $('day').innerHTML = workouts().map(x => '<option value="' + x.id + '"' + (x.id === viewId ? ' selected' : '') + (canOpen(x.id) ? '' : ' disabled') + '>' + wShort(x.w) + ' ' + x.day[0].toUpperCase() + x.day.slice(1, 3) + (x.st ? (x.st.state === 'skipped' ? ' skipped' : ' done') : x.id === nx ? ' (next)' : '') + '</option>').join('');
   $('prof').value = P;
-  if (!d) { $('sub').textContent = ''; main.innerHTML = '<div class="empty">' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet.<br>Ask Coach to write it, or pick another day.' : 'No program file found for this profile yet.<br>Ask Coach to write one.') + '</div>'; return; }
+  if (!d) {
+    $('sub').textContent = wLabel(viewId) + ' · unplanned';
+    const ws = wStatus()[viewId];
+    main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div class="empty"><b>Unplanned</b><br>' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet. Ask Coach to write it.' : 'No program file found for this profile yet. Ask Coach to write one.') + '</div>' +
+      (!ws && canLog() ? '<button class="btn sec" id="uskip">Skip this workout</button>' : '');
+    main.onclick = e => { if (e.target.closest('#uskip')) skipWorkout(); };
+    return;
+  }
   $('sub').textContent = d.title + (d.week ? ' · ' + d.week.split('.')[0] : '');
   main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + cardsFor().map((ex, i) => {
     const n = ex.note, chips = [n.sets, n.failure, n.rest].filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
@@ -681,7 +699,6 @@ function render() {
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
     if (e.target.closest('#wstartb')) { startWorkout(false); return; }
     if (e.target.closest('#wrestart')) { startWorkout(true); return; }
-    const wc = e.target.closest('td[data-w]'); if (wc) { setView(wc.dataset.w); sig = ''; applyState(S, true); window.scrollTo(0, 0); return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
   renderFinish(); markActive();
@@ -778,7 +795,17 @@ async function load(initial) {
   }
 }
 let scrollT; window.addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(() => jset('coach_scroll', { p: P, day: viewId, y: window.scrollY }), 150); }, { passive: true });
-$('day').onchange = e => { setView(e.target.value); sig = ''; applyState(S, true); window.scrollTo(0, 0); };
+$('day').onchange = e => { if (!openWorkout(e.target.value)) e.target.value = viewId; };
+// Meso calendar sheet (header calendar icon), back button closes it
+function openCal() { if (!S) return; $('calb').innerHTML = mesoGrid() + '<div class="s2" style="text-align:center;margin-top:8px">Tap a workout to open it. Future workouts open once every earlier day is finished or skipped.</div>'; $('calw').classList.add('open'); pushLayer('cal', () => $('calw').classList.remove('open')); }
+const closeCal = () => { $('calw').classList.remove('open'); popLayer('cal'); };
+$('cal').onclick = openCal; $('calclose').onclick = closeCal;
+$('calw').addEventListener('click', e => {
+  if (e.target.id === 'calw') return closeCal();
+  const wc = e.target.closest('td[data-w]'); if (!wc) return;
+  if (!canOpen(wc.dataset.w)) return toast('Finish or skip ' + wLabel(loggableId()) + ' first. Workouts go in order.', 4000);
+  closeCal(); openWorkout(wc.dataset.w);
+});
 $('prof').onchange = e => { P = e.target.value; LS.setItem('coach_p', P); dayKey = null; viewId = null; sig = ''; S = null; firstRender = true; load(true); };
 
 // ---------- Settings ----------
