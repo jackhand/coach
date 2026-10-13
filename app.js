@@ -42,10 +42,15 @@ async function apiPost(body) {
 
 // ---------- Offline queue ----------
 // Items: {id, profile, action: 'log'|'undo'|'edit'|'finish'|'setting', ...}
-const getQ = () => jget('coach_queue', []);
-const setQ = q => { jset('coach_queue', q); badge(); };
-function badge() { const n = getQ().length, b = $('pending'); b.textContent = n + ' pending'; b.style.display = n ? 'inline-block' : 'none'; }
-function enqueue(item) { const q = getQ(); q.push(Object.assign({ id: uid(), profile: P }, item)); setQ(q); flush(); }
+// Test mode: everything goes to a local-only queue that is never sent; turning test mode off discards it.
+const testOn = () => LS.getItem('coach_test') === '1';
+const QK = () => testOn() ? 'coach_testq' : 'coach_queue';
+const getQ = () => jget(QK(), []);
+const setQ = q => { jset(QK(), q); badge(); };
+const getRQ = () => jget('coach_queue', []);
+const setRQ = q => { jset('coach_queue', q); badge(); };
+function badge() { const n = getRQ().length, b = $('pending'); b.textContent = n + ' pending'; b.style.display = n ? 'inline-block' : 'none'; }
+function enqueue(item) { const q = getQ(); q.push(Object.assign({ id: uid(), profile: P }, item)); setQ(q); if (!testOn()) flush(); }
 const NEW_ACTIONS = ['edit', 'finish', 'setting'];
 let flushing = false, warnedOld = false;
 function bodyFor(it) {
@@ -61,7 +66,7 @@ async function flush() {
   try {
     let skip = 0;
     while (true) {
-      const q = getQ(); if (q.length <= skip) break;
+      const q = getRQ(); if (q.length <= skip) break;
       const it = q[skip];
       let res;
       try { res = await apiPost(bodyFor(it)); }
@@ -73,7 +78,7 @@ async function flush() {
         skip++; continue;
       }
       if (!res.ok && !(it.action === 'edit' && res.error === 'not found')) toast('Dropped a queued item: ' + res.error);
-      setQ(getQ().filter(x => x.id !== it.id)); changed = true;
+      setRQ(getRQ().filter(x => x.id !== it.id)); changed = true;
       if (res.ok && res.row && S && it.profile === P && (it.action === 'log' || it.action === 'edit')) { S.rows = S.rows.filter(r => r.set_id !== res.row.set_id).concat([res.row]); }
     }
   } finally { flushing = false; }
@@ -86,7 +91,7 @@ window.addEventListener('online', flush);
 const tsOf = r => Date.parse(r.logged_at) || 0;
 function viewRows() {
   if (!S) return [];
-  const q = getQ().filter(x => x.profile === P);
+  const q = (testOn() ? getRQ().concat(getQ()) : getQ()).filter(x => x.profile === P);
   const undone = new Set(q.filter(x => x.action === 'undo').map(x => x.set_id));
   const have = new Set(S.rows.map(r => r.set_id));
   const pend = q.filter(x => x.action === 'log' && !have.has(x.set.set_id)).map(x => Object.assign({}, x.set, { date: x.date, rest_time: '', logged_at: new Date(x.set.client_ts).toISOString(), pending: true }));
@@ -100,7 +105,7 @@ function keysOf(ex) { return new Set(ex.match_keys.concat([P_.norm(ex.canonical)
 function exFor(name) { const n = P_.norm(name); for (const ex of (days[dayKey] ? days[dayKey].exercises : [])) if (keysOf(ex).has(n)) return ex; for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
 function rowsFor(ex, today) {
   const keys = keysOf(ex);
-  return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? r.date === S.today : r.date < S.today));
+  return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? r.date === viewDate() : r.date < viewDate()));
 }
 const loadOf = r => r.total_load || r.load;
 function setTxt(r) {
@@ -112,9 +117,6 @@ function lastTime(ex) {
   const d = rs.reduce((m, r) => r.date > m ? r.date : m, '');
   return 'Last time (' + d + '): ' + rs.filter(r => r.date === d).map(setTxt).join(', ');
 }
-// Row drafts: values typed into planned rows, kept across refreshes. key = date|exercise|set index
-const drafts = {};
-const dKey = (ex, i) => viewDate() + '|' + ex.canonical + '|' + i;
 function setsHTML(ex) {
   const rs = rowsFor(ex, true), n = Math.max(plannedCount(ex), rs.length);
   if (!n) return '<li class="s2 none">Skipped today.</li>';
@@ -130,27 +132,27 @@ function setsHTML(ex) {
     return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(r.load || '-') + (r.load && ex.bodyweight ? '<small> +</small>' : '') + '</span><span class="val">' + esc(reps) + ' ' + trend(ex, r, i) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
   }).join('');
   for (let i = rs.length; i < n; i++) {
-    const sg = suggest(ex, i), d = drafts[dKey(ex, i)] || {};
-    const w = d.load != null ? d.load : (sg && sg.load) || '', r = d.reps != null ? d.reps : (sg && sg.reps) || '';
+    const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && sg.reps) || '';
     const isNext = i === rs.length;
     h += '<li class="plan"><div class="srow"><span class="sn">' + (i + 1) + '</span>' +
-      '<input class="pin" data-pw="' + i + '" data-ex="' + name + '" inputmode="decimal" placeholder="' + (ex.bodyweight ? '+lb' : 'lb') + '" value="' + esc(w) + '">' +
-      '<input class="pin" data-pr="' + i + '" data-ex="' + name + '" inputmode="numeric" placeholder="reps" value="' + esc(r) + '">' +
+      '<span class="val sug">' + esc(w) + '</span><span class="val sug">' + esc(r) + '</span>' +
       '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +
-      '<button class="lg' + (half && isNext ? ' half' : '') + '" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + (isNext && isToday() ? '' : ' disabled') + '>' + (half && isNext ? '&#189;' : '') + '</button></div>' +
+      '<button class="lg' + (half && isNext ? ' half' : '') + '" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '>' + (half && isNext ? '&#189;' : '') + '</button></div>' +
       (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + (ex.single ? ' · reps per side' : '') + '</div>' : '') + '</li>';
   }
   return h;
 }
 
 // ---------- Per-exercise settings (equipment setup), body weight ----------
-const localSet = () => jget('coach_settings_' + P, {});
+const SK = () => 'coach_settings_' + (testOn() ? 'test_' : '') + P;
+const localSet = () => jget(SK(), {});
 function getSetting(scope, key) {
   const l = localSet(); if (l[scope] && l[scope][key] != null) return l[scope][key];
+  if (testOn()) { const r = jget('coach_settings_' + P, {}); if (r[scope] && r[scope][key] != null) return r[scope][key]; }
   const s = S && S.settings; return s && s[scope] && s[scope][key] != null ? s[scope][key] : null;
 }
 function putSetting(scope, key, value) {
-  const l = localSet(); (l[scope] = l[scope] || {})[key] = value; jset('coach_settings_' + P, l);
+  const l = localSet(); (l[scope] = l[scope] || {})[key] = value; jset(SK(), l);
   enqueue({ action: 'setting', scope, key, value });
 }
 function bodyweight() { const v = parseFloat(getSetting('profile', 'bodyweight')); return v > 0 ? v : null; }
@@ -227,9 +229,10 @@ function mesoCfg() {
   return m;
 }
 function mesoHTML() {
+  const tb = testOn() ? '<div class="testbar">TEST MODE · nothing is saved to your log</div>' : '';
   const f = isToday() && finishedToday();
   const bar = f ? '<div class="donebar">&#10003; Workout done' + (f === 'pending' ? ' (syncing)' : ' · ' + new Date(f).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '<small>Sets stay editable: tap any set.</small></div>' : '';
-  return bar + mesoGrid();
+  return tb + bar + mesoGrid();
 }
 function mesoGrid() {
   const m = mesoCfg(), tdays = DAYS.filter(d => days[d]); if (!tdays.length) return '';
@@ -391,17 +394,13 @@ function render() {
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || 'tap to add (seat, pins, angle)') + '</span> <span class="ed">edit</span></div>' +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
-      '<button class="btn" id="b' + i + '" data-i="' + i + '"' + (isToday() ? '' : ' disabled') + '>' + btnLabel(ex) + '</button></div></div>';
+      '</div></div>';
   }).join('') + (d.footer && d.footer.length ? '<div class="note">' + d.footer.map(esc).join('<br>') + '</div>' : '') +
     '<div id="finwrap"></div>';
-  main.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => setDone(+b.dataset.i));
   main.querySelectorAll('[data-su]').forEach(el => el.onclick = () => editSetup(+el.dataset.su));
   main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
   enableDrag(main);
-  main.oninput = e => { const el = e.target, ex = el.dataset.ex && cardsFor().find(x => x.canonical === el.dataset.ex); if (!ex) return;
-    if (el.dataset.pw != null) (drafts[dKey(ex, +el.dataset.pw)] = drafts[dKey(ex, +el.dataset.pw)] || {}).load = el.value;
-    if (el.dataset.pr != null) (drafts[dKey(ex, +el.dataset.pr)] = drafts[dKey(ex, +el.dataset.pr)] || {}).reps = el.value; };
-  main.onclick = e => { if (e.target.closest('.pin')) return;
+  main.onclick = e => {
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
   renderFinish(); markActive();
@@ -469,10 +468,18 @@ $('prof').onchange = e => { P = e.target.value; LS.setItem('coach_p', P); dayKey
 // ---------- Settings ----------
 function showSettings(msg) {
   $('app').style.display = 'none'; $('settings').style.display = 'block'; $('timer').style.display = 'none';
-  $('su').value = U; $('sk').value = K; $('smsg').textContent = msg || '';
+  $('su').value = U; $('sk').value = K; $('stest').checked = testOn(); $('smsg').textContent = msg || '';
   $('sbw').value = S ? (bodyweight() || '') : '';
 }
 $('gear').onclick = () => showSettings();
+$('stest').onchange = e => {
+  if (e.target.checked) { LS.setItem('coach_test', '1'); toast('Test mode on'); }
+  else {
+    if (!confirm('Turn off test mode and discard all test sets?')) { e.target.checked = true; return; }
+    LS.removeItem('coach_test'); LS.removeItem('coach_testq'); LS.removeItem('coach_settings_test_' + P); LS.removeItem(TKEY()); toast('Test mode off, test data discarded');
+  }
+  sig = ''; if (S) { $('settings').style.display = 'none'; $('app').style.display = 'block'; applyState(S, true); }
+};
 $('ssave').onclick = async () => {
   U = $('su').value.trim(); K = $('sk').value.trim();
   if (!/^https:\/\//.test(U) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(U)) { $('smsg').textContent = 'The URL should start with https://'; return; }
@@ -570,11 +577,10 @@ let editId = null, doneTs = 0, drops = 0, prevRest = null;
 function setDrops(n) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); }
 document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
 let rowPrefill = null;
-const isToday = () => !!S && viewDate() === S.today;
+const isToday = () => !!S && (testOn() || viewDate() === S.today);
 function logRow(name, idx, li) {
   const list = cardsFor(), i = list.findIndex(x => x.canonical === name); if (i < 0) return;
-  const w = li.querySelector('[data-pw]'), r = li.querySelector('[data-pr]');
-  rowPrefill = { load: w ? w.value.trim() : '', reps: r ? r.value.trim() : '', key: dKey(list[i], idx) };
+  rowPrefill = null;
   setDone(i);
 }
 function setDone(i) {
@@ -643,7 +649,7 @@ $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeFo
 $('fsave').onclick = () => {
   const ex = formEx;
   if (ex && ex.canonical && (dayVal(ex, 'pain') || 'none') !== formPain) putSetting(ex.canonical, 'pain:' + viewDate(), formPain === 'none' ? '' : formPain);
-  if (formKey) delete drafts[formKey]; let reps = $('fr').value.trim(), L = '', R = '';
+  let reps = $('fr').value.trim(), L = '', R = '';
   if (ex.single) {
     L = $('frl').value.trim(); R = $('frr').value.trim();
     if (!L && !R) { $('ferr').textContent = 'Enter reps for at least one side.'; return; }
@@ -660,13 +666,13 @@ $('fsave').onclick = () => {
   }
   if (editId) {
     const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === editId);
-    if (pi >= 0) { Object.assign(q[pi].set, fields); setQ(q); flush(); }
+    if (pi >= 0) { Object.assign(q[pi].set, fields); setQ(q); if (!testOn()) flush(); }
     else enqueue({ action: 'edit', set_id: editId, fields });
     closeForm(); toast('Set updated'); return;
   }
   const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical }, fields);
   const before = viewRows();
-  enqueue({ action: 'log', date: S.today, set });
+  enqueue({ action: 'log', date: viewDate(), set });
   const nt = nextTarget(ex.canonical), t = getT();
   if (t) { t.target = nt.target; t.next = nt.next; t.firstSide = false; t.hidden = false; t.exercise = ex.canonical; setT(t); }
   $('sheet').classList.remove('open'); formEx = null; stopRec();
