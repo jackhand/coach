@@ -665,17 +665,16 @@ function btnLabel(ex) {
 function render() {
   const main = $('main'), d = days[dayKey];
   const nx = loggableId();
-  $('day').innerHTML = workouts().map(x => '<option value="' + x.id + '"' + (x.id === viewId ? ' selected' : '') + (canOpen(x.id) ? '' : ' disabled') + '>' + wShort(x.w) + ' ' + x.day[0].toUpperCase() + x.day.slice(1, 3) + (x.st ? (x.st.state === 'skipped' ? ' skipped' : ' done') : x.id === nx ? ' (next)' : '') + '</option>').join('');
   $('prof').value = P;
   if (!d) {
-    $('sub').textContent = wLabel(viewId) + ' · unplanned';
+    $('sub').textContent = wShortId(viewId) + ' · unplanned';
     const ws = wStatus()[viewId];
     main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div class="empty"><b>Unplanned</b><br>' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet. Ask Coach to write it.' : 'No program file found for this profile yet. Ask Coach to write one.') + '</div>' +
       (!ws && canLog() ? '<button class="btn sec" id="uskip">Skip this workout</button>' : '');
     main.onclick = e => { if (e.target.closest('#uskip')) skipWorkout(); };
     return;
   }
-  $('sub').textContent = d.title + (d.week ? ' · ' + d.week.split('.')[0] : '');
+  $('sub').textContent = wShortId(viewId) + ' · ' + d.title;
   main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + cardsFor().map((ex, i) => {
     const n = ex.note, chips = [n.sets, n.failure, n.rest].filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra);
@@ -761,7 +760,6 @@ function skipWorkout() {
   enqueue({ action: 'finish', session: { session_id: uid(), client_ts: Date.now(), date: S.today, day: viewId, sets: '0', exercises: '0', notes: 'skipped' } });
   setView(loggableId() || viewId); sig = ''; applyState(S, true); window.scrollTo(0, 0); toast('Workout skipped');
 }
-$('dmenu').onclick = skipWorkout;
 function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
   const v = prompt('Equipment setup for ' + ex.canonical + ' (seat, pins, bench angle):', cur);
@@ -795,11 +793,16 @@ async function load(initial) {
   }
 }
 let scrollT; window.addEventListener('scroll', () => { clearTimeout(scrollT); scrollT = setTimeout(() => jset('coach_scroll', { p: P, day: viewId, y: window.scrollY }), 150); }, { passive: true });
-$('day').onchange = e => { if (!openWorkout(e.target.value)) e.target.value = viewId; };
 // Meso calendar sheet (header calendar icon), back button closes it
-function openCal() { if (!S) return; $('calb').innerHTML = mesoGrid() + '<div class="s2" style="text-align:center;margin-top:8px">Tap a workout to open it. Future workouts open once every earlier day is finished or skipped.</div>'; $('calw').classList.add('open'); pushLayer('cal', () => $('calw').classList.remove('open')); }
+const wShortId = id => { const p = wParse(id); return p ? wShort(p.w) + ' ' + p.day[0].toUpperCase() + p.day.slice(1, 3) : ''; };
+function openCal() { if (!S) return;
+  const nx = loggableId(), ws = wStatus()[viewId];
+  $('calnow').innerHTML = 'Viewing ' + esc(wLabel(viewId)) + (ws ? ' (' + ws.state + ')' : '') + (nx && nx !== viewId ? '<small>Next up: ' + esc(wLabel(nx)) + '</small>' : '');
+  const sk = $('calskip'), can = canLog() && !ws && !workoutRows().length; sk.style.display = can ? 'block' : 'none'; sk.textContent = 'Skip ' + wLabel(viewId);
+  $('calb').innerHTML = mesoGrid() + '<div class="s2" style="text-align:center;margin-top:8px">Tap a workout to open it. Future workouts open once every earlier day is finished or skipped.</div>'; $('calw').classList.add('open'); pushLayer('cal', () => $('calw').classList.remove('open')); }
 const closeCal = () => { $('calw').classList.remove('open'); popLayer('cal'); };
 $('cal').onclick = openCal;
+$('calskip').onclick = () => { closeCal(); setTimeout(skipWorkout, 50); };
 function calDay() { const d = String(new Date().getDate()), e = $('calday'); if (e && e.textContent !== d) e.textContent = d; }
 calDay(); setInterval(calDay, 30000); document.addEventListener('visibilitychange', calDay); window.addEventListener('focus', calDay); $('calclose').onclick = closeCal;
 $('calw').addEventListener('click', e => {
