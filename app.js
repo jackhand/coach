@@ -799,7 +799,9 @@ $('day').onchange = e => { if (!openWorkout(e.target.value)) e.target.value = vi
 // Meso calendar sheet (header calendar icon), back button closes it
 function openCal() { if (!S) return; $('calb').innerHTML = mesoGrid() + '<div class="s2" style="text-align:center;margin-top:8px">Tap a workout to open it. Future workouts open once every earlier day is finished or skipped.</div>'; $('calw').classList.add('open'); pushLayer('cal', () => $('calw').classList.remove('open')); }
 const closeCal = () => { $('calw').classList.remove('open'); popLayer('cal'); };
-$('cal').onclick = openCal; $('calclose').onclick = closeCal;
+$('cal').onclick = openCal;
+function calDay() { const d = String(new Date().getDate()), e = $('calday'); if (e && e.textContent !== d) e.textContent = d; }
+calDay(); setInterval(calDay, 30000); document.addEventListener('visibilitychange', calDay); window.addEventListener('focus', calDay); $('calclose').onclick = closeCal;
 $('calw').addEventListener('click', e => {
   if (e.target.id === 'calw') return closeCal();
   const wc = e.target.closest('td[data-w]'); if (!wc) return;
