@@ -230,7 +230,13 @@ function trainDays() {
   if (!td.length) td = DAYS.slice(0, 5);
   return DAYS.filter(d => td.includes(d) || days[d]);
 }
-const canOpen = id => { const nx = loggableId(); return testOn() || !nx || wIndex(id) <= wIndex(nx); };
+const PREVIEW_AHEAD = 5; // next ~5 training days after the next workout, planned days only
+function isPreview(id) {
+  const nx = loggableId(), p = wParse(id); if (!nx || !p || testOn() || wIndex(id) <= wIndex(nx) || !days[p.day]) return false;
+  const L = workouts(), i = L.findIndex(x => x.id === nx), j = L.findIndex(x => x.id === id);
+  return i >= 0 && j > i && j - i <= PREVIEW_AHEAD;
+}
+const canOpen = id => { const nx = loggableId(); return testOn() || !nx || wIndex(id) <= wIndex(nx) || isPreview(id); };
 function openWorkout(id) {
   if (!canOpen(id)) return toast('Finish or skip ' + wLabel(loggableId()) + ' first. Workouts go in order.', 4000);
   setView(id); sig = ''; applyState(S, true); window.scrollTo(0, 0); return true;
@@ -280,7 +286,7 @@ function loggableId() { const x = workouts().find(w => !w.st); return x ? x.id :
 const canLog = () => !!S && (testOn() || viewId === loggableId());
 const isToday = canLog;
 function setView(id) { viewId = id; const p = wParse(id); dayKey = p ? p.day : dayKey; }
-const wLabel = id => { const p = wParse(id); return p ? 'Block ' + blockOf(p.w) + ' ' + (isDeload(p.w) ? 'Deload' : 'Week ' + wib(p.w)) + ' ' + p.day[0].toUpperCase() + p.day.slice(1, 3) : id; };
+const wLabel = id => { const p = wParse(id); return p ? (isDeload(p.w) ? 'Deload' : 'Week ' + wib(p.w)) + ' ' + p.day[0].toUpperCase() + p.day.slice(1, 3) : id; };
 // One-time move of old date-based keys (v7-v10) to workout ids.
 function migrateKeys(obj) {
   let ch = false;
@@ -426,7 +432,7 @@ function mesoHTML() {
   const tb = testOn() ? '<div class="testbar">TEST MODE · nothing is saved to your log</div>' : '';
   const ws = wStatus()[viewId], f = ws && ws.state === 'done' ? ws.at : null;
   const bar = ws && ws.state === 'skipped' ? '<div class="skipbar">Workout skipped</div>' : f ? '<div class="donebar">&#10003; Workout done' + (f === 'pending' ? ' (syncing)' : ' · ' + new Date(f).toLocaleTimeString('en-US', { timeZone: NY, hour: 'numeric', minute: '2-digit' })) + '<div class="donedt">' + esc(doneText()) + '</div><small>Sets stay editable: tap any set.</small></div>' : '';
-  const ro = !ws && !canLog() ? '<div class="robar">View only. Next up: ' + esc(wLabel(loggableId())) + '</div>' : '';
+  const ro = !ws && !canLog() ? '<div class="robar">' + (isPreview(viewId) ? 'Preview only. To log this workout, finish or skip the earlier days first (next up: ' + esc(wLabel(loggableId())) + ').' : 'View only. Next up: ' + esc(wLabel(loggableId()))) + '</div>' : '';
   return tb + bar + ro;
 }
 function mesoGrid() {
