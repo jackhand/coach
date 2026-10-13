@@ -773,9 +773,11 @@ function finishWorkout() {
 }
 function skipWorkout() {
   if (!canLog()) return toast('Only the next workout (' + wLabel(loggableId()) + ') can be skipped.');
-  if (workoutRows().length) return toast('This workout has logged sets. Use Finish workout instead.');
-  if (!confirm('Skip ' + wLabel(viewId) + '? The next workout becomes available.')) return;
-  enqueue({ action: 'finish', session: { session_id: uid(), client_ts: Date.now(), date: S.today, day: viewId, sets: '0', exercises: '0', notes: 'skipped' } });
+  if (wStatus()[viewId]) return toast(wLabel(viewId) + ' is already ' + wStatus()[viewId].state + '.');
+  const rs = workoutRows(), n = rs.length;
+  if (!confirm(n ? 'Skip ' + wLabel(viewId) + '? The ' + n + (n === 1 ? ' set' : ' sets') + ' you logged stay in your log, and the workout is marked skipped (not finished). The next workout becomes available.' : 'Skip ' + wLabel(viewId) + '? The next workout becomes available.')) return;
+  enqueue({ action: 'finish', session: { session_id: uid(), client_ts: Date.now(), date: S.today, day: viewId, sets: String(n), exercises: String(new Set(rs.map(r => P_.norm(r.exercise))).size), notes: n ? 'skipped (partial, ' + n + ' sets kept)' : 'skipped' } });
+  LS.removeItem(WSK()); const t = getT(); if (t && n) { t.hidden = true; setT(t); }
   setView(loggableId() || viewId); sig = ''; applyState(S, true); window.scrollTo(0, 0); toast('Workout skipped');
 }
 function editSetup(i) {
@@ -823,11 +825,29 @@ const wShortId = id => { const p = wParse(id); return p ? wShort(p.w) + ' ' + p.
 function openCal() { if (!S) return;
   const nx = loggableId(), ws = wStatus()[viewId];
   $('calnow').innerHTML = 'Viewing ' + esc(wLabel(viewId)) + (ws ? ' (' + ws.state + ')' : '') + (nx && nx !== viewId ? '<small>Next up: ' + esc(wLabel(nx)) + '</small>' : '');
-  const sk = $('calskip'), can = canLog() && !ws && !workoutRows().length; sk.style.display = can ? 'block' : 'none'; sk.textContent = 'Skip ' + wLabel(viewId);
   $('calb').innerHTML = mesoGrid() + '<div class="s2" style="text-align:center;margin-top:8px">Tap a workout to open it. Future workouts open once every earlier day is finished or skipped.</div>'; $('calw').classList.add('open'); pushLayer('cal', () => $('calw').classList.remove('open')); }
 const closeCal = () => { $('calw').classList.remove('open'); popLayer('cal'); };
 $('cal').onclick = openCal;
-$('calskip').onclick = () => { closeCal(); setTimeout(skipWorkout, 50); };
+// Header ⋮ workout menu (RP style). Items: [id, label, enabled?, action]. Add future items here.
+function wmItems() {
+  const ws = wStatus()[viewId], next = viewId === loggableId() || (testOn() && !ws);
+  return [
+    { id: 'skip', label: 'Skip workout', on: !!S && next && !ws, why: ws ? 'Already ' + ws.state : 'Only the next workout (' + wLabel(loggableId()) + ') can be skipped', run: skipWorkout }
+  ];
+}
+function openWm() {
+  if (!S) return;
+  $('wmh').textContent = wLabel(viewId);
+  $('wml').innerHTML = wmItems().map((it, i) => '<button class="btn sec wmi" data-wi="' + i + '"' + (it.on ? '' : ' disabled') + '>' + esc(it.label) + (it.on ? '' : '<small>' + esc(it.why) + '</small>') + '</button>').join('');
+  $('wmw').classList.add('open'); pushLayer('wm', () => $('wmw').classList.remove('open'));
+}
+const closeWm = () => { $('wmw').classList.remove('open'); popLayer('wm'); };
+$('wmenu').onclick = openWm; $('wmclose').onclick = closeWm;
+$('wmw').addEventListener('click', e => {
+  if (e.target.id === 'wmw') return closeWm();
+  const b = e.target.closest('[data-wi]'); if (!b || b.disabled) return;
+  const it = wmItems()[+b.dataset.wi]; closeWm(); if (it && it.on) setTimeout(it.run, 60);
+});
 function calDay() { const d = String(new Date().getDate()), e = $('calday'); if (e && e.textContent !== d) e.textContent = d; }
 calDay(); setInterval(calDay, 30000); document.addEventListener('visibilitychange', calDay); window.addEventListener('focus', calDay); $('calclose').onclick = closeCal;
 $('calw').addEventListener('click', e => {
