@@ -11,7 +11,15 @@ const fmt = sec => { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec /
 const jget = (k, d) => { try { const v = JSON.parse(LS.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
 const jset = (k, v) => LS.setItem(k, JSON.stringify(v));
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
-function toast(m, ms) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms || 2400); }
+function toast(m, ms) { const t = $('toast'); t.textContent = m; t.style.transform = ''; t.style.opacity = ''; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(hideToast, ms || 6000); }
+function hideToast() { const t = $('toast'); clearTimeout(t._h); t.style.display = 'none'; t.style.transform = ''; t.style.opacity = ''; }
+(function () { // swipe (any direction) or tap to dismiss
+  const t = $('toast'); let x0 = null, y0 = null;
+  t.addEventListener('pointerdown', e => { x0 = e.clientX; y0 = e.clientY; try { t.setPointerCapture(e.pointerId); } catch (x) {} });
+  t.addEventListener('pointermove', e => { if (x0 == null) return; const dx = e.clientX - x0, dy = Math.min(0, e.clientY - y0); t.style.transform = 'translate(calc(-50% + ' + dx + 'px),' + dy + 'px)'; t.style.opacity = String(Math.max(0.2, 1 - Math.hypot(dx, dy) / 160)); });
+  const end = e => { if (x0 == null) return; const d = Math.hypot(e.clientX - x0, Math.min(0, e.clientY - y0)); x0 = null; if (d > 50 || d < 8) hideToast(); else { t.style.transform = ''; t.style.opacity = ''; } };
+  t.addEventListener('pointerup', end); t.addEventListener('pointercancel', () => { x0 = null; t.style.transform = ''; t.style.opacity = ''; });
+})();
 
 // ---------- Back button: every open layer (settings, sheets, menus) owns one history entry ----------
 const layers = []; let ignorePop = 0;
@@ -47,7 +55,9 @@ let U = LS.getItem('coach_u') || '', K = LS.getItem('coach_k') || '';
 let P = LS.getItem('coach_p') || 'jack';
 let S = null, days = {}, dayKey = null, viewId = null, sig = '', formEx = null, firstRender = true;
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+let swReg = null;
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').then(r => { swReg = r; }).catch(() => {});
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && swReg) swReg.update().catch(() => {}); });
 
 // ---------- Backend ----------
 async function apiGet() {
@@ -71,7 +81,7 @@ const setQ = q => { jset(QK(), q); badge(); };
 const getRQ = () => jget('coach_queue', []);
 const setRQ = q => { jset('coach_queue', q); badge(); };
 function badge() { const n = getRQ().length, b = $('pending'); b.textContent = n + ' pending'; b.style.display = n ? 'inline-block' : 'none'; }
-function enqueue(item) { const q = getQ(); q.push(Object.assign({ id: uid(), profile: P }, item)); setQ(q); if (!testOn()) flush(); }
+function enqueue(item) { const t = testOn(), q = getQ(); q.push(Object.assign({ id: uid(), profile: P }, item, t ? { test: true } : {})); setQ(q); if (!t) flush(); }
 const NEW_ACTIONS = ['edit', 'finish', 'setting'];
 let flushing = false, warnedOld = false;
 function bodyFor(it) {
@@ -89,6 +99,7 @@ async function flush() {
     while (true) {
       const q = getRQ(); if (q.length <= skip) break;
       const it = q[skip];
+      if (it.test) { setRQ(getRQ().filter(x => x.id !== it.id)); continue; } // test data never reaches the backend
       let res;
       try { res = await apiPost(bodyFor(it)); }
       catch (e) { break; } // network: keep, retry later
@@ -100,6 +111,7 @@ async function flush() {
       }
       if (!res.ok && !(it.action === 'edit' && res.error === 'not found')) toast('Dropped a queued item: ' + res.error);
       setRQ(getRQ().filter(x => x.id !== it.id)); changed = true;
+      if (res.ok && S && it.profile === P && it.action === 'setting') { const ss = S.settings = S.settings || {}; if (it.value === '' || it.value == null) { if (ss[it.scope]) delete ss[it.scope][it.key]; } else (ss[it.scope] = ss[it.scope] || {})[it.key] = it.value; }
       if (res.ok && res.row && S && it.profile === P && (it.action === 'log' || it.action === 'edit')) { S.rows = S.rows.filter(r => r.set_id !== res.row.set_id).concat([res.row]); }
     }
   } finally { flushing = false; }
@@ -123,7 +135,7 @@ function viewRows() {
     .sort((a, b) => tsOf(a) - tsOf(b));
 }
 function keysOf(ex) { return new Set(ex.match_keys.concat([P_.norm(ex.canonical), P_.norm(ex.name)])); }
-function exFor(name) { const n = P_.norm(name); for (const ex of (days[dayKey] ? days[dayKey].exercises : [])) if (keysOf(ex).has(n)) return ex; for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
+function exFor(name) { const n = P_.norm(name); for (const ex of cardsFor()) if (keysOf(ex).has(n)) return ex; for (const ex of (days[dayKey] ? days[dayKey].exercises : [])) if (keysOf(ex).has(n)) return ex; for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
 function rowsFor(ex, today) {
   const keys = keysOf(ex);
   return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? widOf(r) === viewId : wIndex(widOf(r)) < wIndex(viewId)));
@@ -190,15 +202,19 @@ $('tqclose').onclick = closeTech;
 $('tech').addEventListener('click', e => { if (e.target.id === 'tech') closeTech(); });
 
 // ---------- Per-exercise settings (equipment setup), body weight ----------
-const SK = () => 'coach_settings_' + (testOn() ? 'test_' : '') + P;
-const localSet = () => jget(SK(), {});
+// Real settings: unsynced writes in the queue win, else the server copy (so server-side cleanups show up).
+// Test mode: a separate local-only layer on top; it is never sent and is wiped when test mode goes off.
+const SK = () => 'coach_settings_test_' + P;
+const localSet = () => testOn() ? jget(SK(), {}) : {};
+LS.removeItem('coach_settings_jack'); LS.removeItem('coach_settings_jacky'); // v16 and older local copies (could hide server cleanups)
+function pendingSet() { const m = {}; getRQ().forEach(x => { if (x.action === 'setting' && x.profile === P && !x.test) (m[x.scope] = m[x.scope] || {})[x.key] = x.value; }); return m; }
 function getSetting(scope, key) {
   const l = localSet(); if (l[scope] && l[scope][key] != null) return l[scope][key];
-  if (testOn()) { const r = jget('coach_settings_' + P, {}); if (r[scope] && r[scope][key] != null) return r[scope][key]; }
+  const pq = pendingSet(); if (pq[scope] && pq[scope][key] != null) return pq[scope][key];
   const s = S && S.settings; return s && s[scope] && s[scope][key] != null ? s[scope][key] : null;
 }
 function putSetting(scope, key, value) {
-  const l = localSet(); (l[scope] = l[scope] || {})[key] = value; jset(SK(), l);
+  if (testOn()) { const l = localSet(); (l[scope] = l[scope] || {})[key] = value; jset(SK(), l); return; }
   enqueue({ action: 'setting', scope, key, value });
 }
 function bodyweight() { const v = parseFloat(getSetting('profile', 'bodyweight')); return v > 0 ? v : null; }
@@ -234,18 +250,25 @@ function wStatus() {
   q.filter(x => x.profile === P && x.action === 'finish').forEach(x => add(x.session, true));
   return st;
 }
+// Training blocks: weeks are numbered globally (W1, W2, ...); every block is BL weeks, deload on block week DL.
+const BL = () => Math.max(1, +mesoCfg().weeks || 5);
+const blockOf = w => Math.floor((w - 1) / BL()) + 1;
+const wib = w => (w - 1) % BL() + 1;
+const isDeload = w => { const dl = +mesoCfg().deload || 0; return !!dl && wib(w) === dl; };
+const viewWeek = () => { const p = wParse(viewId); return p ? p.w : 1; };
+const wShort = w => 'B' + blockOf(w) + ' ' + (isDeload(w) ? 'DL' : 'W' + wib(w));
 function workouts() {
-  const m = mesoCfg(), td = trainDays(), st = wStatus(); let weeks = Math.max(1, +m.weeks || 1);
+  const td = trainDays(), st = wStatus(); let weeks = BL();
   const list = n => { const a = []; for (let w = 1; w <= n; w++) for (const d of td) a.push({ id: 'W' + w + '-' + d, w, day: d, st: st['W' + w + '-' + d] }); return a; };
   let L = list(weeks);
-  while (L.length && L.every(x => x.st) && weeks < 52) L = list(++weeks); // always keep one open week ahead
+  while (L.length && L.every(x => x.st) && weeks < 104) { weeks += BL(); L = list(weeks); } // next block opens when this one is done
   return L;
 }
 function loggableId() { const x = workouts().find(w => !w.st); return x ? x.id : null; }
 const canLog = () => !!S && (testOn() || viewId === loggableId());
 const isToday = canLog;
 function setView(id) { viewId = id; const p = wParse(id); dayKey = p ? p.day : dayKey; }
-const wLabel = id => { const p = wParse(id); return p ? 'Week ' + p.w + ' ' + p.day[0].toUpperCase() + p.day.slice(1, 3) : id; };
+const wLabel = id => { const p = wParse(id); return p ? 'Block ' + blockOf(p.w) + ' ' + (isDeload(p.w) ? 'Deload' : 'Week ' + wib(p.w)) + ' ' + p.day[0].toUpperCase() + p.day.slice(1, 3) : id; };
 // One-time move of old date-based keys (v7-v10) to workout ids.
 function migrateKeys(obj) {
   let ch = false;
@@ -259,51 +282,117 @@ function migrateKeys(obj) {
 }
 const dayKeyOf = () => viewId;
 function baseCards() { const d = days[dayKey]; return d ? d.exercises : []; }
+// ---------- Replace exercise: per workout (swap:<wid>) or rest of block (bswap:B<n> = {to, from}) ----------
+let LIB = [], swapMemo = {};
+function swapInfo(base) {
+  const w = getSetting(base.canonical, 'swap:' + viewId);
+  if (w) return w === base.canonical ? null : { to: w, scope: 'workout' };
+  let v = null; try { v = JSON.parse(getSetting(base.canonical, 'bswap:B' + blockOf(viewWeek())) || 'null'); } catch (e) {}
+  if (v && v.to && v.to !== base.canonical && wIndex(viewId) >= wIndex(v.from)) return { to: v.to, scope: 'block', from: v.from };
+  return null;
+}
+function catalog() { // his library first, then the built-in list
+  const out = [], seen = new Set();
+  LIB.forEach(e => { seen.add(P_.norm(e.name)); out.push({ name: e.name, aliases: e.aliases, muscles: e.muscles, rest_muscle: e.rest_muscle, equip: e.equip || P_.equipOf(e.name, e.bodyweight), types: e.types, video: e.video, mine: true }); });
+  (window.CoachExList || []).forEach(e => { if (!seen.has(P_.norm(e.name)) && !P_.lookup(LIB, e.name)) out.push(Object.assign({ video: '' }, e)); });
+  return out;
+}
+function catFind(name) { const n = P_.norm(name); return catalog().find(c => P_.norm(c.name) === n || (c.aliases || []).some(a => P_.norm(a) === n)) || null; }
+function swappedEx(base, si) {
+  const k = viewId + '|' + base.canonical + '|' + si.to;
+  if (swapMemo[k]) return swapMemo[k];
+  const d = P_.enrich({ x: { exercises: [{ n: base.n, name: si.to, full_name: si.to, details: base.details, note: base.note }] } }, LIB), ex = d.x.exercises[0];
+  const c = catFind(si.to);
+  if (c && !ex.muscles) { ex.canonical = c.name; ex.muscles = c.muscles; ex.rest_muscle = c.rest_muscle; ex.types = c.types; ex.equip = c.equip; ex.match_keys = [P_.norm(c.name)].concat((c.aliases || []).map(P_.norm)); ex.video = c.video || ''; }
+  ex.swappedFrom = base.canonical; ex.swapScope = si.scope; ex.base = base;
+  return (swapMemo[k] = ex);
+}
 function cardsFor() {
-  const base = baseCards(); let ord = null;
+  const base = baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }); let ord = null;
   try { ord = JSON.parse(getSetting('order', dayKeyOf()) || 'null'); } catch (e) {}
   if (!Array.isArray(ord)) return base;
-  const pos = n => { const i = ord.indexOf(n); return i < 0 ? 999 + base.findIndex(x => x.canonical === n) : i; };
-  return base.slice().sort((a, b) => pos(a.canonical) - pos(b.canonical));
+  const pos = ex => { let i = ord.indexOf(ex.canonical); if (i < 0 && ex.swappedFrom) i = ord.indexOf(ex.swappedFrom); return i < 0 ? 999 + base.indexOf(ex) : i; };
+  return base.slice().sort((a, b) => pos(a) - pos(b));
 }
 const dayVal = (ex, k) => getSetting(ex.canonical, k + ':' + viewId);
 function setDayVal(ex, k, v) { putSetting(ex.canonical, k + ':' + viewId, v); sig = ''; applyState(S, false); }
-function plannedCount(ex) { return Math.max(0, (ex.planned_sets || 3) + (+dayVal(ex, 'extra') || 0) - (+dayVal(ex, 'skip') || 0)); }
+function plannedCount(ex) { const b = ex.planned_sets || 3; return Math.max(0, (isDeload(viewWeek()) ? Math.ceil(b / 2) : b) + (+dayVal(ex, 'extra') || 0) - (+dayVal(ex, 'skip') || 0)); }
 function repRange(ex) { const m = (ex.note.sets || '').match(/x\s*(\d+)(?:\s*-\s*(\d+))?/i); return m ? [+m[1], +(m[2] || m[1])] : [8, 12]; }
 const LOWER = /quad|hamstring|glute|leg|calf|calves|adductor|abductor/i;
 const FAIL = ['technical', 'true', 'drop set', 'myo-reps'];
 function lastSession(ex) {
-  const rs = rowsFor(ex, false); if (!rs.length) return null;
+  let rs = rowsFor(ex, false); if (!rs.length) return null;
+  if (!isDeload(viewWeek())) { const nd = rs.filter(r => { const p = wParse(widOf(r)); return !p || !isDeload(p.w); }); if (nd.length) rs = nd; }
   const d = rs.reduce((m, r) => wIndex(widOf(r)) > wIndex(m) ? widOf(r) : m, widOf(rs[0]));
   return { date: d, rows: rs.filter(r => widOf(r) === d) };
 }
 const r5 = (w, step) => Math.max(step, Math.round(w / step) * step);
-const EQUIP = [[/barbell|\bbb\b|smith/i, 1], [/dumbbell|\bdb\b/i, 0.38], [/machine|pec deck|hack|leg press/i, 0.9], [/cable|rope/i, 0.45]];
+const EQUIP = [[/hex|trap bar/i, 1], [/barbell|\bbb\b|smith/i, 1], [/dumbbell|\bdb\b/i, 0.38], [/machine|pec deck|hack|leg press/i, 0.9], [/cable|rope/i, 0.45]];
 const eqFactor = n => { for (const [re, f] of EQUIP) if (re.test(n)) return f; return 0.8; };
+// Overload step sized to the equipment. Barbell steps are plate pairs (2 x 2.5 = 5, 2 x 5 = 10).
+function stepFor(ex) {
+  const e = ex.equip || P_.equipOf(ex.canonical, ex.bodyweight), lower = LOWER.test(ex.rest_muscle + ' ' + ex.muscles), iso = (ex.types || []).includes('isolation');
+  if (e === 'bodyweight' || ex.bodyweight) return { step: 0, unit: 1, txt: '' };
+  if (e === 'dumbbell') return { step: 5, unit: 5, txt: ' (next dumbbell)' };
+  if (e === 'barbell' || e === 'hexbar') return lower || e === 'hexbar' ? { step: 10, unit: 5, txt: ' (2 x 5 plates)' } : { step: 5, unit: 5, txt: ' (2 x 2.5 plates)' };
+  if (e === 'cable') return { step: 5, unit: 2.5, txt: '' };
+  return iso ? { step: 5, unit: 5, txt: '' } : lower ? { step: 15, unit: 5, txt: '' } : { step: 10, unit: 5, txt: '' };
+}
+const num = v => { const x = parseFloat(v); return isFinite(x) ? x : null; };
+// Settled weight: the load used most, ties go to the heavier one (ramp 20, 30, 30 -> 30; 165, 165, 155 -> 165).
+function settled(rows) {
+  const c = {}; rows.forEach(r => { const w = num(r.load); if (w != null) c[w] = (c[w] || 0) + 1; });
+  const ks = Object.keys(c).map(Number); if (!ks.length) return null;
+  return ks.sort((a, b) => c[b] - c[a] || b - a)[0];
+}
 function suggest(ex, idx) {
-  const [lo, hi] = repRange(ex), inc = LOWER.test(ex.rest_muscle + ' ' + ex.muscles) ? 10 : 5;
+  const today = rowsFor(ex, true);
+  const base = suggestNext(ex, idx);
+  if (idx >= today.length && today.length) { // follow the weight just logged this workout
+    const last = today[today.length - 1], lw = num(last.load);
+    if (lw != null) {
+      if (base && num(base.load) === lw) return base;
+      return { load: String(lw), reps: String(last.reps || (base && base.reps) || ''), why: 'matches your last set (' + setTxt(last) + ')' };
+    }
+  }
+  return base;
+}
+function suggestNext(ex, idx) {
+  const [lo, hi] = repRange(ex), dl = isDeload(viewWeek()), st = stepFor(ex), iso = (ex.types || []).includes('isolation');
   const ls = lastSession(ex);
   if (ls) {
-    const r = ls.rows[Math.min(idx, ls.rows.length - 1)], w = parseFloat(r.load), reps = parseInt(r.reps, 10) || 0;
-    if (!(w >= 0)) return { load: r.load, reps: String(Math.min(hi, reps + 1)), why: 'last time ' + setTxt(r) };
-    if (reps >= hi && FAIL.includes(r.failure_type)) return { load: String(w + (ex.bodyweight && !w ? 0 : inc)), reps: String(lo), why: 'top of range hit: +' + inc + ' lb' };
-    return { load: String(w), reps: String(Math.min(hi, reps + 1)), why: 'same weight, aim +1 rep (last ' + setTxt(r) + ')' };
+    const rows = ls.rows, sw = settled(rows);
+    if (sw == null) { const r = rows[Math.min(idx, rows.length - 1)], reps = parseInt(r.reps, 10) || 0; return { load: r.load, reps: String(dl ? lo : Math.min(hi, reps + 1)), why: (dl ? 'deload, ' : '') + 'last time ' + setTxt(r) }; }
+    const at = rows.filter(r => num(r.load) === sw), ref = at[Math.min(idx, at.length - 1)], reps = parseInt(ref.reps, 10) || 0;
+    const top = Math.max(0, ...at.map(r => parseInt(r.reps, 10) || 0));
+    const failed = at.some(r => (parseInt(r.reps, 10) || 0) === top && r.failure_type !== 'not to failure');
+    const ramp = num(rows[0].load) != null && num(rows[0].load) < sw ? ' · settled on ' + sw : '';
+    if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'deload: about 85% load, half the sets, stop 2-3 reps short of failure' };
+    if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'aim +1 rep (last ' + setTxt(ref) + ')' };
+    const small = iso && sw > 0 && st.step / sw > 0.12;
+    if (top >= hi + (small ? 2 : 0) && failed) return { load: String(sw + st.step), reps: String(lo), why: 'top of range hit: +' + st.step + ' lb' + st.txt };
+    if (small && top >= hi) return { load: String(sw), reps: String(Math.min(hi + 2, reps + 1)), why: '+' + st.step + ' lb is a big jump here: add a rep first, go up at ' + (hi + 2) };
+    return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'same weight, aim +1 rep (last ' + setTxt(ref) + ')' + ramp };
   }
   if (ex.bodyweight) return null;
   // Never done: estimate from the best e1RM on a similar exercise (same rest muscle), scaled by equipment.
   let best = null;
-  for (const d of Object.values(days)) for (const o of d.exercises) {
+  const others = Object.values(days).reduce((a, d) => a.concat(d.exercises), []).concat(ex.base ? [ex.base] : []);
+  for (const o of others) {
     if (o === ex || o.canonical === ex.canonical || o.rest_muscle !== ex.rest_muscle || o.bodyweight) continue;
+    if (!(ex.types || []).includes('isolation') && (o.types || []).includes('isolation')) continue; // presses are not estimated from flyes
     for (const r of viewRows().filter(x => keysOf(o).has(P_.norm(x.exercise)))) {
-      const e = P_.e1rm(loadOf(r), r.reps); if (!e) continue;
+      const w = num(loadOf(r)), n = parseInt(r.reps, 10); if (!(w > 0) || !(n >= 1 && n <= 20)) continue;
+      const e = n <= 10 ? P_.e1rm(w, n) : { ep: Math.round(w * (1 + n / 30)), br: Math.round(w * (1 + n / 30)) };
       const v = (e.ep + e.br) / 2 * eqFactor(ex.canonical) / eqFactor(o.canonical)
         * ((ex.types || []).includes('isolation') && !(o.types || []).includes('isolation') ? 0.6 : 1);
       if (!best || v > best.v) best = { v, from: o.canonical };
     }
   }
   if (!best) return null;
-  const reps = Math.round((lo + hi) / 2);
-  return { load: String(r5(best.v / (1 + reps / 30), 5)), reps: String(reps), why: 'from ' + best.from, est: true };
+  const reps = Math.round((lo + hi) / 2), u = Math.max(5, st.step || 5);
+  let load = r5(best.v / (1 + reps / 30), u); if (dl) load = r5(load * 0.85, u);
+  return { load: String(load), reps: String(dl ? lo : reps), why: (dl ? 'deload, ' : '') + 'from ' + best.from, est: true };
 }
 function trend(ex, r, i) {
   const ls = lastSession(ex); if (!ls || !ls.rows[i]) return '';
@@ -317,7 +406,7 @@ function mesoCfg() {
   let m = null; try { m = JSON.parse(getSetting('profile', 'meso') || 'null'); } catch (e) {}
   if (!m || !m.start) {
     const first = (S.rows || []).map(r => r.date).filter(Boolean).sort()[0] || S.today;
-    m = { start: mondayOf(first), weeks: 1, deload: 0 };
+    m = { start: mondayOf(first), weeks: 5, deload: 5 };
   }
   return m;
 }
@@ -329,12 +418,12 @@ function mesoHTML() {
   return tb + bar + ro + mesoGrid();
 }
 function mesoGrid() {
-  const m = mesoCfg(), td = trainDays(); if (!td.length) return '';
-  const L = workouts(), nx = loggableId(), weeks = L.length / td.length;
-  let h = '<table class="meso"><tr><th></th>' + td.map(d => '<th>' + d[0].toUpperCase() + d.slice(1, 3) + '</th>').join('') + '</tr>';
-  for (let w = 1; w <= weeks; w++) {
-    h += '<tr><th>' + (m.deload && w === +m.deload ? 'DL' : 'W' + w) + '</th>' + td.map(d => {
-      const id = 'W' + w + '-' + d, x = L.find(y => y.id === id);
+  const td = trainDays(); if (!td.length) return '';
+  const L = workouts(), nx = loggableId(), b = blockOf(viewWeek()), w0 = (b - 1) * BL() + 1;
+  let h = '<div class="blk">Block ' + b + ' · ' + (isDeload(viewWeek()) ? 'Deload week: lighter, half the sets' : 'Week ' + wib(viewWeek()) + ' of ' + BL()) + '</div><table class="meso"><tr><th></th>' + td.map(d => '<th>' + d[0].toUpperCase() + d.slice(1, 3) + '</th>').join('') + '</tr>';
+  for (let w = w0; w < w0 + BL(); w++) {
+    h += '<tr><th>' + (isDeload(w) ? 'DL' : 'W' + wib(w)) + '</th>' + td.map(d => {
+      const id = 'W' + w + '-' + d, x = L.find(y => y.id === id) || { id, st: null };
       const cls = [x.st ? (x.st.state === 'skipped' ? 'skip' : 'ok') : '', id === nx ? 'cur' : '', id === viewId ? 'view' : ''].filter(Boolean).join(' ');
       return '<td class="' + cls + '" data-w="' + id + '">' + (x.st ? (x.st.state === 'skipped' ? '&#8211;' : '&#10003;') : '') + '</td>';
     }).join('') + '</tr>';
@@ -434,6 +523,7 @@ function openMenu(i) {
   menuEx = cardsFor()[i]; $('mh').textContent = menuEx.canonical;
   const p = dayVal(menuEx, 'pain') || 'none';
   $('mskip').textContent = +dayVal(menuEx, 'skip') > 0 ? 'Undo skip sets' : 'Skip remaining sets';
+  $('mrepl').style.display = canLog() || !wStatus()[viewId] ? 'block' : 'none';
   document.querySelectorAll('#mpain button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
   $('menu').classList.add('open'); pushLayer('menu', () => $('menu').classList.remove('open'));
 }
@@ -449,6 +539,93 @@ $('mskip').onclick = () => {
 };
 $('mnote').onclick = () => { const ex = menuEx; closeMenu(); const v = prompt('Note for ' + ex.canonical + ' today:', dayVal(ex, 'note') || ''); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
 $('mhist').onclick = () => { const ex = menuEx; closeMenu(true); openHistory(ex, true); };
+$('mrepl').onclick = () => { const ex = menuEx; closeMenu(true); openReplace(ex); };
+// ---------- Replace sheet ----------
+let rEx = null, rScope = 'workout', rReason = '';
+const PRIM = m => String(m || '').toLowerCase().split(/[,(]/)[0].replace(/\b(and|front|side|rear|upper|lower|mid|long head)\b/g, ' ').split(/\s+/).filter(Boolean);
+function related(a, b) {
+  if (!a || !b) return false;
+  if (a.rest_muscle && a.rest_muscle === b.rest_muscle) return true;
+  const x = PRIM(a.muscles), y = new Set(PRIM(b.muscles)); return x.some(w => y.has(w));
+}
+const baseOf = ex => ex.base || ex;
+function swapLog() { const s = (S && S.settings && S.settings.swaps) || {}, pq = pendingSet().swaps || {}, l = localSet().swaps || {}; return Object.values(Object.assign({}, s, pq, l)).map(v => { try { return JSON.parse(v); } catch (e) { return null; } }).filter(Boolean).sort((a, b) => (b.at || '').localeCompare(a.at || '')); }
+function demoLink(c) { const u = c.video || 'https://www.youtube.com/results?search_query=' + encodeURIComponent(c.name + ' exercise demo'); return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + (c.video ? 'Demo' : 'Find a demo') + '</a>'; }
+function resItem(c, cur) {
+  const ok = related(c, cur);
+  return '<div class="ri" data-pick="' + esc(c.name) + '"><b>' + esc(c.name) + '</b>' + (c.mine ? ' <small class="mine">in your library</small>' : '') + '<br><span class="s2">' + esc(c.muscles || 'muscles unknown') + (c.equip ? ' · ' + esc(c.equip) : '') + ' · </span>' + demoLink(c) +
+    (ok ? '' : '<div class="warn">&#9888; Does not work the same muscles as ' + esc(cur.canonical) + '</div>') + '</div>';
+}
+function curInfo(ex) { return { canonical: ex.canonical, name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle, types: ex.types }; }
+function openReplace(ex) {
+  rEx = ex; rScope = 'workout'; rReason = '';
+  $('rh').textContent = 'Replace ' + ex.canonical;
+  setSeg('rscope', 's', rScope); setSeg('rreason', 'r', '');
+  $('rq').value = ''; $('rres').innerHTML = '';
+  $('rundo').style.display = ex.swappedFrom ? 'block' : 'none';
+  if (ex.swappedFrom) $('rundo').textContent = 'Go back to ' + ex.swappedFrom;
+  const b = baseOf(ex), cur = curInfo(ex), cat = catalog(), excl = new Set([P_.norm(ex.canonical)].concat(cardsFor().map(c => P_.norm(c.canonical))));
+  const used = []; swapLog().forEach(x => { if (x.from === b.canonical && x.to && !excl.has(P_.norm(x.to)) && !used.some(u => P_.norm(u.name) === P_.norm(x.to)) && x.reason !== 'undo') used.push(catFind(x.to) || { name: x.to, muscles: '' }); });
+  if (ex.swappedFrom && !excl.has(P_.norm(b.canonical))) excl.add(P_.norm(b.canonical));
+  used.forEach(u => excl.add(P_.norm(u.name)));
+  const iso = (ex.types || []).includes('isolation');
+  const same = cat.filter(c => !excl.has(P_.norm(c.name)) && related(c, cur))
+    .map(c => ({ c, sc: (c.rest_muscle === ex.rest_muscle ? 4 : 0) + (((c.types || []).includes('isolation')) === iso ? 2 : 0) + (c.mine ? 1 : 0) }))
+    .sort((a, b) => b.sc - a.sc).slice(0, 4).map(x => x.c);
+  $('rlist').innerHTML = (used.length ? '<label>You used before</label>' + used.slice(0, 4).map(c => resItem(c, cur)).join('') : '') +
+    (same.length ? '<label>Same muscles</label>' + same.map(c => resItem(c, cur)).join('') : '');
+  $('repl').classList.add('open'); swapLayer('menu', 'repl', () => $('repl').classList.remove('open'));
+  requestAnimationFrame(() => { $('repl').querySelector('.in').scrollTop = 0; });
+}
+function setSeg(id, attr, v) { document.querySelectorAll('#' + id + ' button').forEach(b => b.classList.toggle('on', b.dataset[attr] === v)); }
+document.querySelectorAll('#rscope button').forEach(b => b.onclick = () => { rScope = b.dataset.s; setSeg('rscope', 's', rScope); });
+document.querySelectorAll('#rreason button').forEach(b => b.onclick = () => { rReason = b.dataset.r; setSeg('rreason', 'r', rReason); });
+const SYN = { db: 'dumbbell', dbs: 'dumbbell', bb: 'barbell', hs: 'hammer', 'plate-loaded': 'hammer', pec: 'chest', pecs: 'chest', delt: 'delts', shoulder: 'delts', shoulders: 'delts', lat: 'lats', tri: 'triceps', tris: 'triceps', bi: 'biceps', bis: 'biceps', quad: 'quads', ham: 'hamstrings', hams: 'hamstrings', glute: 'glutes', trap: 'traps', ab: 'abs' };
+function searchCat(q) {
+  const toks = q.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean).map(t => SYN[t] || t).map(t => t.length > 3 ? t.replace(/s$/, '') : t);
+  if (!toks.length) return [];
+  const cur = curInfo(rEx);
+  return catalog().filter(c => { const h = (c.name + ' ' + (c.aliases || []).join(' ') + ' ' + c.muscles + ' ' + c.equip + ' ' + c.rest_muscle).toLowerCase().replace(/shoulders?/g, 'delts shoulder'); return toks.every(t => h.includes(t)); })
+    .sort((a, b) => (related(b, cur) - related(a, cur)) || a.name.localeCompare(b.name)).slice(0, 15);
+}
+$('rq').oninput = () => {
+  const q = $('rq').value.trim(); if (!q) { $('rres').innerHTML = ''; return; }
+  const r = searchCat(q), cur = curInfo(rEx);
+  $('rres').innerHTML = (r.length ? r.map(c => resItem(c, cur)).join('') : '<div class="s2">No match in your library or the common list.</div>') +
+    '<div class="ri" data-pick="' + esc(q) + '" data-custom="1"><b>Use "' + esc(q) + '"</b><br><span class="s2">Custom exercise. Coach adds it to your library with a demo.</span></div>';
+};
+$('repl').addEventListener('click', e => {
+  if (e.target.id === 'repl') return closeRepl();
+  if (e.target.closest('a')) return;
+  const it = e.target.closest('[data-pick]'); if (it) pickReplace(it.dataset.pick, !!it.dataset.custom);
+});
+const closeRepl = () => { $('repl').classList.remove('open'); popLayer('repl'); };
+$('rclose').onclick = closeRepl;
+function pickReplace(name, custom) {
+  if (!rReason) { toast('Pick a reason first: equipment busy, pain or preference.', 4000); $('rreason').scrollIntoView({ block: 'center' }); return; }
+  const ex = rEx, b = baseOf(ex), c = catFind(name) || { name: custom ? name.replace(/^./, x => x.toUpperCase()) : name, muscles: '' }, to = c.name;
+  if (P_.norm(to) === P_.norm(ex.canonical)) return toast('That is the current exercise.');
+  if (!related(c, curInfo(ex)) && !confirm(to + (c.muscles ? ' works ' + c.muscles.toLowerCase() : ' has no muscle info') + ', not the same muscles as ' + ex.canonical + '. Replace anyway?')) return;
+  const blk = blockOf(viewWeek());
+  if (rScope === 'block' && !(b.types || []).includes('isolation') && !confirm(b.canonical + ' is a main lift, fixed for the block. Replace it with ' + to + ' for the rest of Block ' + blk + '?')) return;
+  if (rowsFor(ex, true).length && !confirm('You already logged ' + ex.canonical + ' sets in this workout. They stay in your log. Replace anyway?')) return;
+  applySwap(b, to, rScope, rReason, ex.canonical);
+  closeRepl(); toast('Replaced with ' + to + (rScope === 'block' ? ' for the rest of Block ' + blk : ' for this workout'), 5000);
+}
+function applySwap(b, to, scope, reason, was) {
+  const blk = blockOf(viewWeek()), back = P_.norm(to) === P_.norm(b.canonical);
+  if (scope === 'block') { putSetting(b.canonical, 'bswap:B' + blk, back ? '' : JSON.stringify({ to, from: viewId })); if (getSetting(b.canonical, 'swap:' + viewId)) putSetting(b.canonical, 'swap:' + viewId, ''); }
+  else putSetting(b.canonical, 'swap:' + viewId, back && !swapInfo(b) ? '' : to);
+  putSetting('swaps', 's' + Date.now().toString(36), JSON.stringify({ at: new Date().toISOString(), wid: viewId, block: blk, from: b.canonical, was, to, scope, reason }));
+  swapMemo = {}; sig = ''; applyState(S, true);
+}
+$('rundo').onclick = () => {
+  const ex = rEx, b = baseOf(ex); if (!ex.swappedFrom) return;
+  if (ex.swapScope === 'workout') { putSetting(b.canonical, 'swap:' + viewId, ''); if (swapInfo(b)) putSetting(b.canonical, 'swap:' + viewId, b.canonical); }
+  else { if (!confirm('Go back to ' + b.canonical + ' for the rest of Block ' + blockOf(viewWeek()) + '?')) return; const v = JSON.parse(getSetting(b.canonical, 'bswap:B' + blockOf(viewWeek())) || '{}'); putSetting(b.canonical, 'bswap:B' + blockOf(viewWeek()), v.from === viewId ? '' : JSON.stringify({ to: b.canonical, from: viewId })); }
+  putSetting('swaps', 's' + Date.now().toString(36), JSON.stringify({ at: new Date().toISOString(), wid: viewId, block: blockOf(viewWeek()), from: b.canonical, was: ex.canonical, to: b.canonical, scope: ex.swapScope, reason: 'undo' }));
+  closeRepl(); swapMemo = {}; sig = ''; applyState(S, true); toast('Back to ' + b.canonical);
+};
 document.querySelectorAll('#mpain button').forEach(b => b.onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'pain', b.dataset.p === 'none' ? '' : b.dataset.p); toast('Joint pain: ' + b.dataset.p); });
 function openHistory(ex, fromMenu) {
   const rs = viewRows().filter(r => keysOf(ex).has(P_.norm(r.exercise)));
@@ -457,7 +634,7 @@ function openHistory(ex, fromMenu) {
   $('hh').textContent = ex.canonical + ' history';
   $('hb').innerHTML = ds.length ? ds.map(d => {
     const best = by[d].map(r => P_.e1rm(loadOf(r), r.reps)).filter(Boolean).reduce((m, e) => Math.max(m, e.ep), 0);
-    const pain = getSetting(ex.canonical, 'pain:' + d), note = getSetting(ex.canonical, 'note:' + d);
+    const wid = widOf(by[d][0]), pain = getSetting(ex.canonical, 'pain:' + wid), note = getSetting(ex.canonical, 'note:' + wid);
     return '<div class="hd"><b>' + esc(d) + '</b>' + (best ? ' · best e1RM ' + best : '') + (pain ? ' · pain ' + esc(pain) : '') + '<br>' + by[d].map(r => esc(setTxt(r)) + (+r.drops ? ' +' + r.drops + 'D' : '')).join(', ') + (note ? '<br><i>' + esc(note) + '</i>' : '') + '</div>';
   }).join('') : '<div class="s2">No history yet.</div>';
   $('hist').classList.add('open');
@@ -477,15 +654,16 @@ function btnLabel(ex) {
 function render() {
   const main = $('main'), d = days[dayKey];
   const nx = loggableId();
-  $('day').innerHTML = workouts().map(x => '<option value="' + x.id + '"' + (x.id === viewId ? ' selected' : '') + '>' + 'W' + x.w + ' ' + x.day[0].toUpperCase() + x.day.slice(1, 3) + (x.st ? (x.st.state === 'skipped' ? ' skipped' : ' done') : x.id === nx ? ' (next)' : '') + '</option>').join('');
+  $('day').innerHTML = workouts().map(x => '<option value="' + x.id + '"' + (x.id === viewId ? ' selected' : '') + '>' + wShort(x.w) + ' ' + x.day[0].toUpperCase() + x.day.slice(1, 3) + (x.st ? (x.st.state === 'skipped' ? ' skipped' : ' done') : x.id === nx ? ' (next)' : '') + '</option>').join('');
   $('prof').value = P;
   if (!d) { $('sub').textContent = ''; main.innerHTML = '<div class="empty">' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet.<br>Ask Coach to write it, or pick another day.' : 'No program file found for this profile yet.<br>Ask Coach to write one.') + '</div>'; return; }
   $('sub').textContent = d.title + (d.week ? ' · ' + d.week.split('.')[0] : '');
-  main.innerHTML = '<div id="meso">' + mesoHTML() + '</div>' + cardsFor().map((ex, i) => {
+  main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + cardsFor().map((ex, i) => {
     const n = ex.note, chips = [n.sets, n.failure, n.rest].filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
     return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span>' + (i + 1) + '. ' + esc(ex.canonical) + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
+      (ex.swappedFrom ? '<div class="swp">Replaces ' + esc(ex.swappedFrom) + (ex.swapScope === 'block' ? ' for the rest of this block' : ' in this workout') + '</div>' : '') +
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
@@ -501,6 +679,8 @@ function render() {
   enableDrag(main);
   main.onclick = e => {
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
+    if (e.target.closest('#wstartb')) { startWorkout(false); return; }
+    if (e.target.closest('#wrestart')) { startWorkout(true); return; }
     const wc = e.target.closest('td[data-w]'); if (wc) { setView(wc.dataset.w); sig = ''; applyState(S, true); window.scrollTo(0, 0); return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
@@ -509,7 +689,7 @@ function render() {
 function update() {
   cardsFor().forEach((ex, i) => { const s = $('s' + i), l = $('l' + i), b = $('b' + i); if (s) { const h = setsHTML(ex); if (s.innerHTML !== h && !(s.contains(document.activeElement) && document.activeElement.tagName === 'INPUT')) s.innerHTML = h; } if (l) l.textContent = lastTime(ex); if (b) b.textContent = btnLabel(ex); });
   const mz = $('meso'); if (mz) { const mh = mesoHTML(); if (mz.innerHTML !== mh) mz.innerHTML = mh; }
-  renderFinish(); markActive();
+  updWstart(); renderFinish(); markActive();
 }
 function finishedToday() { const x = wStatus()[viewId]; return x ? x.at : null; }
 function renderFinish() {
@@ -523,7 +703,18 @@ function renderFinish() {
 }
 const fmtDur = min => min >= 60 ? Math.floor(min / 60) + ' h ' + String(min % 60).padStart(2, '0') + ' min' : min + ' min';
 const fmtHMS = sec => { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec % 60).padStart(2, '0'); };
-function workoutStart() { const rs = workoutRows().map(tsOf).filter(Boolean); return rs.length ? Math.min.apply(null, rs) : null; }
+const WSK = () => 'coach_wstart_' + (testOn() ? 'test_' : '') + P;
+function manualStart() { const m = jget(WSK(), null); return m && m.wid === viewId ? m.ts : null; }
+function workoutStart() { const rs = workoutRows().map(tsOf).filter(Boolean), m = manualStart(); if (m) rs.push(m); return rs.length ? Math.min.apply(null, rs) : null; }
+function wstartHTML() {
+  const ws = wStatus()[viewId]; if (ws || !canLog() || !days[dayKey]) return '';
+  const n = workoutRows().length, m = manualStart();
+  if (n) return '<div class="wst"><span>Workout time</span> <b id="wstt"></b></div>';
+  if (m) return '<div class="wst"><span>Workout started</span> <b id="wstt"></b><button class="wsr" id="wrestart">Restart</button></div>';
+  return '<button class="btn sec wsb" id="wstartb">Start workout (warm-ups count)</button>';
+}
+function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); }
+function updWstart() { const z = $('wstart'); if (!z) return; const h = wstartHTML(); if (z.innerHTML.replace(/<b id="wstt">[^<]*<\/b>/, '<b id="wstt"></b>') !== h) z.innerHTML = h; tickDur(); }
 function durText() { // workout timer: first logged set -> Finish
   const ws = wStatus()[viewId], st = workoutStart();
   if (ws && ws.state === 'skipped') return '';
@@ -533,7 +724,7 @@ function durText() { // workout timer: first logged set -> Finish
   }
   return st && canLog() ? 'Workout time: ' + fmtHMS((Date.now() - st) / 1000) : '';
 }
-function tickDur() { const d = $('wdur'); if (d && S) { const t = durText(); if (d.textContent !== t) d.textContent = t; } }
+function tickDur() { const d = $('wdur'); if (d && S) { const t = durText(); if (d.textContent !== t) d.textContent = t; } const e = $('wstt'); if (e && S) { const st = workoutStart(), t = st ? fmtHMS((Date.now() - st) / 1000) : ''; if (e.textContent !== t) e.textContent = t; } }
 setInterval(tickDur, 1000);
 function workoutRows() { return viewRows().filter(r => widOf(r) === viewId); }
 function finishWorkout() {
@@ -543,7 +734,8 @@ function finishWorkout() {
   const now = Date.now(), st = workoutStart(), dur = st ? Math.max(0, Math.round((now - st) / 60000)) : null;
   enqueue({ action: 'finish', session: { session_id: uid(), client_ts: now, date: S.today, day: viewId, sets: String(rs.length), exercises: String(ex.size), notes: dur != null ? 'duration_min=' + dur : '' } });
   const t = getT(); if (t) { t.hidden = true; setT(t); }
-  sig = ''; applyState(S, true); toast('Workout finished. Nice work.', 3000);
+  LS.removeItem(WSK());
+  sig = ''; applyState(S, true); toast('Workout finished. Nice work.', 6000);
 }
 function skipWorkout() {
   if (!canLog()) return toast('Only the next workout (' + wLabel(loggableId()) + ') can be skipped.');
@@ -560,7 +752,7 @@ function editSetup(i) {
   putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; toast('Setup saved');
 }
 function applyState(st, initial) {
-  S = st; S.rows = S.rows || []; days = P_.enrich(P_.parseProgram(st.program), P_.parseLibrary(st.library));
+  S = st; S.rows = S.rows || []; LIB = P_.parseLibrary(st.library); days = P_.enrich(P_.parseProgram(st.program), LIB); swapMemo = {};
   if (!layerOpen('settings')) { $('settings').style.display = 'none'; $('app').style.display = 'block'; }
   const ls = localSet(); if (migrateKeys(ls)) jset(SK(), ls);
   if (S.settings) migrateKeys(S.settings);
@@ -602,7 +794,7 @@ $('stest').onchange = e => {
   if (e.target.checked) { LS.setItem('coach_test', '1'); toast('Test mode on'); }
   else {
     if (!confirm('Turn off test mode and discard all test sets?')) { e.target.checked = true; return; }
-    LS.removeItem('coach_test'); LS.removeItem('coach_testq'); LS.removeItem('coach_settings_test_' + P); LS.removeItem(TKEY()); toast('Test mode off, test data discarded');
+    LS.removeItem('coach_test'); LS.removeItem('coach_testq'); LS.removeItem('coach_settings_test_' + P); LS.removeItem('coach_wstart_test_' + P); LS.removeItem(TKEY()); setRQ(getRQ().filter(x => !x.test)); toast('Test mode off, test data discarded');
   }
   sig = ''; if (S) { hideSettings(); applyState(S, true); }
 };
@@ -679,9 +871,9 @@ function tick() {
   if (sec * 1000 > TIMER_MAX) { LS.removeItem(TKEY()); el.style.display = 'none'; timerBar(false); return; }
   el.style.display = 'block'; timerBar(true); $('tt').textContent = fmt(sec); $('ttg').textContent = fmt(t.target);
   $('tex').textContent = (t.firstSide ? 'since first side of ' : 'after ') + t.exercise + (t.next ? ' · ' + t.next : '');
-  el.className = sec <= t.target ? 'under' : 'over';
-  const fs = $('ftimer'); if (fs) { fs.textContent = 'Rest ' + fmt(sec) + ' / ' + fmt(t.target); fs.className = sec <= t.target ? 'under' : 'over'; }
-  const left = t.target - sec, whole = Math.floor(sec);
+  const left = t.target - sec, whole = Math.floor(sec), fl = left > 0 && left <= 10 ? ' flash' : '';
+  el.className = (sec <= t.target ? 'under' : 'over') + fl;
+  const fs = $('ftimer'); if (fs) { fs.textContent = 'Rest ' + fmt(sec) + ' / ' + fmt(t.target); fs.className = (sec <= t.target ? 'under' : 'over') + fl; }
   if (left > 0 && left <= 10 && whole !== lastBeep && document.visibilityState === 'visible') { lastBeep = whole; beep(left <= 1); }
 }
 setInterval(tick, 250);
@@ -843,7 +1035,7 @@ function feedback(ex, set, before, rest, target) {
   }
   if (!msgs.length && rest != null && rest > target + 90) msgs.push(['Rest ran ' + fmt(rest) + ' vs ' + fmt(target) + ' target. Tap Set done as you rack it, log while you rest.', 'Long rest (' + fmt(rest) + '). Your muscles were ready a while ago.'][Math.floor(Math.random() * 2)]);
   if (!msgs.length && Math.random() < 0.33) msgs.push(JOKES[Math.floor(Math.random() * JOKES.length)]);
-  toast(msgs.length ? msgs[0] : 'Saved', msgs.length ? 4500 : 2000);
+  toast(msgs.length ? msgs[0] : 'Saved', msgs.length ? 7500 : 3000);
 }
 
 // ---------- Voice (hidden when unsupported, e.g. iOS) ----------

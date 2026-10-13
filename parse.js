@@ -64,7 +64,7 @@
       const types = (cells[5] || '').toLowerCase().split(/[,\s]+/).filter(Boolean);
       lib.push({ name: cells[0], aliases, muscles: cells[2], video: /^https?:\/\//.test(cells[3]) ? cells[3] : '', keys: [...keys],
         rest_muscle: (cells[4] || '').toLowerCase() || norm(String(cells[2] || '').split(/[,(]/)[0]),
-        types, single: types.includes('single'), bodyweight: types.includes('bodyweight'), setup: cells[6] || '', cue: cells[7] || '' });
+        types, single: types.includes('single'), bodyweight: types.includes('bodyweight'), setup: cells[6] || '', cue: cells[7] || '', equip: (cells[8] || '').toLowerCase() });
     }
     return lib;
   }
@@ -79,10 +79,20 @@
       ex.match_keys = e ? e.keys : [norm(ex.name)];
       ex.rest_muscle = e ? e.rest_muscle : norm(ex.name); ex.types = e ? e.types : [];
       ex.single = !!(e && e.single) || /\b(single|one)[ -](arm|leg)\b|\bper (arm|leg|side)\b/i.test(ex.full_name + ' ' + ex.details);
-      ex.bodyweight = !!(e && e.bodyweight); ex.setup = e ? e.setup : ''; ex.cue = e ? e.cue : '';
+      ex.bodyweight = !!(e && e.bodyweight); ex.setup = e ? e.setup : ''; ex.cue = e ? e.cue : ''; ex.equip = (e && e.equip) || equipOf(ex.name, ex.bodyweight);
       const sm = (ex.note.sets || '').match(/^(\d+)\s*x/i); ex.planned_sets = sm ? +sm[1] : 3;
     }));
     return days;
+  }
+  function equipOf(name, bw) {
+    const n = String(name || '').toLowerCase();
+    if (/hex|trap bar/.test(n)) return 'hexbar';
+    if (/barbell|\bbb\b|smith|ez bar/.test(n)) return 'barbell';
+    if (/dumbbell|\bdb\b/.test(n)) return 'dumbbell';
+    if (/cable|rope|pulldown|pushdown|face pull/.test(n)) return 'cable';
+    if (/machine|pec deck|hack|leg press|hammer strength|smith|selectorized|leg extension|leg curl/.test(n)) return 'machine';
+    if (bw || /dip|pull-?up|chin-?up|push-?up|bodyweight|plank|crunch|leg raise/.test(n)) return 'bodyweight';
+    return 'machine';
   }
   function e1rm(load, reps) {
     const w = parseFloat(load), r = parseInt(reps, 10);
@@ -115,6 +125,6 @@
     out.notes = t.replace(/\s+/g, ' ').trim().replace(/^(and|with|reps?|lbs?|pounds?)\b\s*/, '').replace(/\s*\band$/, '').trim();
     return out;
   }
-  const api = { norm, stripParens, parseNote, parseProgram, parseLibrary, lookup, enrich, e1rm, parseSpeech };
+  const api = { equipOf, norm, stripParens, parseNote, parseProgram, parseLibrary, lookup, enrich, e1rm, parseSpeech };
   if (typeof module !== 'undefined') module.exports = api; else root.CoachParse = api;
 })(this);
