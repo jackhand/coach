@@ -1056,11 +1056,19 @@ function holdTick() {
 }
 setInterval(holdTick, 250);
 function holdUI() {
-  const on = !!hold; $('hstart').style.display = on ? 'none' : 'block'; $('hstop').style.display = on ? 'block' : 'none';
-  $('hside').textContent = formEx && formEx.single ? (on ? 'Timing ' + (hold.el === $('frr') ? 'right' : 'left') + ' side' : 'Next: ' + holdSideLbl().toLowerCase() + ' side') : (on ? 'Timing hold' : 'Timer fills hold time');
-  if (!on) $('hstart').textContent = 'Start hold' + (formEx && formEx.single ? ' (' + holdSideLbl() + ')' : '');
+  const on = !!hold, single = !!(formEx && formEx.single);
+  $('hstop').style.display = on ? 'block' : 'none';
+  if (!single) { $('hstartr').style.display = 'none'; $('hstart').style.display = on ? 'none' : 'block'; $('hstart').textContent = 'Start hold'; $('hside').textContent = on ? 'Timing hold' : 'Timer fills hold time'; return; }
+  // Single-leg: both sides offered; the side not yet timed is listed first after a stop.
+  const lDone = !!$('frl').value, rDone = !!$('frr').value, rFirst = lDone && !rDone;
+  $('hstart').style.display = on ? 'none' : 'block'; $('hstartr').style.display = on ? 'none' : 'block';
+  $('hstart').textContent = rFirst ? 'Start Right' : 'Start Left'; $('hstart').dataset.side = rFirst ? 'R' : 'L';
+  $('hstartr').textContent = rFirst ? 'Start Left' : 'Start Right'; $('hstartr').dataset.side = rFirst ? 'L' : 'R';
+  $('hside').textContent = on ? 'Timing ' + (hold.el === $('frr') ? 'right' : 'left') + ' side' : (lDone && !rDone ? 'Next: right side' : rDone && !lDone ? 'Next: left side' : 'Pick a side');
 }
-$('hstart').onclick = () => { audio(); const el = holdTarget(); hold = { start: Date.now(), el }; holdTick(); holdUI(); };
+const startHold = side => { audio(); const single = formEx && formEx.single; const el = !single ? $('fr') : side === 'R' ? $('frr') : $('frl'); hold = { start: Date.now(), el }; holdTick(); holdUI(); };
+$('hstart').onclick = () => startHold($('hstart').dataset.side || 'L');
+$('hstartr').onclick = () => startHold($('hstartr').dataset.side || 'R');
 $('hstop').onclick = () => { if (!hold) return; holdTick(); hold = null; holdUI(); };
 function stopHold() { if (hold) { holdTick(); hold = null; } }
 function setStretchMode(on, ex) {
