@@ -167,7 +167,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
-  <div class="sub" style="text-align:center;margin-top:12px">App version 27</div>
+  <div class="sub" style="text-align:center;margin-top:12px">App version 28</div>
 </div>
 <div id="app" style="display:none">
 <header>
@@ -207,8 +207,8 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
       <div id="repsbox"><label for="fr">Reps</label><input id="fr" inputmode="numeric" autocomplete="off"></div>
     </div>
     <div id="holdbox" style="display:none">
-      <label for="fang">Angle (Flexability Level)</label>
-      <input id="fang" inputmode="decimal" autocomplete="off" placeholder="e.g. 40">
+<div id="angbox">      <label for="fang">Angle (Flexability Level)</label>
+      <input id="fang" inputmode="decimal" autocomplete="off" placeholder="e.g. 40"></div>
       <div class="holdt">
         <div class="t" id="htime">0:00</div>
         <div class="tb"><button type="button" class="btn sec" id="hstart">Start hold</button><button type="button" class="btn sec" id="hstartr" style="display:none">Start Right</button><button type="button" class="btn sec" id="hstop" style="display:none">Stop hold</button></div>
@@ -221,6 +221,10 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
       <div class="grid">
         <div><label for="frl" id="frll">Left reps</label><input id="frl" inputmode="numeric" autocomplete="off"></div>
         <div><label for="frr" id="frrl">Right reps</label><input id="frr" inputmode="numeric" autocomplete="off"></div>
+      </div>
+      <div class="grid" id="sangs" style="display:none">
+        <div><label for="fangl">Left angle</label><input id="fangl" inputmode="decimal" autocomplete="off"></div>
+        <div><label for="fangr">Right angle</label><input id="fangr" inputmode="decimal" autocomplete="off"></div>
       </div>
       <button class="btn sec" id="fsame" type="button">Same both sides</button>
     </div>
@@ -289,8 +293,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=27"></script>
-<script src="exlist.js?v=27"></script>
-<script src="app.js?v=27"></script>
+<script src="parse.js?v=28"></script>
+<script src="exlist.js?v=28"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>

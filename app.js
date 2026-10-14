@@ -15,6 +15,7 @@ const parseHold = v => { // '5:00' or '300' -> seconds; null if empty/invalid
   const n = parseFloat(t); return n >= 0 && isFinite(n) ? Math.round(n) : null;
 };
 const fmtHold = v => { const sec = typeof v === 'number' ? v : parseHold(v); return sec == null ? '' : fmt(sec); };
+const angs = load => { const p = String(load == null ? '' : load).replace(/°/g, '').split('/').map(x => x.trim()); return { L: p[0] || '', R: (p.length > 1 ? p[1] : p[0]) || '' }; };
 const isStretch = ex => !!(ex && (ex.stretch || (ex.types || []).includes('stretch')));
 const jget = (k, d) => { try { const v = JSON.parse(LS.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
 const jset = (k, v) => LS.setItem(k, JSON.stringify(v));
@@ -153,8 +154,8 @@ const loadOf = r => r.total_load || r.load;
 function setTxt(r) {
   const ex = r && r.exercise ? exFor(r.exercise) : null;
   if (isStretch(ex)) {
-    const a = String(r.load || '-').replace(/°$/, '');
-    if (r.left_reps || r.right_reps) return a + '° L' + (fmtHold(r.left_reps) || '-') + ' / R' + (fmtHold(r.right_reps) || '-');
+    const a = String(r.load || '-').replace(/°$/, ''), g = angs(r.load);
+    if (r.left_reps || r.right_reps) return (g.L || '-') + '° ' + (fmtHold(r.left_reps) || '-') + ' L / ' + (g.R || '-') + '° ' + (fmtHold(r.right_reps) || '-') + ' R';
     return a + '° x ' + (fmtHold(r.reps) || r.reps || '-');
   }
   if (r.left_reps || r.right_reps) return (r.load || '-') + ' x L' + (r.left_reps || '?') + ' / R' + (r.right_reps || '?');
@@ -176,9 +177,9 @@ function setsHTML(ex) {
     const bits = [st ? '' : (FT_LABEL[r.failure_type] || r.failure_type), +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '',
       r.total_load ? ('total ' + r.total_load + ' lb') : '',
       r.pending ? 'pending sync' : (r.rest_time ? 'rest ' + r.rest_time : ''), e ? ('e1RM ' + e.ep + ' Epley / ' + e.br + ' Brzycki') : ''].filter(Boolean).join(' · ');
-    const ang = st ? (String(r.load || '-').replace(/°$/, '') + '°') : (r.load || '-');
+    const g = angs(r.load), ang = st ? ((r.left_reps || r.right_reps) && g.L !== g.R ? 'L' + g.L + '° R' + g.R + '°' : (g.L || '-') + '°') : (r.load || '-');
     const hold = (r.left_reps || r.right_reps)
-      ? ('L' + (st ? fmtHold(r.left_reps) : r.left_reps || '?') + ' R' + (st ? fmtHold(r.right_reps) : r.right_reps || '?'))
+      ? ((st ? fmtHold(r.left_reps) : r.left_reps || '?') || '-') + ' L / ' + ((st ? fmtHold(r.right_reps) : r.right_reps || '?') || '-') + ' R'
       : (st ? (fmtHold(r.reps) || r.reps) : r.reps);
     return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
   }).join('');
@@ -187,7 +188,7 @@ function setsHTML(ex) {
     const tb = tq && (tq.all || i === n - 1) ? '<button class="tq" data-tq="' + tq.keys.join(',') + '" aria-label="Technique info">' + tq.keys.map(k => TECH[k].tag).join('/') + '</button>' : '';
     const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && sg.reps) || '';
     const isNext = i === rs.length;
-    const wShow = st && w ? (String(w).replace(/°$/, '') + '°') : w;
+    const gw = angs(w), wShow = st && w ? (gw.L !== gw.R ? 'L' + gw.L + '° R' + gw.R + '°' : gw.L + '°') : w;
     const rShow = st && r ? (fmtHold(r) || r) : r;
     h += '<li class="plan"><div class="srow"><span class="sn">' + (i + 1) + tb + '</span>' +
       '<span class="val sug">' + esc(wShow) + '</span><span class="val sug">' + esc(rShow) + '</span>' +
@@ -403,11 +404,10 @@ function suggestNext(ex, idx) {
     const ls = lastSession(ex), defA = '40', defT = '5:00';
     if (ls) {
       const r = ls.rows[Math.min(idx, ls.rows.length - 1)];
-      const a = String(r.load || defA).replace(/°$/, '');
-      const t = fmtHold(r.left_reps || r.right_reps || r.reps) || defT;
-      return { load: a, reps: t, why: 'last time ' + setTxt(r) };
+      const g = angs(r.load || defA), tl = fmtHold(r.left_reps || r.reps) || defT, tr = fmtHold(r.right_reps || r.reps) || defT;
+      return { load: g.L === g.R ? g.L : g.L + '/' + g.R, reps: tl, repsL: tl, repsR: tr, angL: g.L, angR: g.R, why: 'last time ' + setTxt(r) };
     }
-    return { load: defA, reps: defT, why: 'start about 40° for 5 min per side', est: true };
+    return { load: defA, reps: defT, repsL: defT, repsR: defT, angL: defA, angR: defA, why: 'start about 40° for 5 min per side', est: true };
   }
   const [lo, hi] = repRange(ex), dl = isDeload(viewWeek()), st = stepFor(ex), iso = (ex.types || []).includes('isolation');
   const ls = lastSession(ex);
@@ -1058,12 +1058,12 @@ setInterval(holdTick, 250);
 function holdUI() {
   const on = !!hold, single = !!(formEx && formEx.single);
   $('hstop').style.display = on ? 'block' : 'none';
-  if (!single) { $('hstartr').style.display = 'none'; $('hstart').style.display = on ? 'none' : 'block'; $('hstart').textContent = 'Start hold'; $('hside').textContent = on ? 'Timing hold' : 'Timer fills hold time'; return; }
-  // Single-leg: both sides offered; the side not yet timed is listed first after a stop.
-  const lDone = !!$('frl').value, rDone = !!$('frr').value, rFirst = lDone && !rDone;
+  if (!single) { $('hstartr').style.display = 'none'; $('hstart').style.display = on ? 'none' : 'block'; $('hstart').textContent = 'Start hold'; $('hstart').dataset.side = ''; $('hside').textContent = on ? 'Timing hold' : 'Timer fills hold time'; return; }
+  // Fixed labels: Start Left / Start Right. After one side stops, prompt the other.
   $('hstart').style.display = on ? 'none' : 'block'; $('hstartr').style.display = on ? 'none' : 'block';
-  $('hstart').textContent = rFirst ? 'Start Right' : 'Start Left'; $('hstart').dataset.side = rFirst ? 'R' : 'L';
-  $('hstartr').textContent = rFirst ? 'Start Left' : 'Start Right'; $('hstartr').dataset.side = rFirst ? 'L' : 'R';
+  $('hstart').textContent = 'Start Left'; $('hstart').dataset.side = 'L';
+  $('hstartr').textContent = 'Start Right'; $('hstartr').dataset.side = 'R';
+  const lDone = !!$('frl').value, rDone = !!$('frr').value;
   $('hside').textContent = on ? 'Timing ' + (hold.el === $('frr') ? 'right' : 'left') + ' side' : (lDone && !rDone ? 'Next: right side' : rDone && !lDone ? 'Next: left side' : 'Pick a side');
 }
 const startHold = side => { audio(); const single = formEx && formEx.single; const el = !single ? $('fr') : side === 'R' ? $('frr') : $('frl'); hold = { start: Date.now(), el }; holdTick(); holdUI(); };
@@ -1078,6 +1078,7 @@ function setStretchMode(on, ex) {
   $('frll').textContent = on ? 'Left hold (m:ss)' : 'Left reps'; $('frrl').textContent = on ? 'Right hold (m:ss)' : 'Right reps';
   ['frl', 'frr'].forEach(id => { $(id).inputMode = on ? 'text' : 'numeric'; });
   if (on && !(ex && ex.single)) { $('sides').style.display = 'none'; $('repsbox').style.display = 'block'; }
+  const per = on && ex && ex.single; $('sangs').style.display = per ? 'grid' : 'none'; $('angbox').style.display = on && !per ? 'block' : 'none';
 }
 function openForm(i, ts, row) {
   const ex = row ? (exFor(row.exercise) || { canonical: row.exercise, note: {}, single: !!row.left_reps, bodyweight: !!row.added_load }) : cardsFor()[i];
@@ -1097,10 +1098,15 @@ function openForm(i, ts, row) {
   if (stx) {
     $('fang').value = row ? String(row.load || '').replace(/°$/, '') : (sg && sg.load ? String(sg.load).replace(/°$/, '') : '');
     const t = sg && sg.reps ? sg.reps : '';
-    if (ex.single) { $('frl').value = row ? fmtHold(row.left_reps) : ''; $('frr').value = row ? fmtHold(row.right_reps) : ''; $('frl').placeholder = t; $('frr').placeholder = t; }
+    if (ex.single) {
+      const g = row ? angs(row.load) : { L: sg ? sg.angL : '', R: sg ? sg.angR : '' };
+      $('fangl').value = g.L; $('fangr').value = g.R;
+      $('frl').value = row ? fmtHold(row.left_reps) : ''; $('frr').value = row ? fmtHold(row.right_reps) : '';
+      $('frl').placeholder = sg ? sg.repsL || t : t; $('frr').placeholder = sg ? sg.repsR || t : t;
+    }
     else $('fr').value = row ? fmtHold(row.reps) : '';
     $('htime').textContent = '0:00'; holdUI();
-    $('fsug').textContent = sg ? 'Suggested: ' + String(sg.load).replace(/°$/, '') + '° for ' + sg.reps + (ex.single ? ' per side' : '') + ' (' + sg.why + ').' : '';
+    $('fsug').textContent = sg ? 'Suggested: ' + (ex.single ? sg.angL + '° ' + sg.repsL + ' L / ' + sg.angR + '° ' + sg.repsR + ' R' : String(sg.load) + '° for ' + sg.reps) + ' (' + sg.why + ').' : '';
   }
   $('fbw').textContent = ''; bwLine();
   $('fdel').style.display = row ? 'block' : 'none'; $('ftimer').style.display = 'none';
@@ -1122,7 +1128,7 @@ let formKey = null, formPain = 'none';
 function setPain(p) { formPain = p; document.querySelectorAll('#fp button').forEach(b => b.classList.toggle('on', b.dataset.p === p)); }
 document.querySelectorAll('#fp button').forEach(b => b.onclick = () => setPain(b.dataset.p));
 function openEdit(sid) { const r = viewRows().find(x => x.set_id === sid); if (r) openForm(-1, tsOf(r), r); }
-$('fsame').onclick = () => { $('frr').value = $('frl').value; };
+$('fsame').onclick = () => { $('frr').value = $('frl').value; if (formEx && isStretch(formEx)) { $('fangr').value = $('fangl').value; holdUI(); } };
 function sheetTop() { // after open, layout, and keyboard: put the popup at its top
   const inn = $('sheet').querySelector('.in');
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
@@ -1170,7 +1176,8 @@ $('fsave').onclick = () => {
 function saveStretch(ex) {
   stopHold(); holdUI();
   if (ex && ex.canonical && (dayVal(ex, 'pain') || 'none') !== formPain && (editId || formPain !== 'none')) putSetting(ex.canonical, 'pain:' + viewId, formPain === 'none' ? '' : formPain);
-  const ang = $('fang').value.trim().replace(/°$/, '');
+  let ang = $('fang').value.trim().replace(/°$/, '');
+  if (ex.single) { const al = $('fangl').value.trim().replace(/°$/, ''), ar = $('fangr').value.trim().replace(/°$/, ''); ang = al === ar || !ar ? al : (al || '-') + '/' + ar; }
   let L = '', Rr = '', reps = '';
   if (ex.single) {
     const l = parseHold($('frl').value || $('frl').placeholder), r = parseHold($('frr').value || $('frr').placeholder);
