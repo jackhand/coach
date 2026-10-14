@@ -9,6 +9,13 @@ const FT = ['technical','true','drop set','myo-reps','not to failure'];
 const FT_LABEL = {'technical':'Technical failure','true':'True failure','drop set':'Drop set','myo-reps':'Myo-reps','not to failure':'Not to failure'};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = sec => { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+const parseHold = v => { // '5:00' or '300' -> seconds; null if empty/invalid
+  const t = String(v == null ? '' : v).trim(); if (!t) return null;
+  if (/^\d+:\d{1,2}$/.test(t)) { const [m, sec] = t.split(':').map(Number); return m * 60 + sec; }
+  const n = parseFloat(t); return n >= 0 && isFinite(n) ? Math.round(n) : null;
+};
+const fmtHold = v => { const sec = typeof v === 'number' ? v : parseHold(v); return sec == null ? '' : fmt(sec); };
+const isStretch = ex => !!(ex && (ex.stretch || (ex.types || []).includes('stretch')));
 const jget = (k, d) => { try { const v = JSON.parse(LS.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
 const jset = (k, v) => LS.setItem(k, JSON.stringify(v));
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -144,6 +151,12 @@ function rowsFor(ex, today) {
 }
 const loadOf = r => r.total_load || r.load;
 function setTxt(r) {
+  const ex = r && r.exercise ? exFor(r.exercise) : null;
+  if (isStretch(ex)) {
+    const a = String(r.load || '-').replace(/°$/, '');
+    if (r.left_reps || r.right_reps) return a + '° L' + (fmtHold(r.left_reps) || '-') + ' / R' + (fmtHold(r.right_reps) || '-');
+    return a + '° x ' + (fmtHold(r.reps) || r.reps || '-');
+  }
   if (r.left_reps || r.right_reps) return (r.load || '-') + ' x L' + (r.left_reps || '?') + ' / R' + (r.right_reps || '?');
   return (r.load || '-') + ' x ' + r.reps;
 }
@@ -156,25 +169,31 @@ function setsHTML(ex) {
   if (!n) return '<li class="s2 none">Skipped today.</li>';
   const name = esc(ex.canonical), t = getT();
   const half = ex.single && t && t.firstSide && P_.norm(t.exercise) === P_.norm(ex.canonical);
-  let h = '<li class="shead"><span>SET</span><span>WEIGHT</span><span>REPS</span><span></span><span>LOG</span></li>';
+  const st = isStretch(ex);
+  let h = '<li class="shead' + (st ? ' stretch' : '') + '"><span>SET</span><span>' + (st ? 'ANGLE' : 'WEIGHT') + '</span><span>' + (st ? 'HOLD' : 'REPS') + '</span><span></span><span>LOG</span></li>';
   h += rs.map((r, i) => {
-    const e = P_.e1rm(loadOf(r), r.reps);
-    const bits = [FT_LABEL[r.failure_type] || r.failure_type, +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '',
+    const e = st ? null : P_.e1rm(loadOf(r), r.reps);
+    const bits = [st ? '' : (FT_LABEL[r.failure_type] || r.failure_type), +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '',
       r.total_load ? ('total ' + r.total_load + ' lb') : '',
       r.pending ? 'pending sync' : (r.rest_time ? 'rest ' + r.rest_time : ''), e ? ('e1RM ' + e.ep + ' Epley / ' + e.br + ' Brzycki') : ''].filter(Boolean).join(' · ');
-    const reps = (r.left_reps || r.right_reps) ? 'L' + (r.left_reps || '?') + ' R' + (r.right_reps || '?') : r.reps;
-    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(r.load || '-') + (r.load && ex.bodyweight ? '<small> +</small>' : '') + '</span><span class="val">' + esc(reps) + ' ' + trend(ex, r, i) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
+    const ang = st ? (String(r.load || '-').replace(/°$/, '') + '°') : (r.load || '-');
+    const hold = (r.left_reps || r.right_reps)
+      ? ('L' + (st ? fmtHold(r.left_reps) : r.left_reps || '?') + ' R' + (st ? fmtHold(r.right_reps) : r.right_reps || '?'))
+      : (st ? (fmtHold(r.reps) || r.reps) : r.reps);
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
   }).join('');
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
     const tb = tq && (tq.all || i === n - 1) ? '<button class="tq" data-tq="' + tq.keys.join(',') + '" aria-label="Technique info">' + tq.keys.map(k => TECH[k].tag).join('/') + '</button>' : '';
     const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && sg.reps) || '';
     const isNext = i === rs.length;
+    const wShow = st && w ? (String(w).replace(/°$/, '') + '°') : w;
+    const rShow = st && r ? (fmtHold(r) || r) : r;
     h += '<li class="plan"><div class="srow"><span class="sn">' + (i + 1) + tb + '</span>' +
-      '<span class="val sug">' + esc(w) + '</span><span class="val sug">' + esc(r) + '</span>' +
+      '<span class="val sug">' + esc(wShow) + '</span><span class="val sug">' + esc(rShow) + '</span>' +
       '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +
       '<button class="lg' + (half && isNext ? ' half' : '') + '" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '>' + (half && isNext ? '&#189;' : '') + '</button></div>' +
-      (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + (ex.single ? ' · reps per side' : '') + '</div>' : '') + '</li>';
+      (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + (ex.single ? (st ? ' · per side' : ' · reps per side') : '') + '</div>' : '') + '</li>';
   }
   return h;
 }
@@ -380,6 +399,16 @@ function suggest(ex, idx) {
   return base;
 }
 function suggestNext(ex, idx) {
+  if (isStretch(ex)) {
+    const ls = lastSession(ex), defA = '40', defT = '5:00';
+    if (ls) {
+      const r = ls.rows[Math.min(idx, ls.rows.length - 1)];
+      const a = String(r.load || defA).replace(/°$/, '');
+      const t = fmtHold(r.left_reps || r.right_reps || r.reps) || defT;
+      return { load: a, reps: t, why: 'last time ' + setTxt(r) };
+    }
+    return { load: defA, reps: defT, why: 'start about 40° for 5 min per side', est: true };
+  }
   const [lo, hi] = repRange(ex), dl = isDeload(viewWeek()), st = stepFor(ex), iso = (ex.types || []).includes('isolation');
   const ls = lastSession(ex);
   if (ls) {
@@ -670,8 +699,8 @@ $('hist').addEventListener('click', e => { if (e.target.id === 'hist') closeHist
 // ---------- Render ----------
 function btnLabel(ex) {
   const t = getT();
-  if (ex.single && t && t.firstSide && P_.norm(t.exercise) === P_.norm(ex.canonical)) return 'Second side done: log set';
-  return ex.single ? 'First side done' : 'Set done';
+  if (ex.single && t && t.firstSide && P_.norm(t.exercise) === P_.norm(ex.canonical)) return isStretch(ex) ? 'Second side done: log hold' : 'Second side done: log set';
+  return ex.single ? (isStretch(ex) ? 'First side done' : 'First side done') : (isStretch(ex) ? 'Hold done' : 'Set done');
 }
 function render() {
   const main = $('main'), d = days[dayKey];
@@ -994,6 +1023,7 @@ function setDone(i) {
   audio(); // unlock audio on a user tap (needed on iPhone and Chrome)
   const ex = cardsFor()[i], now = Date.now(), t = getT();
   const same = t && P_.norm(t.exercise) === P_.norm(ex.canonical);
+  if (isStretch(ex)) { prevRest = t && !t.hidden ? (now - t.start) / 1000 : null; openForm(i, now); return; }
   if (ex.single && !(same && t.firstSide)) {
     prevRest = t && !t.hidden ? (now - t.start) / 1000 : null;
     const nt = nextTarget(ex.canonical);
@@ -1015,12 +1045,39 @@ function bwLine() {
 }
 $('fl').oninput = bwLine;
 function showSides(on) { $('sides').style.display = on ? 'block' : 'none'; $('repsbox').style.display = on ? 'none' : 'block'; }
+// ---------- Hold timer (stretch mode) ----------
+let hold = null; // { start, side: 'L'|'R'|'' }
+function holdTarget() { if (!formEx || !isStretch(formEx)) return null; if (!formEx.single) return $('fr'); return hold && hold.side === 'R' ? $('frr') : (hold && hold.side === 'L' ? $('frl') : (!$('frl').value ? $('frl') : $('frr'))); }
+function holdSideLbl() { if (!formEx || !formEx.single) return ''; const t = holdTarget(); return t === $('frr') ? 'Right' : 'Left'; }
+function holdTick() {
+  if (!hold) return;
+  const sec = (Date.now() - hold.start) / 1000; $('htime').textContent = fmt(sec);
+  const el = hold.el; if (el) el.value = fmt(sec);
+}
+setInterval(holdTick, 250);
+function holdUI() {
+  const on = !!hold; $('hstart').style.display = on ? 'none' : 'block'; $('hstop').style.display = on ? 'block' : 'none';
+  $('hside').textContent = formEx && formEx.single ? (on ? 'Timing ' + (hold.el === $('frr') ? 'right' : 'left') + ' side' : 'Next: ' + holdSideLbl().toLowerCase() + ' side') : (on ? 'Timing hold' : 'Timer fills hold time');
+  if (!on) $('hstart').textContent = 'Start hold' + (formEx && formEx.single ? ' (' + holdSideLbl() + ')' : '');
+}
+$('hstart').onclick = () => { audio(); const el = holdTarget(); hold = { start: Date.now(), el }; holdTick(); holdUI(); };
+$('hstop').onclick = () => { if (!hold) return; holdTick(); hold = null; holdUI(); };
+function stopHold() { if (hold) { holdTick(); hold = null; } }
+function setStretchMode(on, ex) {
+  $('holdbox').style.display = on ? 'block' : 'none';
+  $('liftgrid').style.display = on ? 'none' : 'grid';
+  $('liftxtra').style.display = on ? 'none' : 'block';
+  $('frll').textContent = on ? 'Left hold (m:ss)' : 'Left reps'; $('frrl').textContent = on ? 'Right hold (m:ss)' : 'Right reps';
+  ['frl', 'frr'].forEach(id => { $(id).inputMode = on ? 'text' : 'numeric'; });
+  if (on && !(ex && ex.single)) { $('sides').style.display = 'none'; $('repsbox').style.display = 'block'; }
+}
 function openForm(i, ts, row) {
   const ex = row ? (exFor(row.exercise) || { canonical: row.exercise, note: {}, single: !!row.left_reps, bodyweight: !!row.added_load }) : cardsFor()[i];
   formEx = ex; editId = row ? row.set_id : null; doneTs = ts || Date.now();
   const today = row ? [] : rowsFor(ex, true), prev = today.length ? today[today.length - 1] : null;
   $('sh').textContent = (row ? 'Edit: ' : '') + ex.canonical;
   $('fll').textContent = ex.bodyweight ? 'Added weight (vest/belt, 0 if none)' : 'Load (lb)';
+  stopHold(); const stx = isStretch(ex);
   const sg = row ? null : suggest(ex, today.length);
   $('fl').value = row ? (row.load || '') : sg && sg.load ? sg.load : prev ? prev.load : (ex.bodyweight ? '0' : '');
   $('fr').value = row ? row.reps : (sg && !ex.single ? sg.reps : '');
@@ -1028,6 +1085,15 @@ function openForm(i, ts, row) {
   $('fsug').textContent = sg ? (sg.est ? 'Estimate: ' : 'Suggested: ') + (sg.load || '-') + ' x ' + sg.reps + ' (' + sg.why + '). Change it if you did something else.' : ''; $('fn').value = row ? (row.notes || '') : ''; $('ferr').textContent = '';
   $('frl').value = row ? (row.left_reps || '') : ''; $('frr').value = row ? (row.right_reps || '') : '';
   showSides(!!ex.single); setDrops(row ? (+row.drops || 0) : 0);
+  setStretchMode(stx, ex);
+  if (stx) {
+    $('fang').value = row ? String(row.load || '').replace(/°$/, '') : (sg && sg.load ? String(sg.load).replace(/°$/, '') : '');
+    const t = sg && sg.reps ? sg.reps : '';
+    if (ex.single) { $('frl').value = row ? fmtHold(row.left_reps) : ''; $('frr').value = row ? fmtHold(row.right_reps) : ''; $('frl').placeholder = t; $('frr').placeholder = t; }
+    else $('fr').value = row ? fmtHold(row.reps) : '';
+    $('htime').textContent = '0:00'; holdUI();
+    $('fsug').textContent = sg ? 'Suggested: ' + String(sg.load).replace(/°$/, '') + '° for ' + sg.reps + (ex.single ? ' per side' : '') + ' (' + sg.why + ').' : '';
+  }
   $('fbw').textContent = ''; bwLine();
   $('fdel').style.display = row ? 'block' : 'none'; $('ftimer').style.display = 'none';
   $('fsave').textContent = row ? 'Save changes' : 'Save set';
@@ -1055,12 +1121,13 @@ function sheetTop() { // after open, layout, and keyboard: put the popup at its 
   const go = () => { inn.scrollTop = 0; $('sheet').scrollTop = 0; inn.querySelectorAll('*').forEach(e => { if (e.scrollTop) e.scrollTop = 0; }); };
   go(); requestAnimationFrame(() => { go(); requestAnimationFrame(go); }); setTimeout(go, 80); setTimeout(go, 250);
 }
-function closeForm(fromPop) { $('sheet').classList.remove('open'); formEx = null; editId = null; stopRec(); if (fromPop !== true) popLayer('sheet'); if (S) applyState(S, false); }
+function closeForm(fromPop) { $('sheet').classList.remove('open'); stopHold(); formEx = null; editId = null; stopRec(); if (fromPop !== true) popLayer('sheet'); if (S) applyState(S, false); }
 $('fcancel').onclick = closeForm;
 $('fdel').onclick = () => { const id = editId; if (!confirm('Delete this set?')) return; closeForm(); deleteSet(id, false); };
 $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeForm(); });
 $('fsave').onclick = () => {
   const ex = formEx;
+  if (ex && isStretch(ex)) return saveStretch(ex);
   if (ex && ex.canonical && (dayVal(ex, 'pain') || 'none') !== formPain && (editId || formPain !== 'none')) putSetting(ex.canonical, 'pain:' + viewId, formPain === 'none' ? '' : formPain);
   let reps = $('fr').value.trim(), L = '', R = '';
   if (ex.single) {
@@ -1092,6 +1159,36 @@ $('fsave').onclick = () => {
   update(); feedback(ex, set, before, prevRest, t ? t.target : 120);
 };
 
+function saveStretch(ex) {
+  stopHold(); holdUI();
+  if (ex && ex.canonical && (dayVal(ex, 'pain') || 'none') !== formPain && (editId || formPain !== 'none')) putSetting(ex.canonical, 'pain:' + viewId, formPain === 'none' ? '' : formPain);
+  const ang = $('fang').value.trim().replace(/°$/, '');
+  let L = '', Rr = '', reps = '';
+  if (ex.single) {
+    const l = parseHold($('frl').value || $('frl').placeholder), r = parseHold($('frr').value || $('frr').placeholder);
+    // empty side stays empty; placeholder only fills when at least one side typed/timed
+    const lv = parseHold($('frl').value), rv = parseHold($('frr').value);
+    if (lv == null && rv == null) { $('ferr').textContent = 'Time at least one side (or type m:ss).'; return; }
+    L = lv == null ? '' : fmt(lv); Rr = rv == null ? '' : fmt(rv);
+    reps = fmt(Math.min.apply(null, [lv, rv].filter(v => v != null)));
+  } else {
+    const v = parseHold($('fr').value); if (v == null) { $('ferr').textContent = 'Enter hold time (m:ss or seconds).'; return; }
+    reps = fmt(v);
+  }
+  const fields = { load: ang, reps, failure_type: 'not to failure', notes: $('fn').value.trim(), drops: '', left_reps: L, right_reps: Rr, added_load: '', bodyweight: '', total_load: '' };
+  if (editId) {
+    const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === editId);
+    if (pi >= 0) { Object.assign(q[pi].set, fields); setQ(q); if (!testOn()) flush(); }
+    else enqueue({ action: 'edit', set_id: editId, fields });
+    closeForm(); toast('Hold updated'); return;
+  }
+  const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical, workout: viewId }, fields);
+  enqueue({ action: 'log', date: S.today, set });
+  const nt = nextTarget(ex.canonical), t = getT();
+  setT({ start: Date.now(), exercise: ex.canonical, target: nt.target || 60, next: nt.next, hidden: false });
+  $('sheet').classList.remove('open'); formEx = null; stopRec(); popLayer('sheet');
+  update(); toast('Hold saved: ' + setTxt(set), 4000);
+}
 // ---------- Feedback toasts ----------
 const JOKES = [
   'Your rest timer called. It misses you.', 'That bench is not going to press itself.', 'Plates do not rerack themselves. Neither do excuses.',
