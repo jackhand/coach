@@ -167,7 +167,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
-  <div class="sub" style="text-align:center;margin-top:12px">App version 28</div>
+  <div class="sub" style="text-align:center;margin-top:12px">App version 29</div>
 </div>
 <div id="app" style="display:none">
 <header>
@@ -226,6 +226,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
         <div><label for="fangl">Left angle</label><input id="fangl" inputmode="decimal" autocomplete="off"></div>
         <div><label for="fangr">Right angle</label><input id="fangr" inputmode="decimal" autocomplete="off"></div>
       </div>
+      <div class="s2" id="hprev"></div>
       <button class="btn sec" id="fsame" type="button">Same both sides</button>
     </div>
     <div id="liftxtra">
@@ -293,8 +294,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=28"></script>
-<script src="exlist.js?v=28"></script>
-<script src="app.js?v=28"></script>
+<script src="parse.js?v=29"></script>
+<script src="exlist.js?v=29"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@ const fmt = sec => { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec /
 const parseHold = v => { // '5:00' or '300' -> seconds; null if empty/invalid
   const t = String(v == null ? '' : v).trim(); if (!t) return null;
   if (/^\d+:\d{1,2}$/.test(t)) { const [m, sec] = t.split(':').map(Number); return m * 60 + sec; }
-  const n = parseFloat(t); return n >= 0 && isFinite(n) ? Math.round(n) : null;
+  const n = parseFloat(t); return /^\d*\.?\d+$/.test(t) && n >= 0 && isFinite(n) ? Math.round(n * 60) : null; // typed number = minutes (5 -> 5:00, 5.5 -> 5:30)
 };
 const fmtHold = v => { const sec = typeof v === 'number' ? v : parseHold(v); return sec == null ? '' : fmt(sec); };
 const angs = load => { const p = String(load == null ? '' : load).replace(/°/g, '').split('/').map(x => x.trim()); return { L: p[0] || '', R: (p.length > 1 ? p[1] : p[0]) || '' }; };
@@ -1128,6 +1128,11 @@ let formKey = null, formPain = 'none';
 function setPain(p) { formPain = p; document.querySelectorAll('#fp button').forEach(b => b.classList.toggle('on', b.dataset.p === p)); }
 document.querySelectorAll('#fp button').forEach(b => b.onclick = () => setPain(b.dataset.p));
 function openEdit(sid) { const r = viewRows().find(x => x.set_id === sid); if (r) openForm(-1, tsOf(r), r); }
+['fr', 'frl', 'frr'].forEach(id => {
+  const el = $(id);
+  el.addEventListener('input', () => { if (!formEx || !isStretch(formEx)) return; const v = parseHold(el.value); $('hprev').textContent = el.value.trim() ? (v == null ? 'Use minutes (5, 5.5) or m:ss' : '= ' + fmt(v)) : ''; });
+  el.addEventListener('blur', () => { if (!formEx || !isStretch(formEx)) return; const v = parseHold(el.value); if (v != null) el.value = fmt(v); $('hprev').textContent = ''; holdUI(); });
+});
 $('fsame').onclick = () => { $('frr').value = $('frl').value; if (formEx && isStretch(formEx)) { $('fangr').value = $('fangl').value; holdUI(); } };
 function sheetTop() { // after open, layout, and keyboard: put the popup at its top
   const inn = $('sheet').querySelector('.in');
