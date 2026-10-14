@@ -1,6 +1,6 @@
 // Coach service worker: caches the app shell only. Backend data is never cached here.
-const CACHE = 'coach-shell-v29';
-const SHELL = ['./', 'index.html', 'app.js?v=29', 'parse.js?v=29', 'exlist.js?v=29', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const CACHE = 'coach-shell-v30';
+const SHELL = ['./', 'index.html', 'app.js?v=30', 'parse.js?v=30', 'exlist.js?v=30', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
@@ -17,4 +17,10 @@ self.addEventListener('fetch', e => {
       return r;
     }).catch(() => caches.match(e.request).then(m => m || caches.match('./')))
   );
+});
+
+// Tap a rest notification: focus the open app or open it.
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => cs.length ? cs[0].focus() : self.clients.openWindow('./')));
 });

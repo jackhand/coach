@@ -151,6 +151,7 @@ function rowsFor(ex, today) {
   return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? widOf(r) === viewId : wIndex(widOf(r)) < wIndex(viewId)));
 }
 const loadOf = r => r.total_load || r.load;
+function sideE(r) { const s = sideReps(r); if (s.L == null || s.R == null || s.L === s.R) return ''; const a = P_.e1rm(loadOf(r), s.L), b = P_.e1rm(loadOf(r), s.R); return a && b ? 'e1RM L ' + a.ep + ' / R ' + b.ep + ' Epley' : ''; }
 function setTxt(r) {
   const ex = r && r.exercise ? exFor(r.exercise) : null;
   if (isStretch(ex)) {
@@ -173,10 +174,10 @@ function setsHTML(ex) {
   const st = isStretch(ex);
   let h = '<li class="shead' + (st ? ' stretch' : '') + '"><span>SET</span><span>' + (st ? 'ANGLE' : 'WEIGHT') + '</span><span>' + (st ? 'HOLD' : 'REPS') + '</span><span></span><span>LOG</span></li>';
   h += rs.map((r, i) => {
-    const e = st ? null : P_.e1rm(loadOf(r), r.reps);
+    const e = st ? null : P_.e1rm(loadOf(r), repN(r));
     const bits = [st ? '' : (FT_LABEL[r.failure_type] || r.failure_type), +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '',
       r.total_load ? ('total ' + r.total_load + ' lb') : '',
-      r.pending ? 'pending sync' : (r.rest_time ? 'rest ' + r.rest_time : ''), e ? ('e1RM ' + e.ep + ' Epley / ' + e.br + ' Brzycki') : ''].filter(Boolean).join(' · ');
+      r.pending ? 'pending sync' : (r.rest_time ? 'rest ' + r.rest_time : ''), e ? (sideE(r) || ('e1RM ' + e.ep + ' Epley / ' + e.br + ' Brzycki')) : ''].filter(Boolean).join(' · ');
     const g = angs(r.load), ang = st ? ((r.left_reps || r.right_reps) && g.L !== g.R ? 'L' + g.L + '° R' + g.R + '°' : (g.L || '-') + '°') : (r.load || '-');
     const hold = (r.left_reps || r.right_reps)
       ? ((st ? fmtHold(r.left_reps) : r.left_reps || '?') || '-') + ' L / ' + ((st ? fmtHold(r.right_reps) : r.right_reps || '?') || '-') + ' R'
@@ -186,7 +187,7 @@ function setsHTML(ex) {
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
     const tb = tq && (tq.all || i === n - 1) ? '<button class="tq" data-tq="' + tq.keys.join(',') + '" aria-label="Technique info">' + tq.keys.map(k => TECH[k].tag).join('/') + '</button>' : '';
-    const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && sg.reps) || '';
+    const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && (sg.repsL ? 'L' + sg.repsL + '/R' + sg.repsR : sg.reps)) || '';
     const isNext = i === rs.length;
     const gw = angs(w), wShow = st && w ? (gw.L !== gw.R ? 'L' + gw.L + '° R' + gw.R + '°' : gw.L + '°') : w;
     const rShow = st && r ? (fmtHold(r) || r) : r;
@@ -381,6 +382,10 @@ function stepFor(ex) {
   return iso ? { step: 5, unit: 5, txt: '' } : lower ? { step: 15, unit: 5, txt: '' } : { step: 10, unit: 5, txt: '' };
 }
 const num = v => { const x = parseFloat(v); return isFinite(x) ? x : null; };
+// Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
+const sideReps = r => { const L = parseInt(r.left_reps, 10), Rr = parseInt(r.right_reps, 10); return { L: isFinite(L) ? L : null, R: isFinite(Rr) ? Rr : null }; };
+function repN(r) { const s = sideReps(r), v = [s.L, s.R].filter(x => x != null); return v.length ? Math.min.apply(null, v) : (parseInt(r.reps, 10) || 0); }
+const plus1 = (n, hi) => n == null ? null : String(Math.min(hi, n + 1));
 // Settled weight: the load used most, ties go to the heavier one (ramp 20, 30, 30 -> 30; 165, 165, 155 -> 165).
 function settled(rows) {
   const c = {}; rows.forEach(r => { const w = num(r.load); if (w != null) c[w] = (c[w] || 0) + 1; });
@@ -394,7 +399,7 @@ function suggest(ex, idx) {
     const last = today[today.length - 1], lw = num(last.load);
     if (lw != null) {
       if (base && num(base.load) === lw) return base;
-      return { load: String(lw), reps: String(last.reps || (base && base.reps) || ''), why: 'matches your last set (' + setTxt(last) + ')' };
+      const sl = sideReps(last); return Object.assign({ load: String(lw), reps: String(repN(last) || (base && base.reps) || ''), why: 'matches your last set (' + setTxt(last) + ')' }, ex.single && sl.L != null && sl.R != null && sl.L !== sl.R ? { repsL: String(sl.L), repsR: String(sl.R) } : {});
     }
   }
   return base;
@@ -413,17 +418,17 @@ function suggestNext(ex, idx) {
   const ls = lastSession(ex);
   if (ls) {
     const rows = ls.rows, sw = settled(rows);
-    if (sw == null) { const r = rows[Math.min(idx, rows.length - 1)], reps = parseInt(r.reps, 10) || 0; return { load: r.load, reps: String(dl ? lo : Math.min(hi, reps + 1)), why: (dl ? 'deload, ' : '') + 'last time ' + setTxt(r) }; }
-    const at = rows.filter(r => num(r.load) === sw), ref = at[Math.min(idx, at.length - 1)], reps = parseInt(ref.reps, 10) || 0;
-    const top = Math.max(0, ...at.map(r => parseInt(r.reps, 10) || 0));
-    const failed = at.some(r => (parseInt(r.reps, 10) || 0) === top && r.failure_type !== 'not to failure');
+    if (sw == null) { const r = rows[Math.min(idx, rows.length - 1)], reps = repN(r) || 0; return { load: r.load, reps: String(dl ? lo : Math.min(hi, reps + 1)), why: (dl ? 'deload, ' : '') + 'last time ' + setTxt(r) }; }
+    const at = rows.filter(r => num(r.load) === sw), ref = at[Math.min(idx, at.length - 1)], reps = repN(ref), sr = sideReps(ref);
+    const top = Math.max(0, ...at.map(r => repN(r) || 0));
+    const failed = at.some(r => (repN(r) || 0) === top && r.failure_type !== 'not to failure');
     const ramp = num(rows[0].load) != null && num(rows[0].load) < sw ? ' · settled on ' + sw : '';
     if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'deload: about 85% load, half the sets, stop 2-3 reps short of failure' };
     if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'aim +1 rep (last ' + setTxt(ref) + ')' };
     const small = iso && sw > 0 && st.step / sw > 0.12;
     if (top >= hi + (small ? 2 : 0) && failed) return { load: String(sw + st.step), reps: String(lo), why: 'top of range hit: +' + st.step + ' lb' + st.txt };
     if (small && top >= hi) return { load: String(sw), reps: String(Math.min(hi + 2, reps + 1)), why: '+' + st.step + ' lb is a big jump here: add a rep first, go up at ' + (hi + 2) };
-    return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'same weight, aim +1 rep (last ' + setTxt(ref) + ')' + ramp };
+    return Object.assign({ load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'same weight, aim +1 rep (last ' + setTxt(ref) + ')' + ramp }, ex.single && sr.L != null && sr.R != null && sr.L !== sr.R ? { repsL: plus1(sr.L, hi), repsR: plus1(sr.R, hi) } : {});
   }
   if (ex.bodyweight) return null;
   // Never done: estimate from the best e1RM on a similar exercise (same rest muscle), scaled by equipment.
@@ -433,7 +438,7 @@ function suggestNext(ex, idx) {
     if (o === ex || o.canonical === ex.canonical || o.rest_muscle !== ex.rest_muscle || o.bodyweight) continue;
     if (!(ex.types || []).includes('isolation') && (o.types || []).includes('isolation')) continue; // presses are not estimated from flyes
     for (const r of viewRows().filter(x => keysOf(o).has(P_.norm(x.exercise)))) {
-      const w = num(loadOf(r)), n = parseInt(r.reps, 10); if (!(w > 0) || !(n >= 1 && n <= 20)) continue;
+      const w = num(loadOf(r)), n = repN(r); if (!(w > 0) || !(n >= 1 && n <= 20)) continue;
       const e = n <= 10 ? P_.e1rm(w, n) : { ep: Math.round(w * (1 + n / 30)), br: Math.round(w * (1 + n / 30)) };
       const v = (e.ep + e.br) / 2 * eqFactor(ex.canonical) / eqFactor(o.canonical)
         * ((ex.types || []).includes('isolation') && !(o.types || []).includes('isolation') ? 0.6 : 1);
@@ -447,9 +452,9 @@ function suggestNext(ex, idx) {
 }
 function trend(ex, r, i) {
   const ls = lastSession(ex); if (!ls || !ls.rows[i]) return '';
-  const p = ls.rows[i], a = P_.e1rm(loadOf(r), r.reps), b = P_.e1rm(loadOf(p), p.reps);
+  const p = ls.rows[i], a = P_.e1rm(loadOf(r), repN(r)), b = P_.e1rm(loadOf(p), repN(p));
   let d;
-  if (a && b) d = a.ep - b.ep; else d = (parseFloat(loadOf(r)) || 0) - (parseFloat(loadOf(p)) || 0) || (parseInt(r.reps, 10) - parseInt(p.reps, 10));
+  if (a && b) d = a.ep - b.ep; else d = (parseFloat(loadOf(r)) || 0) - (parseFloat(loadOf(p)) || 0) || (repN(r) - repN(p));
   return d > 0 ? '<span class="tr up">&#9650;</span>' : d < 0 ? '<span class="tr dn">&#9660;</span>' : '<span class="tr eq">&#9654;</span>';
 }
 // Mesocycle grid: settings profile.meso = {"start":"YYYY-MM-DD","weeks":N,"deload":N} (written by Coach), else Week 1 only.
@@ -684,7 +689,7 @@ function openHistory(ex, fromMenu) {
   const ds = Object.keys(by).sort().reverse();
   $('hh').textContent = ex.canonical + ' history';
   $('hb').innerHTML = ds.length ? ds.map(d => {
-    const best = by[d].map(r => P_.e1rm(loadOf(r), r.reps)).filter(Boolean).reduce((m, e) => Math.max(m, e.ep), 0);
+    const best = by[d].map(r => P_.e1rm(loadOf(r), repN(r))).filter(Boolean).reduce((m, e) => Math.max(m, e.ep), 0);
     const wid = widOf(by[d][0]), pain = getSetting(ex.canonical, 'pain:' + wid), note = getSetting(ex.canonical, 'note:' + wid);
     return '<div class="hd"><b>' + esc(d) + '</b>' + (best ? ' · best e1RM ' + best : '') + (pain ? ' · pain ' + esc(pain) : '') + '<br>' + by[d].map(r => esc(setTxt(r)) + (+r.drops ? ' +' + r.drops + 'D' : '')).join(', ') + (note ? '<br><i>' + esc(note) + '</i>' : '') + '</div>';
   }).join('') : '<div class="s2">No history yet.</div>';
@@ -924,7 +929,28 @@ $('scancel').onclick = () => hideSettings();
 const SWITCH_REST = 75;
 const TKEY = () => 'coach_timer_' + P;
 const getT = () => jget(TKEY(), null);
-function setT(t) { if (t) jset(TKEY(), t); else LS.removeItem(TKEY()); tick(); markActive(); }
+function setT(t) { if (t) jset(TKEY(), t); else LS.removeItem(TKEY()); tick(); markActive(); restNotify(t); }
+// Rest notification: 'Rest ends at h:mm' when a rest starts (or its target changes); best-effort 'Rest is over' at the end.
+let notifKey = '', notifTimer = null;
+function restNotify(t) {
+  try {
+    if (!t || t.hidden || t.firstSide || !('Notification' in window) || !navigator.serviceWorker) return;
+    const end = t.start + (t.target || 0) * 1000, key = t.start + '|' + t.target;
+    if (key === notifKey || end <= Date.now()) return; notifKey = key;
+    const go = () => {
+      if (Notification.permission !== 'granted') return;
+      const at = new Date(end).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification('Rest ends at ' + at, { tag: 'coach-rest', body: t.exercise + (t.next ? ' · ' + t.next : ''), silent: true, renotify: false, icon: 'icon-192.png' }).catch(() => {});
+        clearTimeout(notifTimer);
+        const over = { tag: 'coach-rest', body: 'Rest is over. ' + (t.next || ''), renotify: true, vibrate: [200, 100, 200], icon: 'icon-192.png' };
+        if ('TimestampTrigger' in window) { try { reg.showNotification('Rest is over', Object.assign({ showTrigger: new window.TimestampTrigger(end) }, over)).catch(() => {}); return; } catch (e) {} }
+        notifTimer = setTimeout(() => { const c = getT(); if (c && c.start === t.start && !c.hidden) reg.showNotification('Rest is over', over).catch(() => {}); }, end - Date.now());
+      }).catch(() => {});
+    };
+    if (Notification.permission === 'default') Notification.requestPermission().then(go, () => {}); else go();
+  } catch (e) {}
+}
 function nextTarget(name) {
   const ex = exFor(name); if (!ex) return { target: 120, next: '' };
   const normal = ex.note.rest_target_sec || 120;
@@ -980,7 +1006,7 @@ function tick() {
   const left = t.target - sec, whole = Math.floor(sec), fl = left > 0 && left <= 10 ? ' flash' : '';
   el.className = (sec <= t.target ? 'under' : 'over') + fl;
   const fs = $('ftimer'); if (fs) { fs.textContent = 'Rest ' + fmt(sec) + ' / ' + fmt(t.target); fs.className = (sec <= t.target ? 'under' : 'over') + fl; }
-  if (left > 0 && left <= 10 && whole !== lastBeep && document.visibilityState === 'visible') { lastBeep = whole; beep(left <= 1); }
+  if (left > 0 && left <= 10 && whole !== lastBeep && document.visibilityState === 'visible') { lastBeep = whole; beep(left <= 1); if (navigator.vibrate) { try { navigator.vibrate(left <= 1 ? 400 : 80); } catch (e) {} } }
 }
 setInterval(tick, 250);
 function markActive() { const t = getT(); cardsFor().forEach((ex, i) => { const c = $('c' + i); if (c) c.classList.toggle('active', !!t && !t.hidden && P_.norm(ex.canonical) === P_.norm(t.exercise)); }); }
@@ -1090,7 +1116,7 @@ function openForm(i, ts, row) {
   const sg = row ? null : suggest(ex, today.length);
   $('fl').value = row ? (row.load || '') : sg && sg.load ? sg.load : prev ? prev.load : (ex.bodyweight ? '0' : '');
   $('fr').value = row ? row.reps : (sg && !ex.single ? sg.reps : '');
-  if (!row && ex.single && sg) { $('frl').placeholder = sg.reps; $('frr').placeholder = sg.reps; }
+  if (!row && ex.single && sg) { $('frl').placeholder = sg.repsL || sg.reps; $('frr').placeholder = sg.repsR || sg.reps; }
   $('fsug').textContent = sg ? (sg.est ? 'Estimate: ' : 'Suggested: ') + (sg.load || '-') + ' x ' + sg.reps + ' (' + sg.why + '). Change it if you did something else.' : ''; $('fn').value = row ? (row.notes || '') : ''; $('ferr').textContent = '';
   $('frl').value = row ? (row.left_reps || '') : ''; $('frr').value = row ? (row.right_reps || '') : '';
   showSides(!!ex.single); setDrops(row ? (+row.drops || 0) : 0);
@@ -1133,7 +1159,15 @@ function openEdit(sid) { const r = viewRows().find(x => x.set_id === sid); if (r
   el.addEventListener('input', () => { if (!formEx || !isStretch(formEx)) return; const v = parseHold(el.value); $('hprev').textContent = el.value.trim() ? (v == null ? 'Use minutes (5, 5.5) or m:ss' : '= ' + fmt(v)) : ''; });
   el.addEventListener('blur', () => { if (!formEx || !isStretch(formEx)) return; const v = parseHold(el.value); if (v != null) el.value = fmt(v); $('hprev').textContent = ''; holdUI(); });
 });
-$('fsame').onclick = () => { $('frr').value = $('frl').value; if (formEx && isStretch(formEx)) { $('fangr').value = $('fangl').value; holdUI(); } };
+// Same both sides: copy from the side focused last (buttons steal focus, so record on focus/pointerdown). Default Left.
+let lastSide = 'L';
+[['frl', 'L'], ['frr', 'R'], ['fangl', 'L'], ['fangr', 'R']].forEach(([id, sd]) => { const el = $(id); if (!el) return; const f = () => { lastSide = sd; }; el.addEventListener('focus', f); el.addEventListener('pointerdown', f); });
+$('fsame').onclick = () => {
+  const src = lastSide === 'R' ? 'R' : 'L', dst = src === 'L' ? 'R' : 'L';
+  const pairs = [['frl', 'frr']].concat(formEx && isStretch(formEx) ? [['fangl', 'fangr']] : []);
+  pairs.forEach(([l, r]) => { const a = $(src === 'L' ? l : r), b = $(src === 'L' ? r : l), v = a.value.trim() || a.placeholder || ''; if (v) { a.value = v; b.value = v; } });
+  if (formEx && isStretch(formEx)) holdUI();
+};
 function sheetTop() { // after open, layout, and keyboard: put the popup at its top
   const inn = $('sheet').querySelector('.in');
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
@@ -1152,7 +1186,7 @@ $('fsave').onclick = () => {
   if (ex.single) {
     L = $('frl').value.trim(); R = $('frr').value.trim();
     if (!L && !R) { $('ferr').textContent = 'Enter reps for at least one side.'; return; }
-    reps = String(Math.min.apply(null, [L, R].filter(Boolean).map(Number)));
+    reps = L && R && Number(L) !== Number(R) ? L + '/' + R : (L || R);
   }
   if (!reps) { $('ferr').textContent = 'Reps are required.'; return; }
   const load = $('fl').value.trim();
@@ -1217,12 +1251,12 @@ const JOKES = [
   'Every rep is a deposit. Compound interest starts now.', 'Form check: excellent. Ego check: also passing.'];
 function feedback(ex, set, before, rest, target) {
   const keys = keysOf(ex), prior = before.filter(r => keys.has(P_.norm(r.exercise)));
-  const w = parseFloat(set.total_load || set.load), reps = parseInt(set.reps, 10);
+  const w = parseFloat(set.total_load || set.load), reps = repN(set);
   const msgs = [];
   if (w > 0 && reps > 0 && prior.length) {
-    const e = P_.e1rm(w, reps), best = Math.max(0, ...prior.map(r => { const x = P_.e1rm(loadOf(r), r.reps); return x ? x.ep : 0; }));
+    const e = P_.e1rm(w, reps), best = Math.max(0, ...prior.map(r => { const x = P_.e1rm(loadOf(r), repN(r)); return x ? x.ep : 0; }));
     const maxW = Math.max(0, ...prior.map(r => parseFloat(loadOf(r)) || 0));
-    const repsAt = Math.max(0, ...prior.filter(r => (parseFloat(loadOf(r)) || 0) >= w).map(r => parseInt(r.reps, 10) || 0));
+    const repsAt = Math.max(0, ...prior.filter(r => (parseFloat(loadOf(r)) || 0) >= w).map(r => repN(r) || 0));
     if (e && best && e.ep > best) msgs.push('New best estimated 1RM: ' + e.ep + ' lb (Epley), ' + e.br + ' (Brzycki).');
     else if (w > maxW) msgs.push('Heaviest ' + ex.canonical.toLowerCase() + ' logged yet: ' + w + ' lb.');
     else if (repsAt && reps > repsAt) msgs.push('Rep PR: ' + reps + ' reps at ' + w + ' lb.');
