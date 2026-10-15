@@ -421,7 +421,15 @@ function settled(rows) {
   const ks = Object.keys(c).map(Number); if (!ks.length) return null;
   return ks.sort((a, b) => c[b] - c[a] || b - a)[0];
 }
+// Optional programmed load cap in program.md details, e.g. 'cap 30 lb': suggestion = min(computed, cap).
+function capOf(ex) { const m = String((ex && (ex.details || '') + ' ' + (ex.full_name || '')) || '').match(/\bcap\s*(\d+(?:\.\d+)?)\s*(?:lbs?|pounds?)?\b/i); return m ? +m[1] : null; }
 function suggest(ex, idx) {
+  const sg = suggestRaw(ex, idx), cap = isStretch(ex) ? null : capOf(ex);
+  if (!sg || cap == null || !(num(sg.load) > cap)) return sg;
+  const [lo] = repRange(ex), up = v => v == null ? v : String(Math.max(lo, parseInt(v, 10) || lo));
+  return Object.assign({}, sg, { load: String(cap), reps: up(sg.reps), repsL: sg.repsL ? up(sg.repsL) : sg.repsL, repsR: sg.repsR ? up(sg.repsR) : sg.repsR, why: 'capped at ' + cap + ' lb (program)', est: sg.est });
+}
+function suggestRaw(ex, idx) {
   const today = rowsFor(ex, true);
   const base = suggestNext(ex, idx);
   if (idx >= today.length && today.length) { // follow the weight just logged this workout
