@@ -421,15 +421,13 @@ function settled(rows) {
   const ks = Object.keys(c).map(Number); if (!ks.length) return null;
   return ks.sort((a, b) => c[b] - c[a] || b - a)[0];
 }
-// Optional programmed load cap in program.md details, e.g. 'cap 30 lb': suggestion = min(computed, cap).
-function capOf(ex) { const m = String((ex && (ex.details || '') + ' ' + (ex.full_name || '')) || '').match(/\bcap\s*(\d+(?:\.\d+)?)\s*(?:lbs?|pounds?)?\b/i); return m ? +m[1] : null; }
+// program.md "Repeat last week's weights per set": each set suggests last session's weight for that set (no auto increase).
+const repeatW = ex => /repeat last week'?s weights/i.test((ex.details || '') + ' ' + (ex.full_name || ''));
 function suggest(ex, idx) {
-  const sg = suggestRaw(ex, idx), cap = isStretch(ex) ? null : capOf(ex);
-  if (!sg || cap == null || !(num(sg.load) > cap)) return sg;
-  const [lo] = repRange(ex), up = v => v == null ? v : String(Math.max(lo, parseInt(v, 10) || lo));
-  return Object.assign({}, sg, { load: String(cap), reps: up(sg.reps), repsL: sg.repsL ? up(sg.repsL) : sg.repsL, repsR: sg.repsR ? up(sg.repsR) : sg.repsR, why: 'capped at ' + cap + ' lb (program)', est: sg.est });
-}
-function suggestRaw(ex, idx) {
+  if (repeatW(ex) && !isStretch(ex)) {
+    const ls = lastSession(ex);
+    if (ls && ls.rows.length) { const r = ls.rows[Math.min(idx, ls.rows.length - 1)], [, hi] = repRange(ex), n = repN(r); return { load: String(r.load), reps: String(Math.min(hi, (n || 0) + 1)), why: "repeat last week's weight (last " + setTxt(r) + '), aim +1 rep' }; }
+  }
   const today = rowsFor(ex, true);
   const base = suggestNext(ex, idx);
   if (idx >= today.length && today.length) { // follow the weight just logged this workout
