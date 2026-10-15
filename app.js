@@ -367,9 +367,20 @@ function addedEx(name, i) {
   ex.added = true;
   return (swapMemo[k] = ex);
 }
+// Deleted exercises: settings scope 'deletes', key 'B<n>:<day>' -> JSON [{name: slot name, from: wid, at}].
+// Hidden from 'from' onward in the block. Done/skipped workouts and cards with sets logged in that workout stay.
+const slotOf = ex => ex.base ? ex.base.canonical : ex.canonical;
+function readDeletes() { try { const v = JSON.parse(getSetting('deletes', 'B' + blockOf(viewWeek()) + ':' + dayKey) || '[]'); return Array.isArray(v) ? v.filter(a => a && a.name) : []; } catch (e) { return []; } }
+function applyDeletes(list) {
+  const ws = wStatus()[viewId]; if (ws) return list;
+  const del = new Set(readDeletes().filter(a => !a.from || wIndex(viewId) >= wIndex(a.from)).map(a => P_.norm(a.name)));
+  if (!del.size) return list;
+  return list.filter(ex => !del.has(P_.norm(slotOf(ex))) || rowsFor(ex, true).length);
+}
 function cardsFor() {
   let added = []; try { added = addsFor().map((n, i) => { const b = addedEx(n, i), si = swapInfo(b); return si ? swappedEx(b, si) : b; }); } catch (e) { console.warn('adds', e); }
-  const base = baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }).concat(added); let ord = null;
+  let base = baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }).concat(added); let ord = null;
+  try { base = applyDeletes(base); } catch (e) { console.warn('deletes', e); }
   try { ord = JSON.parse(getSetting('order', dayKeyOf()) || 'null'); } catch (e) {}
   if (!Array.isArray(ord)) return base;
   const pos = ex => { let i = ord.indexOf(ex.canonical); if (i < 0 && ex.swappedFrom) i = ord.indexOf(ex.swappedFrom); return i < 0 ? 999 + base.indexOf(ex) : i; };
@@ -914,6 +925,7 @@ function wmItems() {
   const ws = wStatus()[viewId], next = viewId === loggableId() || (testOn() && !ws);
   return [
     { id: 'skip', label: 'Skip workout', on: !!S && next && !ws, why: ws ? 'Already ' + ws.state : 'Only the next workout (' + wLabel(loggableId()) + ') can be skipped', run: skipWorkout },
+    { id: 'del', label: 'Delete exercise', on: !!S && !!days[dayKey] && !ws && cardsFor().length > 0, why: !days[dayKey] ? 'No session planned' : ws ? 'Already ' + ws.state : 'No exercises', run: openDel },
     { id: 'add', label: 'Add exercise', on: !!S && !!days[dayKey] && !ws, why: !days[dayKey] ? 'No session planned' : 'Already ' + (ws && ws.state), run: openAdd }
   ];
 }
@@ -923,10 +935,26 @@ function openWm() {
   $('wml').innerHTML = wmItems().map((it, i) => '<button class="btn sec wmi" data-wi="' + i + '"' + (it.on ? '' : ' disabled') + '>' + esc(it.label) + (it.on ? '' : '<small>' + esc(it.why) + '</small>') + '</button>').join('');
   $('wmw').classList.add('open'); pushLayer('wm', () => $('wmw').classList.remove('open'));
 }
+function openDel() {
+  $('wmh').textContent = 'Delete exercise';
+  $('wml').innerHTML = cardsFor().map((ex, i) => '<button class="btn sec wmi" data-del="' + i + '">' + esc(ex.canonical) + '</button>').join('');
+  $('wmw').classList.add('open'); pushLayer('wm', () => $('wmw').classList.remove('open'));
+}
+function delExercise(ex) {
+  try {
+    if (!confirm('Delete ' + ex.canonical + '?\n\nThis will delete it for the entire meso. It is removed from ' + (dayKey[0].toUpperCase() + dayKey.slice(1)) + ' for every remaining workout in Block ' + blockOf(viewWeek()) + '. Logged sets and finished workouts stay.')) return;
+    const k = 'B' + blockOf(viewWeek()) + ':' + dayKey, list = readDeletes().filter(a => P_.norm(a.name) !== P_.norm(slotOf(ex)));
+    list.push({ name: slotOf(ex), shown: ex.canonical, from: viewId, at: new Date().toISOString() });
+    putSetting('deletes', k, JSON.stringify(list));
+    swapMemo = {}; sig = ''; applyState(S, true);
+    toast('Deleted ' + ex.canonical + ' for the rest of Block ' + blockOf(viewWeek()) + (rowsFor(ex, true).length ? '. Its logged sets today stay on the card.' : ''), 6000);
+  } catch (e) { toast('Could not delete: ' + (e && e.message || e), 6000); }
+}
 const closeWm = () => { $('wmw').classList.remove('open'); popLayer('wm'); };
 $('wmenu').onclick = openWm; $('wmclose').onclick = closeWm;
 $('wmw').addEventListener('click', e => {
   if (e.target.id === 'wmw') return closeWm();
+  const d = e.target.closest('[data-del]'); if (d) { const ex = cardsFor()[+d.dataset.del]; closeWm(); if (ex) setTimeout(() => delExercise(ex), 60); return; }
   const b = e.target.closest('[data-wi]'); if (!b || b.disabled) return;
   const it = wmItems()[+b.dataset.wi]; closeWm(); if (it && it.on) setTimeout(it.run, 60);
 });
