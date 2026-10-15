@@ -350,8 +350,26 @@ function swappedEx(base, si) {
   ex.swappedFrom = base.canonical; ex.swapScope = si.scope; ex.base = base;
   return (swapMemo[k] = ex);
 }
+// Added exercises: settings scope 'adds', key 'w:<wid>' (this workout) or 'b:B<n>:<day>' (rest of block from 'from') -> JSON [{name, at, from}]
+function readAdds(k) { try { const v = JSON.parse(getSetting('adds', k) || '[]'); return Array.isArray(v) ? v.filter(a => a && a.name) : []; } catch (e) { return []; } }
+const addKey = scope => scope === 'block' ? 'b:B' + blockOf(viewWeek()) + ':' + dayKey : 'w:' + viewId;
+function addsFor() {
+  if (!days[dayKey]) return [];
+  const have = new Set(baseCards().map(b => P_.norm(b.canonical))), out = [];
+  readAdds(addKey('block')).filter(a => !a.from || wIndex(viewId) >= wIndex(a.from)).concat(readAdds(addKey('workout'))).forEach(a => { const n = P_.norm(a.name); if (!have.has(n)) { have.add(n); out.push(a.name); } });
+  return out;
+}
+function addedEx(name, i) {
+  const k = 'add|' + viewId + '|' + name; if (swapMemo[k]) return swapMemo[k];
+  const c = catFind(name), nm = c ? c.name : name;
+  const p = P_.enrich(P_.parseProgram('## W\n### Addday: added\n' + (90 + i) + '. ' + nm + ': 3 x 10-15. Rest 1.5 min.\n'), LIB), ex = p.addday.exercises[0];
+  if (c && !ex.muscles) { ex.canonical = c.name; ex.muscles = c.muscles; ex.rest_muscle = c.rest_muscle; ex.types = c.types; ex.equip = c.equip; ex.match_keys = [P_.norm(c.name)].concat((c.aliases || []).map(P_.norm)); ex.video = c.video || ''; }
+  ex.added = true;
+  return (swapMemo[k] = ex);
+}
 function cardsFor() {
-  const base = baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }); let ord = null;
+  let added = []; try { added = addsFor().map((n, i) => { const b = addedEx(n, i), si = swapInfo(b); return si ? swappedEx(b, si) : b; }); } catch (e) { console.warn('adds', e); }
+  const base = baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }).concat(added); let ord = null;
   try { ord = JSON.parse(getSetting('order', dayKeyOf()) || 'null'); } catch (e) {}
   if (!Array.isArray(ord)) return base;
   const pos = ex => { let i = ord.indexOf(ex.canonical); if (i < 0 && ex.swappedFrom) i = ord.indexOf(ex.swappedFrom); return i < 0 ? 999 + base.indexOf(ex) : i; };
@@ -597,7 +615,7 @@ $('mnote').onclick = () => { const ex = menuEx; closeMenu(); const v = prompt('N
 $('mhist').onclick = () => { const ex = menuEx; closeMenu(true); openHistory(ex, true); };
 $('mrepl').onclick = () => { const ex = menuEx; closeMenu(true); openReplace(ex); };
 // ---------- Replace sheet ----------
-let rEx = null, rScope = 'workout', rReason = '';
+let rEx = null, rScope = 'workout', rReason = '', rMode = 'replace';
 const PRIM = m => String(m || '').toLowerCase().split(/[,(]/)[0].replace(/\b(and|front|side|rear|upper|lower|mid|long head)\b/g, ' ').split(/\s+/).filter(Boolean);
 function related(a, b) {
   if (!a || !b) return false;
@@ -608,13 +626,36 @@ const baseOf = ex => ex.base || ex;
 function swapLog() { const s = (S && S.settings && S.settings.swaps) || {}, pq = pendingSet().swaps || {}, l = localSet().swaps || {}; return Object.values(Object.assign({}, s, pq, l)).map(v => { try { return JSON.parse(v); } catch (e) { return null; } }).filter(Boolean).sort((a, b) => (b.at || '').localeCompare(a.at || '')); }
 function demoLink(c) { const u = c.video || 'https://www.youtube.com/results?search_query=' + encodeURIComponent(c.name + ' exercise demo'); return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + (c.video ? 'Demo' : 'Find a demo') + '</a>'; }
 function resItem(c, cur) {
-  const ok = related(c, cur);
+  const ok = rMode === 'add' || related(c, cur);
   return '<div class="ri" data-pick="' + esc(c.name) + '"><b>' + esc(c.name) + '</b>' + (c.mine ? ' <small class="mine">in your library</small>' : '') + '<br><span class="s2">' + esc(c.muscles || 'muscles unknown') + (c.equip ? ' · ' + esc(c.equip) : '') + ' · </span>' + demoLink(c) +
     (ok ? '' : '<div class="warn">&#9888; Does not work the same muscles as ' + esc(cur.canonical) + '</div>') + '</div>';
 }
 function curInfo(ex) { return { canonical: ex.canonical, name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle, types: ex.types }; }
+function replMode(add) {
+  rMode = add ? 'add' : 'replace';
+  $('rscope').previousElementSibling.textContent = add ? 'Add for' : 'Replace for';
+  $('rreason').style.display = $('rreason').previousElementSibling.style.display = add ? 'none' : '';
+}
+function openAdd() {
+  replMode(true); rEx = { canonical: 'this workout', note: {}, muscles: '', types: [] }; rScope = 'workout'; rReason = 'added';
+  $('rh').textContent = 'Add exercise to ' + wLabel(viewId); setSeg('rscope', 's', rScope);
+  $('rq').value = ''; $('rres').innerHTML = ''; $('rlist').innerHTML = ''; $('rundo').style.display = 'none';
+  $('repl').classList.add('open'); pushLayer('repl', () => $('repl').classList.remove('open'));
+  requestAnimationFrame(() => { $('repl').querySelector('.in').scrollTop = 0; });
+}
+function pickAdd(name, custom) {
+  try {
+    const c = catFind(name), to = c ? c.name : name.replace(/^./, x => x.toUpperCase());
+    if (cardsFor().some(x => P_.norm(x.canonical) === P_.norm(to))) return toast(to + ' is already in this workout.');
+    const k = addKey(rScope), list = readAdds(k).concat([Object.assign({ name: to, at: new Date().toISOString() }, rScope === 'block' ? { from: viewId } : {})]);
+    putSetting('adds', k, JSON.stringify(list));
+    if (!c) putSetting('pending_exercises', P_.norm(to), JSON.stringify({ name: to, at: new Date().toISOString(), wid: viewId, added: true, scope: rScope }));
+    closeRepl(); swapMemo = {}; sig = ''; applyState(S, true);
+    toast(!c ? "Added it for now. I'll look it up and add the info, like a demo, later." : 'Added ' + to + (rScope === 'block' ? ' for the rest of Block ' + blockOf(viewWeek()) : ' to this workout'), !c ? 7000 : 5000);
+  } catch (e) { closeRepl(); toast('Could not add: ' + (e && e.message || e), 6000); }
+}
 function openReplace(ex) {
-  rEx = ex; rScope = 'workout'; rReason = '';
+  replMode(false); rEx = ex; rScope = 'workout'; rReason = '';
   $('rh').textContent = 'Replace ' + ex.canonical;
   setSeg('rscope', 's', rScope); setSeg('rreason', 'r', '');
   $('rq').value = ''; $('rres').innerHTML = '';
@@ -653,7 +694,7 @@ $('rq').oninput = () => {
 $('repl').addEventListener('click', e => {
   if (e.target.id === 'repl') return closeRepl();
   if (e.target.closest('a')) return;
-  const it = e.target.closest('[data-pick]'); if (it) pickReplace(it.dataset.pick, !!it.dataset.custom);
+  const it = e.target.closest('[data-pick]'); if (it) (rMode === 'add' ? pickAdd : pickReplace)(it.dataset.pick, !!it.dataset.custom);
 });
 const closeRepl = () => { $('repl').classList.remove('open'); popLayer('repl'); };
 $('rclose').onclick = closeRepl;
@@ -872,7 +913,8 @@ $('cal').onclick = openCal;
 function wmItems() {
   const ws = wStatus()[viewId], next = viewId === loggableId() || (testOn() && !ws);
   return [
-    { id: 'skip', label: 'Skip workout', on: !!S && next && !ws, why: ws ? 'Already ' + ws.state : 'Only the next workout (' + wLabel(loggableId()) + ') can be skipped', run: skipWorkout }
+    { id: 'skip', label: 'Skip workout', on: !!S && next && !ws, why: ws ? 'Already ' + ws.state : 'Only the next workout (' + wLabel(loggableId()) + ') can be skipped', run: skipWorkout },
+    { id: 'add', label: 'Add exercise', on: !!S && !!days[dayKey] && !ws, why: !days[dayKey] ? 'No session planned' : 'Already ' + (ws && ws.state), run: openAdd }
   ];
 }
 function openWm() {
