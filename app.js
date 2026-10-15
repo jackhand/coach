@@ -421,13 +421,9 @@ function settled(rows) {
   const ks = Object.keys(c).map(Number); if (!ks.length) return null;
   return ks.sort((a, b) => c[b] - c[a] || b - a)[0];
 }
-// program.md "Repeat last week's weights per set": each set suggests last session's weight for that set (no auto increase).
-const repeatW = ex => /repeat last week'?s weights/i.test((ex.details || '') + ' ' + (ex.full_name || ''));
+// program.md "Keep the settled weight": no auto weight increase next week (settled weight on every set, aim +1 rep).
+const holdW = ex => /keep the settled weight/i.test((ex.details || '') + ' ' + (ex.full_name || ''));
 function suggest(ex, idx) {
-  if (repeatW(ex) && !isStretch(ex)) {
-    const ls = lastSession(ex);
-    if (ls && ls.rows.length) { const r = ls.rows[Math.min(idx, ls.rows.length - 1)], [, hi] = repRange(ex), n = repN(r); return { load: String(r.load), reps: String(Math.min(hi, (n || 0) + 1)), why: "repeat last week's weight (last " + setTxt(r) + '), aim +1 rep' }; }
-  }
   const today = rowsFor(ex, true);
   const base = suggestNext(ex, idx);
   if (idx >= today.length && today.length) { // follow the weight just logged this workout
@@ -460,6 +456,7 @@ function suggestNext(ex, idx) {
     const ramp = num(rows[0].load) != null && num(rows[0].load) < sw ? ' · settled on ' + sw : '';
     if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'deload: about 85% load, half the sets, stop 2-3 reps short of failure' };
     if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'aim +1 rep (last ' + setTxt(ref) + ')' };
+    if (holdW(ex)) return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'keep the settled weight ' + sw + ', aim +1 rep (last ' + setTxt(ref) + ')' + ramp };
     const small = iso && sw > 0 && st.step / sw > 0.12;
     if (top >= hi + (small ? 2 : 0) && failed) return { load: String(sw + st.step), reps: String(lo), why: 'top of range hit: +' + st.step + ' lb' + st.txt };
     if (small && top >= hi) return { load: String(sw), reps: String(Math.min(hi + 2, reps + 1)), why: '+' + st.step + ' lb is a big jump here: add a rep first, go up at ' + (hi + 2) };
