@@ -192,7 +192,8 @@ function setsHTML(ex) {
     const gw = angs(w), wShow = st && w ? (gw.L !== gw.R ? 'L' + gw.L + '° R' + gw.R + '°' : gw.L + '°') : w;
     const rShow = st && r ? (fmtHold(r) || r) : r;
     h += '<li class="plan"><div class="srow"><span class="sn">' + (i + 1) + tb + '</span>' +
-      '<span class="val sug">' + esc(wShow) + '</span><span class="val sug">' + esc(rShow) + '</span>' +
+      '<span class="val sug" data-f="w">' + esc(wShow) + '</span><span class="val sug"' + (ex.single ? '' : ' data-f="r"') + '>' +
+        (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + '</span>' +
       '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +
       '<button class="lg' + (half && isNext ? ' half' : '') + '" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '>' + (half && isNext ? '&#189;' : '') + '</button></div>' +
       (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + (ex.single ? (st ? ' · per side' : ' · reps per side') : '') + '</div>' : '') + '</li>';
@@ -803,6 +804,8 @@ function render() {
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
     if (e.target.closest('#wstartb')) { startWorkout(false); return; }
     if (e.target.closest('#wrestart')) { startWorkout(true); return; }
+    const tf = e.target.closest('li.plan [data-f]');
+    if (tf) { const lb = tf.closest('li').querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, tf.dataset.f); return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
   renderFinish(); markActive();
@@ -1124,6 +1127,19 @@ let editId = null, doneTs = 0, drops = 0, prevRest = null;
 function setDrops(n) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); }
 document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
 let rowPrefill = null;
+// Tap a suggested weight/reps value: same as the LOG check, then focus that field (synchronously, so the phone keyboard opens).
+function tapValue(name, idx, f) {
+  try {
+    const list = cardsFor(), i = list.findIndex(x => x.canonical === name); if (i < 0) return;
+    const ex = list[i], st = isStretch(ex); let t;
+    logRow(name, idx);
+    // single-limb lift: the first check only starts the side timer; a value tap goes straight to the form
+    if (ex.single && !st && !$('sheet').classList.contains('open') && (t = getT()) && t.firstSide) logRow(name, idx);
+    if (!$('sheet').classList.contains('open')) return;
+    const id = f === 'w' ? (st ? (ex.single ? 'fangl' : 'fang') : 'fl') : f === 'R' ? 'frr' : f === 'L' ? 'frl' : 'fr';
+    const el = $(id); if (el) { el.focus(); try { el.select(); } catch (e) {} }
+  } catch (e) { console.warn('tapValue', e); }
+}
 function logRow(name, idx, li) {
   const list = cardsFor(), i = list.findIndex(x => x.canonical === name); if (i < 0) return;
   rowPrefill = null;
