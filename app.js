@@ -610,7 +610,7 @@ function openMenu(i) {
   const p = dayVal(menuEx, 'pain') || 'none';
   $('mskip').textContent = +dayVal(menuEx, 'skip') > 0 ? 'Undo skip sets' : 'Skip remaining sets';
   $('mrepl').style.display = canLog() || !wStatus()[viewId] ? 'block' : 'none';
-  $('mdel').disabled = !days[dayKey] || !!wStatus()[viewId];
+  $('mdel').disabled = !days[dayKey]; // done days too: applies to the remaining weeks (done workouts never change)
   document.querySelectorAll('#mpain button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
   $('menu').classList.add('open'); pushLayer('menu', () => $('menu').classList.remove('open'));
 }
