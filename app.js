@@ -186,7 +186,7 @@ function setsHTML(ex) {
   }).join('');
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
-    const tb = tq && (tq.all || i === n - 1) ? tq.keys.map(k => '<button class="tq" data-tq="' + k + '" aria-label="' + esc(TECH[k].name) + ' info">' + TECH[k].tag + '</button>').join('') : '';
+    const tb = tq ? tq.keys.filter(k => k === 'match' && tq.mrm ? i >= 1 : (tq.all || i === n - 1)).map(k => '<button class="tq" data-tq="' + k + '" aria-label="' + esc(TECH[k].name) + ' info">' + TECH[k].tag + '</button>').join('') : '';
     const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && (sg.repsL ? 'L' + sg.repsL + '/R' + sg.repsR : sg.reps)) || '';
     const isNext = i === rs.length;
     const gw = angs(w), wShow = st && w ? (gw.L !== gw.R ? 'L' + gw.L + '° R' + gw.R + '°' : gw.L + '°') : w;
@@ -217,12 +217,12 @@ const TECH = {
 function methodOf(ex) {
   const sl = ex.base ? ex.base.canonical : ex.canonical, w = getSetting(sl, 'method:' + viewId); if (w) return w;
   let v = null; try { v = JSON.parse(getSetting(sl, 'bmethod:B' + blockOf(viewWeek())) || 'null'); } catch (e) {}
-  return v && v.v && (!v.from || wIndex(viewId) >= wIndex(v.from)) ? v.v : 'standard';
+  return v && v.v && (!v.from || wIndex(viewId) >= wIndex(v.from)) ? v.v : (/\bmyo[- ]?rep match\b/i.test(String(ex.details || '')) ? 'match' : 'standard');
 }
 const methodable = ex => !isStretch(ex) && (/\bmyo[- ]?reps?\b/i.test(String(ex.details || '')) || (ex.types || []).includes('isolation'));
 function techFor(ex) {
   const t = String(ex.details || ''); let keys = Object.keys(TECH).filter(k => k !== 'match' && TECH[k].re.test(t));
-  if (methodOf(ex) === 'match') { keys = keys.filter(k => k !== 'myo').concat(['match']); return { keys, all: true }; }
+  if (methodOf(ex) === 'match') { keys = keys.filter(k => k !== 'myo').concat(['match']); return { keys, all: !/\blast set\b/i.test(t), mrm: true }; }
   if (keys.includes('myo')) keys = keys.concat(['match']); // MR shown with its MRM alternative
   if (!keys.length) return null;
   return { keys, all: !/\blast set\b/i.test(t) };
