@@ -168,7 +168,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
-  <div class="sub" style="text-align:center;margin-top:12px">App version 43</div>
+  <div class="sub" style="text-align:center;margin-top:12px">App version 44</div>
 </div>
 <div id="app" style="display:none">
 <header>
@@ -233,6 +233,8 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
     <div id="liftxtra">
     <label>Drop sets after this set</label>
     <div class="seg" id="fd"><button type="button" data-d="0">0</button><button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button></div>
+    <div id="fmini" style="display:none"><label>Mini-sets after the opener</label>
+    <div class="seg" id="fms"><button type="button" id="fmm" aria-label="One fewer mini-set">&minus;</button><button type="button" id="fmv" class="on" disabled>0</button><button type="button" id="fmp" aria-label="One more mini-set">+</button></div></div>
     <label for="ff">Failure type</label>
     <select id="ff"></select>
     </div>
@@ -300,8 +302,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=43"></script>
-<script src="exlist.js?v=43"></script>
-<script src="app.js?v=43"></script>
+<script src="parse.js?v=44"></script>
+<script src="exlist.js?v=44"></script>
+<script src="app.js?v=44"></script>
 </body>
 </html>

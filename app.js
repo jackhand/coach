@@ -175,14 +175,14 @@ function setsHTML(ex) {
   let h = '<li class="shead' + (st ? ' stretch' : '') + '"><span>SET</span><span>' + (st ? 'ANGLE' : 'WEIGHT') + '</span><span>' + (st ? 'HOLD' : 'REPS') + '</span><span></span><span>LOG</span></li>';
   h += rs.map((r, i) => {
     const e = st ? null : P_.e1rm(loadOf(r), repN(r));
-    const bits = [st ? '' : (FT_LABEL[r.failure_type] || r.failure_type), +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '',
+    const bits = [st ? '' : (FT_LABEL[r.failure_type] || r.failure_type), +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '', miniOf(r) ? '+' + miniOf(r) + ' mini' : '',
       r.total_load ? ('total ' + r.total_load + ' lb') : '',
       r.pending ? 'pending sync' : (r.rest_time ? 'rest ' + r.rest_time : ''), e ? (sideE(r) || ('e1RM ' + e.ep + ' Epley / ' + e.br + ' Brzycki')) : ''].filter(Boolean).join(' · ');
     const g = angs(r.load), ang = st ? ((r.left_reps || r.right_reps) && g.L !== g.R ? 'L' + g.L + '° R' + g.R + '°' : (g.L || '-') + '°') : (r.load || '-');
     const hold = (r.left_reps || r.right_reps)
       ? ((st ? fmtHold(r.left_reps) : r.left_reps || '?') || '-') + ' L / ' + ((st ? fmtHold(r.right_reps) : r.right_reps || '?') || '-') + ' R'
       : (st ? (fmtHold(r.reps) || r.reps) : r.reps);
-    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">' + esc(bits) + (r.notes ? '<br>' + esc(r.notes) : '') + '</div></li>';
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">' + esc(bits) + (noteTxt(r) ? '<br>' + esc(noteTxt(r)) : '') + '</div></li>';
   }).join('');
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
@@ -1151,8 +1151,18 @@ const FT_OPTS = FT.filter(v => v !== 'drop set');
 const ftOptions = extra => { ffSel.innerHTML = FT_OPTS.concat(extra ? [extra] : []).map(v => '<option value="' + esc(v) + '">' + esc(FT_LABEL[v] || v) + '</option>').join(''); };
 ffSel.innerHTML = FT.map(v => '<option value="' + esc(v) + '">' + esc(FT_LABEL[v]) + '</option>').join('');
 let editId = null, doneTs = 0, drops = 0, prevRest = null;
+// Mini-sets after the opener (myo-reps / myo-rep match): stored as a '[mini N]' token at the end of notes (no new column, works with Code.gs v4).
+const MINI_RE = /\s*\[mini (\d+)\]\s*$/i;
+const miniOf = r => { const m = MINI_RE.exec((r && r.notes) || ''); return m ? +m[1] : 0; };
+const noteTxt = r => String((r && r.notes) || '').replace(MINI_RE, '');
+let minis = 0, formSetIdx = 0;
+function setMini(n) { minis = Math.max(0, Math.min(20, n | 0)); $('fmv').textContent = String(minis); }
+function setKeys(ex, i, n) { const tq = ex ? techFor(ex) : null; return tq ? tq.keys.filter(k => k === 'match' && tq.mrm ? i >= 1 : (tq.all || i === n - 1)) : []; }
+function miniUI() { const ex = formEx, on = !!ex && !isStretch(ex) && (ffSel.value === 'myo-reps' || setKeys(ex, formSetIdx, plannedCount(ex)).some(k => k === 'myo' || k === 'match')); $('fmini').style.display = on ? 'block' : 'none'; }
 function setDrops(n) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); }
 document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
+$('fmm').onclick = () => setMini(minis - 1); $('fmp').onclick = () => setMini(minis + 1);
+ffSel.addEventListener('change', miniUI);
 let rowPrefill = null;
 // Tap a suggested weight/reps value: same as the LOG check, then focus that field (synchronously, so the phone keyboard opens).
 function tapValue(name, idx, f) {
@@ -1245,9 +1255,10 @@ function openForm(i, ts, row) {
   $('fl').value = row ? (row.load || '') : sg && sg.load ? sg.load : prev ? prev.load : (ex.bodyweight ? '0' : '');
   $('fr').value = row ? row.reps : (sg && !ex.single ? sg.reps : '');
   if (!row && ex.single && sg) { $('frl').placeholder = sg.repsL || sg.reps; $('frr').placeholder = sg.repsR || sg.reps; }
-  $('fsug').textContent = sg ? (sg.est ? 'Estimate: ' : 'Suggested: ') + (sg.load || '-') + ' x ' + sg.reps + ' (' + sg.why + '). Change it if you did something else.' : ''; $('fn').value = row ? (row.notes || '') : ''; $('ferr').textContent = '';
+  $('fsug').textContent = sg ? (sg.est ? 'Estimate: ' : 'Suggested: ') + (sg.load || '-') + ' x ' + sg.reps + ' (' + sg.why + '). Change it if you did something else.' : ''; $('fn').value = row ? noteTxt(row) : ''; $('ferr').textContent = '';
   $('frl').value = row ? (row.left_reps || '') : ''; $('frr').value = row ? (row.right_reps || '') : '';
-  showSides(!!ex.single); setDrops(row ? (+row.drops || 0) : 0);
+  showSides(!!ex.single); setDrops(row ? (+row.drops || 0) : 0); setMini(row ? miniOf(row) : 0);
+  formSetIdx = row ? Math.max(0, rowsFor(ex, true).findIndex(x => x.set_id === row.set_id)) : today.length;
   setStretchMode(stx, ex);
   if (stx) {
     $('fang').value = row ? String(row.load || '').replace(/°$/, '') : (sg && sg.load ? String(sg.load).replace(/°$/, '') : '');
@@ -1269,6 +1280,7 @@ function openForm(i, ts, row) {
   const f = (ex.note.failure || '').toLowerCase();
   ftOptions(row && row.failure_type === 'drop set' ? 'drop set' : null);
   ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : prev && FT_OPTS.includes(prev.failure_type) ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
+  miniUI();
   if (rowPrefill && !row) {
     if (rowPrefill.load) $('fl').value = rowPrefill.load;
     if (rowPrefill.reps) { if (ex.single) { $('frl').value = rowPrefill.reps; $('frr').value = rowPrefill.reps; } else $('fr').value = rowPrefill.reps; }
@@ -1320,7 +1332,8 @@ $('fsave').onclick = () => {
   const load = $('fl').value.trim();
   let bw = '', total = '';
   if (ex.bodyweight) { const b = bodyweight(); if (b) { bw = String(b); total = String(Math.round((b + (parseFloat(load) || 0)) * 10) / 10); } }
-  const fields = { load, reps, failure_type: ffSel.value, notes: $('fn').value.trim(), drops: drops ? String(drops) : '', left_reps: L, right_reps: R, added_load: ex.bodyweight ? (load || '0') : '', bodyweight: bw, total_load: total };
+  const mtok = minis > 0 && $('fmini').style.display !== 'none' ? '[mini ' + minis + ']' : '';
+  const fields = { load, reps, failure_type: ffSel.value, notes: [$('fn').value.trim().replace(MINI_RE, ''), mtok].filter(Boolean).join(' '), drops: drops ? String(drops) : '', left_reps: L, right_reps: R, added_load: ex.bodyweight ? (load || '0') : '', bodyweight: bw, total_load: total };
   if (S && !(S.version >= 2)) { // old backend ignores the new columns: keep them readable in notes
     const x = [drops ? drops + (drops === 1 ? ' drop' : ' drops') : '', ex.single ? 'L ' + (L || '-') + ' R ' + (R || '-') : '', total ? 'total ' + total + ' (BW ' + bw + ' + ' + (load || 0) + ')' : ''].filter(Boolean).join('; ');
     if (x) fields.notes = (fields.notes ? fields.notes + ' | ' : '') + x;
@@ -1410,7 +1423,7 @@ $('mic').onclick = () => {
   try { rec.start(); } catch (err) { $('heard').textContent = 'Could not start voice: ' + err.message; }
 };
 function fill(txt) { const p = P_.parseSpeech(txt);
-  if (p.load != null) $('fl').value = p.load; if (p.reps != null) $('fr').value = p.reps; if (p.ft === 'drop set') { ffSel.value = 'true'; setDrops(Math.max(1, drops)); } else if (p.ft) ffSel.value = p.ft; if (p.notes) $('fn').value = p.notes;
+  if (p.load != null) $('fl').value = p.load; if (p.reps != null) $('fr').value = p.reps; if (p.ft === 'drop set') { ffSel.value = 'true'; setDrops(Math.max(1, drops)); } else if (p.ft) ffSel.value = p.ft; miniUI(); if (p.notes) $('fn').value = p.notes;
   $('heard').textContent = 'Heard: "' + txt + '". Check and edit, then Save.'; }
 
 // ---------- Boot ----------
