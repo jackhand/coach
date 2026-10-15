@@ -186,7 +186,7 @@ function setsHTML(ex) {
   }).join('');
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
-    const tb = tq ? tq.keys.filter(k => k === 'match' && tq.mrm ? i >= 1 : (tq.all || i === n - 1)).map(k => '<button class="tq" data-tq="' + k + '" aria-label="' + esc(TECH[k].name) + ' info">' + TECH[k].tag + '</button>').join('') : '';
+    const tb = tq ? tqShow(tq, i, n).map(k => '<button class="tq" data-tq="' + k + '" aria-label="' + esc(TECH[k].name) + ' info">' + TECH[k].tag + '</button>').join('') : '';
     const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && (sg.repsL ? 'L' + sg.repsL + '/R' + sg.repsR : sg.reps)) || '';
     const isNext = i === rs.length;
     const gw = angs(w), wShow = st && w ? (gw.L !== gw.R ? 'L' + gw.L + '° R' + gw.R + '°' : gw.L + '°') : w;
@@ -211,7 +211,7 @@ const TECH = {
     log: 'Pick Myo-reps as the failure type. Log the activation set\'s weight and reps, and put the mini-sets in the note, like "myo 4+4+3".' },
   match: { tag: 'MRM', name: 'Myo-rep match', re: /\bmyo[- ]?rep match\b/i, url: 'https://www.youtube.com/watch?v=KIJ77QTsvlo', urlTitle: 'Need More Growth? Myorep Match Is The Solution! (Renaissance Periodization)',
     info: 'Myo-rep match: set 1 is a normal set; its reps are your target. Each later set, after normal rest, do as many reps as you can, then 5-15 s pauses and mini-sets of a few reps until your total matches set 1. Log the total.',
-    log: 'Pick Myo-reps as the failure type and log each set\'s weight and TOTAL reps (all mini-sets added up).' }
+    log: 'Log each set\'s weight and TOTAL reps (all mini-sets added up) and set the Mini-sets counter. No drop sets or standard myo-reps on an MRM exercise.' }
 };
 // Set method per exercise: settings scope = slot name, key 'method:<wid>' (this workout) or 'bmethod:B<n>' = {v, from} (rest of block). Default standard.
 function methodOf(ex) {
@@ -222,11 +222,12 @@ function methodOf(ex) {
 const methodable = ex => !isStretch(ex) && (/\bmyo[- ]?reps?\b/i.test(String(ex.details || '')) || (ex.types || []).includes('isolation'));
 function techFor(ex) {
   const t = String(ex.details || ''); let keys = Object.keys(TECH).filter(k => k !== 'match' && TECH[k].re.test(t));
-  if (methodOf(ex) === 'match') { keys = keys.filter(k => k !== 'myo').concat(['match']); return { keys, all: !/\blast set\b/i.test(t), mrm: true }; }
-  if (keys.includes('myo')) keys = keys.concat(['match']); // MR shown with its MRM alternative
+  if (methodOf(ex) === 'match') { keys = ['match']; /* MRM excludes drop sets and standard myo-reps */ return { keys, all: !/\blast set\b/i.test(t), mrm: true }; }
   if (!keys.length) return null;
   return { keys, all: !/\blast set\b/i.test(t) };
 }
+// One set method at a time: MRM on every set after the opener; MR only on the last set (like a finisher); DROP per program text.
+function tqShow(tq, i, n) { return tq.keys.filter(k => k === 'match' ? i >= 1 : k === 'myo' ? i === n - 1 : (tq.all || i === n - 1)); }
 function openTech(keys) {
   const ks = keys.split(',').filter(k => TECH[k]);
   $('tqh').textContent = ks.length > 1 ? ks.map(k => TECH[k].name).join(' or ') + ' (pick one)' : TECH[ks[0]].name;
@@ -1148,7 +1149,7 @@ function deleteSet(sid, ask) {
 // ---------- Set done / log form ----------
 const ffSel = $('ff');
 const FT_OPTS = FT.filter(v => v !== 'drop set');
-const ftOptions = extra => { ffSel.innerHTML = FT_OPTS.concat(extra ? [extra] : []).map(v => '<option value="' + esc(v) + '">' + esc(FT_LABEL[v] || v) + '</option>').join(''); };
+const ftOptions = (extra, noMyo) => { ffSel.innerHTML = FT_OPTS.filter(v => !(noMyo && v === 'myo-reps')).concat(extra ? [extra] : []).map(v => '<option value="' + esc(v) + '">' + esc(FT_LABEL[v] || v) + '</option>').join(''); };
 ffSel.innerHTML = FT.map(v => '<option value="' + esc(v) + '">' + esc(FT_LABEL[v]) + '</option>').join('');
 let editId = null, doneTs = 0, drops = 0, prevRest = null;
 // Mini-sets after the opener (myo-reps / myo-rep match): stored as a '[mini N]' token at the end of notes (no new column, works with Code.gs v4).
@@ -1157,7 +1158,7 @@ const miniOf = r => { const m = MINI_RE.exec((r && r.notes) || ''); return m ? +
 const noteTxt = r => String((r && r.notes) || '').replace(MINI_RE, '');
 let minis = 0, formSetIdx = 0;
 function setMini(n) { minis = Math.max(0, Math.min(20, n | 0)); $('fmv').textContent = String(minis); }
-function setKeys(ex, i, n) { const tq = ex ? techFor(ex) : null; return tq ? tq.keys.filter(k => k === 'match' && tq.mrm ? i >= 1 : (tq.all || i === n - 1)) : []; }
+function setKeys(ex, i, n) { const tq = ex ? techFor(ex) : null; return tq ? tqShow(tq, i, n) : []; }
 function miniUI() { const ex = formEx, on = !!ex && !isStretch(ex) && (ffSel.value === 'myo-reps' || setKeys(ex, formSetIdx, plannedCount(ex)).some(k => k === 'myo' || k === 'match')); $('fmini').style.display = on ? 'block' : 'none'; }
 function setDrops(n) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); }
 document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
@@ -1278,8 +1279,10 @@ function openForm(i, ts, row) {
   $('fsave').textContent = row ? 'Save changes' : 'Save set';
   if (SR) $('heard').textContent = '';
   const f = (ex.note.failure || '').toLowerCase();
-  ftOptions(row && row.failure_type === 'drop set' ? 'drop set' : null);
-  ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : prev && FT_OPTS.includes(prev.failure_type) ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
+  const isMrm = !isStretch(ex) && methodOf(ex) === 'match';
+  $('fdwrap').style.display = isMrm ? 'none' : ''; if (isMrm && !(row && +row.drops)) setDrops(0);
+  ftOptions(row && row.failure_type === 'drop set' ? 'drop set' : null, isMrm && !(row && row.failure_type === 'myo-reps'));
+  ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : prev && FT_OPTS.includes(prev.failure_type) && !(isMrm && prev.failure_type === 'myo-reps') ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
   miniUI();
   if (rowPrefill && !row) {
     if (rowPrefill.load) $('fl').value = rowPrefill.load;
