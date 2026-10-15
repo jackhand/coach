@@ -609,6 +609,7 @@ function openMenu(i) {
   const p = dayVal(menuEx, 'pain') || 'none';
   $('mskip').textContent = +dayVal(menuEx, 'skip') > 0 ? 'Undo skip sets' : 'Skip remaining sets';
   $('mrepl').style.display = canLog() || !wStatus()[viewId] ? 'block' : 'none';
+  $('mdel').disabled = !days[dayKey] || !!wStatus()[viewId];
   document.querySelectorAll('#mpain button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
   $('menu').classList.add('open'); pushLayer('menu', () => $('menu').classList.remove('open'));
 }
@@ -624,6 +625,7 @@ $('mskip').onclick = () => {
 };
 $('mnote').onclick = () => { const ex = menuEx; closeMenu(); const v = prompt('Note for ' + ex.canonical + ' today:', dayVal(ex, 'note') || ''); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
 $('mhist').onclick = () => { const ex = menuEx; closeMenu(true); openHistory(ex, true); };
+$('mdel').onclick = () => { const ex = menuEx; closeMenu(true); if (ex) delExercise(ex); };
 $('mrepl').onclick = () => { const ex = menuEx; closeMenu(true); openReplace(ex); };
 // ---------- Replace sheet ----------
 let rEx = null, rScope = 'workout', rReason = '', rMode = 'replace';
@@ -925,7 +927,6 @@ function wmItems() {
   const ws = wStatus()[viewId], next = viewId === loggableId() || (testOn() && !ws);
   return [
     { id: 'skip', label: 'Skip workout', on: !!S && next && !ws, why: ws ? 'Already ' + ws.state : 'Only the next workout (' + wLabel(loggableId()) + ') can be skipped', run: skipWorkout },
-    { id: 'del', label: 'Delete exercise', on: !!S && !!days[dayKey] && !ws && cardsFor().length > 0, why: !days[dayKey] ? 'No session planned' : ws ? 'Already ' + ws.state : 'No exercises', run: openDel },
     { id: 'add', label: 'Add exercise', on: !!S && !!days[dayKey] && !ws, why: !days[dayKey] ? 'No session planned' : 'Already ' + (ws && ws.state), run: openAdd }
   ];
 }
@@ -941,8 +942,16 @@ function openDel() {
   $('wmw').classList.add('open'); pushLayer('wm', () => $('wmw').classList.remove('open'));
 }
 function delExercise(ex) {
+  $('delh').textContent = 'Delete ' + ex.canonical + '?'; delPending = ex;
+  $('delw').classList.add('open'); swapLayer('menu', 'del', () => { $('delw').classList.remove('open'); delPending = null; });
+}
+let delPending = null;
+const closeDel = () => { if (!$('delw').classList.contains('open')) return; $('delw').classList.remove('open'); delPending = null; popLayer('del'); };
+$('delx').onclick = closeDel; $('deln').onclick = closeDel;
+$('delw').addEventListener('click', e => { if (e.target.id === 'delw') closeDel(); });
+$('dely').onclick = () => { const ex = delPending; closeDel(); if (ex) doDelete(ex); };
+function doDelete(ex) {
   try {
-    if (!confirm('Delete ' + ex.canonical + '?\n\nThis will delete it for the entire meso. It is removed from ' + (dayKey[0].toUpperCase() + dayKey.slice(1)) + ' for every remaining workout in Block ' + blockOf(viewWeek()) + '. Logged sets and finished workouts stay.')) return;
     const k = 'B' + blockOf(viewWeek()) + ':' + dayKey, list = readDeletes().filter(a => P_.norm(a.name) !== P_.norm(slotOf(ex)));
     list.push({ name: slotOf(ex), shown: ex.canonical, from: viewId, at: new Date().toISOString() });
     putSetting('deletes', k, JSON.stringify(list));
