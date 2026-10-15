@@ -91,6 +91,7 @@ const L = [
 ['Leg press calf raise','Calves','calves','machine','isolation',''],
 ['Cable crunch','Abs','abs','cable','isolation','kneeling cable crunch'],
 ['Hanging leg raise','Abs, hip flexors','abs','bodyweight','isolation','leg raises'],
+['Captain\'s chair leg raise','Abs, hip flexors','abs','bodyweight','isolation','leg raise, vertical knee raise, leg raise machine, hanging leg raise station, bosu leg raise, captains chair leg raise, captain chair leg raise, knee raise'],
 ['Ab crunch machine','Abs','abs','machine','isolation','crunch machine'],
 ['Dragon flag','Abs','abs','bodyweight','isolation',''],
 ['Plank','Abs, core','abs','bodyweight','isolation','']

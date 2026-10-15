@@ -357,13 +357,13 @@ const addKey = scope => scope === 'block' ? 'b:B' + blockOf(viewWeek()) + ':' + 
 function addsFor() {
   if (!days[dayKey]) return [];
   const have = new Set(baseCards().map(b => P_.norm(b.canonical))), out = [];
-  readAdds(addKey('block')).filter(a => !a.from || wIndex(viewId) >= wIndex(a.from)).concat(readAdds(addKey('workout'))).forEach(a => { const n = P_.norm(a.name); if (!have.has(n)) { have.add(n); out.push(a.name); } });
+  readAdds(addKey('block')).filter(a => !a.from || wIndex(viewId) >= wIndex(a.from)).concat(readAdds(addKey('workout'))).forEach(a => { const n = P_.norm(a.name); if (!have.has(n)) { have.add(n); out.push(a); } });
   return out;
 }
-function addedEx(name, i) {
-  const k = 'add|' + viewId + '|' + name; if (swapMemo[k]) return swapMemo[k];
+function addedEx(name, i, det) {
+  const k = 'add|' + viewId + '|' + name + '|' + (det || ''); if (swapMemo[k]) return swapMemo[k];
   const c = catFind(name), nm = c ? c.name : name;
-  const p = P_.enrich(P_.parseProgram('## W\n### Addday: added\n' + (90 + i) + '. ' + nm + ': 3 x 10-15. Rest 1.5 min.\n'), LIB), ex = p.addday.exercises[0];
+  const p = P_.enrich(P_.parseProgram('## W\n### Addday: added\n' + (90 + i) + '. ' + nm + ': ' + String(det || '3 x 10-15. Rest 1.5 min.').replace(/[\r\n]+/g, ' ') + '\n'), LIB), ex = p.addday.exercises[0];
   if (c && !ex.muscles) { ex.canonical = c.name; ex.muscles = c.muscles; ex.rest_muscle = c.rest_muscle; ex.types = c.types; ex.equip = c.equip; ex.match_keys = [P_.norm(c.name)].concat((c.aliases || []).map(P_.norm)); ex.video = c.video || ''; }
   ex.added = true;
   return (swapMemo[k] = ex);
@@ -378,7 +378,7 @@ function applyDeletes(list) {
   return list.filter(ex => !del.has(P_.norm(slotOf(ex))) || rowsFor(ex, true).length);
 }
 function cardsFor() {
-  let added = []; try { added = addsFor().map((n, i) => { const b = addedEx(n, i), si = swapInfo(b); return si ? swappedEx(b, si) : b; }); } catch (e) { console.warn('adds', e); }
+  let added = []; try { added = addsFor().map((a, i) => { const b = addedEx(a.name, i, a.details), si = swapInfo(b); return si ? swappedEx(b, si) : b; }); } catch (e) { console.warn('adds', e); }
   let base = baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }).concat(added); let ord = null;
   try { base = applyDeletes(base); } catch (e) { console.warn('deletes', e); }
   try { ord = JSON.parse(getSetting('order', dayKeyOf()) || 'null'); } catch (e) {}
