@@ -67,7 +67,7 @@ const L = [
 ['Single-arm dumbbell row','Lats, mid back','back','dumbbell','compound','db row, one arm row'],
 ['Barbell row','Mid back, lats, lower back','back','barbell','compound','bent over row'],
 ['T-bar row','Mid back, lats','back','machine','compound','landmine row'],
-['Straight-arm cable pulldown','Lats','back','cable','isolation','lat prayer, straight arm pulldown'],
+['Straight-arm cable pulldown','Lats','back','cable','isolation','lat prayer, straight arm pulldown, straight arm rope pulldown, straight-arm rope pulldown, rope pulldown, straight arm rope pulldowns'],
 ['Back extension','Lower back, glutes, hamstrings','lower back','bodyweight','compound','hyperextension, 45 degree back extension'],
 ['Back squat','Quads, glutes, adductors','quads','barbell','compound','squat'],
 ['Hack squat','Quads, glutes','quads','machine','compound','hack squat machine'],

@@ -648,7 +648,7 @@ $('rq').oninput = () => {
   const q = $('rq').value.trim(); if (!q) { $('rres').innerHTML = ''; return; }
   const r = searchCat(q), cur = curInfo(rEx);
   $('rres').innerHTML = (r.length ? r.map(c => resItem(c, cur)).join('') : '<div class="s2">No match in your library or the common list.</div>') +
-    '<div class="ri" data-pick="' + esc(q) + '" data-custom="1"><b>Use "' + esc(q) + '"</b><br><span class="s2">Custom exercise. Coach adds it to your library with a demo.</span></div>';
+    '<div class="ri" data-pick="' + esc(q) + '" data-custom="1"><b>Use "' + esc(q) + '"</b><br><span class="s2">Custom exercise. Coach looks it up later and adds a demo.</span></div>';
 };
 $('repl').addEventListener('click', e => {
   if (e.target.id === 'repl') return closeRepl();
@@ -665,14 +665,20 @@ function pickReplace(name, custom) {
   const blk = blockOf(viewWeek());
   if (rScope === 'block' && !(b.types || []).includes('isolation') && !confirm(b.canonical + ' is a main lift, fixed for the block. Replace it with ' + to + ' for the rest of Block ' + blk + '?')) return;
   if (rowsFor(ex, true).length && !confirm('You already logged ' + ex.canonical + ' sets in this workout. They stay in your log. Replace anyway?')) return;
-  applySwap(b, to, rScope, rReason, ex.canonical);
-  closeRepl(); toast('Replaced with ' + to + (rScope === 'block' ? ' for the rest of Block ' + blk : ' for this workout'), 5000);
+  const unknown = !catFind(to);
+  try {
+    applySwap(b, to, rScope, rReason, ex.canonical, unknown);
+    // Unknown names wait in settings scope 'pending_exercises' (Settings sheet) for Coach to add to the library.
+    if (unknown) putSetting('pending_exercises', P_.norm(to), JSON.stringify({ name: to, at: new Date().toISOString(), wid: viewId, replaced: b.canonical, scope: rScope, reason: rReason }));
+  } catch (e) { closeRepl(); toast('Could not replace: ' + (e && e.message || e), 6000); return; }
+  closeRepl();
+  toast(unknown ? "Replaced it for now. I'll look it up and add the info, like a demo, later." : 'Replaced with ' + to + (rScope === 'block' ? ' for the rest of Block ' + blk : ' for this workout'), unknown ? 7000 : 5000);
 }
-function applySwap(b, to, scope, reason, was) {
+function applySwap(b, to, scope, reason, was, custom) {
   const blk = blockOf(viewWeek()), back = P_.norm(to) === P_.norm(b.canonical);
   if (scope === 'block') { putSetting(b.canonical, 'bswap:B' + blk, back ? '' : JSON.stringify({ to, from: viewId })); if (getSetting(b.canonical, 'swap:' + viewId)) putSetting(b.canonical, 'swap:' + viewId, ''); }
   else putSetting(b.canonical, 'swap:' + viewId, back && !swapInfo(b) ? '' : to);
-  putSetting('swaps', 's' + Date.now().toString(36), JSON.stringify({ at: new Date().toISOString(), wid: viewId, block: blk, from: b.canonical, was, to, scope, reason }));
+  putSetting('swaps', 's' + Date.now().toString(36), JSON.stringify(Object.assign({ at: new Date().toISOString(), wid: viewId, block: blk, from: b.canonical, was, to, scope, reason }, custom ? { custom: true, pending: 'pending_exercises' } : {})));
   swapMemo = {}; sig = ''; applyState(S, true);
 }
 $('rundo').onclick = () => {
