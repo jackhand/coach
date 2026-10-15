@@ -369,11 +369,10 @@ function addedEx(name, i) {
   return (swapMemo[k] = ex);
 }
 // Deleted exercises: settings scope 'deletes', key 'B<n>:<day>' -> JSON [{name: slot name, from: wid, at}].
-// Hidden from 'from' onward in the block. Done/skipped workouts and cards with sets logged in that workout stay.
+// Hidden from 'from' onward in the block (done workouts included). A card with sets logged in that workout stays.
 const slotOf = ex => ex.base ? ex.base.canonical : ex.canonical;
 function readDeletes() { try { const v = JSON.parse(getSetting('deletes', 'B' + blockOf(viewWeek()) + ':' + dayKey) || '[]'); return Array.isArray(v) ? v.filter(a => a && a.name) : []; } catch (e) { return []; } }
 function applyDeletes(list) {
-  const ws = wStatus()[viewId]; if (ws) return list;
   const del = new Set(readDeletes().filter(a => !a.from || wIndex(viewId) >= wIndex(a.from)).map(a => P_.norm(a.name)));
   if (!del.size) return list;
   return list.filter(ex => !del.has(P_.norm(slotOf(ex))) || rowsFor(ex, true).length);
