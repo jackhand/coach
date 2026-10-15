@@ -186,7 +186,7 @@ function setsHTML(ex) {
   }).join('');
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
-    const tb = tq && (tq.all || i === n - 1) ? '<button class="tq" data-tq="' + tq.keys.join(',') + '" aria-label="Technique info">' + tq.keys.map(k => TECH[k].tag).join('/') + '</button>' : '';
+    const tb = tq && (tq.all || i === n - 1) ? tq.keys.map(k => '<button class="tq" data-tq="' + k + '" aria-label="' + esc(TECH[k].name) + ' info">' + TECH[k].tag + '</button>').join('') : '';
     const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && (sg.repsL ? 'L' + sg.repsL + '/R' + sg.repsR : sg.reps)) || '';
     const isNext = i === rs.length;
     const gw = angs(w), wShow = st && w ? (gw.L !== gw.R ? 'L' + gw.L + '° R' + gw.R + '°' : gw.L + '°') : w;
@@ -206,19 +206,31 @@ const TECH = {
   drop: { tag: 'DROP', name: 'Drop set', re: /\bdrop(?:\s*-?\s*sets?)?\b|\brun(?:ning)? the rack\b/i,
     info: 'Go to failure, then cut the weight about 20-30% (or go down the rack one step) and go to failure again right away, no rest. Repeat for each drop.',
     log: 'Log the first (heavy) set\'s weight and reps, then set the Drop sets counter to how many drops you did (1, 2 or 3).' },
-  myo: { tag: 'MYO', name: 'Myo-reps', re: /\bmyo[- ]?reps?\b/i,
-    info: 'Activation set to failure (usually 12-20 reps), then rest about 5 deep breaths and do mini-sets of 3-5 reps, same weight, until you can\'t get 3.',
-    log: 'Pick Myo-reps as the failure type. Log the activation set\'s weight and reps, and put the mini-sets in the note, like "myo 4+4+3".' }
+  myo: { tag: 'MR', name: 'Myo-reps (standard)', re: /\bmyo[- ]?reps?\b/i, url: 'https://www.youtube.com/watch?v=sPNcufaKd3s', urlTitle: 'Myoreps - The Most Efficient Training Technique (Renaissance Periodization)',
+    info: 'Activation set near failure (usually 12-20 reps), then short rests of about 3-5 deep breaths and mini-sets of 3-5 reps with the same weight. Stop when you can\'t hit 3.',
+    log: 'Pick Myo-reps as the failure type. Log the activation set\'s weight and reps, and put the mini-sets in the note, like "myo 4+4+3".' },
+  match: { tag: 'MRM', name: 'Myo-rep match', re: /\bmyo[- ]?rep match\b/i, url: 'https://www.youtube.com/watch?v=KIJ77QTsvlo', urlTitle: 'Need More Growth? Myorep Match Is The Solution! (Renaissance Periodization)',
+    info: 'Myo-rep match: set 1 is a normal set; its reps are your target. Each later set, after normal rest, do as many reps as you can, then 5-15 s pauses and mini-sets of a few reps until your total matches set 1. Log the total.',
+    log: 'Pick Myo-reps as the failure type and log each set\'s weight and TOTAL reps (all mini-sets added up).' }
 };
+// Set method per exercise: settings scope = slot name, key 'method:<wid>' (this workout) or 'bmethod:B<n>' = {v, from} (rest of block). Default standard.
+function methodOf(ex) {
+  const sl = ex.base ? ex.base.canonical : ex.canonical, w = getSetting(sl, 'method:' + viewId); if (w) return w;
+  let v = null; try { v = JSON.parse(getSetting(sl, 'bmethod:B' + blockOf(viewWeek())) || 'null'); } catch (e) {}
+  return v && v.v && (!v.from || wIndex(viewId) >= wIndex(v.from)) ? v.v : 'standard';
+}
+const methodable = ex => !isStretch(ex) && (/\bmyo[- ]?reps?\b/i.test(String(ex.details || '')) || (ex.types || []).includes('isolation'));
 function techFor(ex) {
-  const t = String(ex.details || ''), keys = Object.keys(TECH).filter(k => TECH[k].re.test(t));
+  const t = String(ex.details || ''); let keys = Object.keys(TECH).filter(k => k !== 'match' && TECH[k].re.test(t));
+  if (methodOf(ex) === 'match') { keys = keys.filter(k => k !== 'myo').concat(['match']); return { keys, all: true }; }
+  if (keys.includes('myo')) keys = keys.concat(['match']); // MR shown with its MRM alternative
   if (!keys.length) return null;
   return { keys, all: !/\blast set\b/i.test(t) };
 }
 function openTech(keys) {
   const ks = keys.split(',').filter(k => TECH[k]);
   $('tqh').textContent = ks.length > 1 ? ks.map(k => TECH[k].name).join(' or ') + ' (pick one)' : TECH[ks[0]].name;
-  $('tqb').innerHTML = ks.map(k => '<div class="hd"><b>' + esc(TECH[k].name) + '</b><br>' + esc(TECH[k].info) + '<br><i>How to log:</i> ' + esc(TECH[k].log) + '</div>').join('');
+  $('tqb').innerHTML = ks.map(k => '<div class="hd"><b>' + esc(TECH[k].name) + '</b><br>' + esc(TECH[k].info) + '<br><i>How to log:</i> ' + esc(TECH[k].log) + (TECH[k].url ? '<br><a href="' + esc(TECH[k].url) + '" target="_blank" rel="noopener noreferrer">Video: ' + esc(TECH[k].urlTitle || 'demo') + '</a>' : '') + '</div>').join('');
   $('tech').classList.add('open'); pushLayer('tech', () => $('tech').classList.remove('open'));
 }
 const closeTech = () => { $('tech').classList.remove('open'); popLayer('tech'); };
@@ -612,7 +624,9 @@ function openMenu(i) {
   const p = dayVal(menuEx, 'pain') || 'none';
   $('mskip').textContent = +dayVal(menuEx, 'skip') > 0 ? 'Undo skip sets' : 'Skip remaining sets';
   $('mrepl').style.display = canLog() || !wStatus()[viewId] ? 'block' : 'none';
-  $('mdel').disabled = !days[dayKey]; // done days too: applies to the remaining weeks (done workouts never change)
+  $('mdel').disabled = !days[dayKey];
+  const mm = methodable(menuEx); $('mmbox').style.display = mm ? 'block' : 'none';
+  if (mm) { mmScope = 'workout'; setSeg('mmscope', 'ms', mmScope); setSeg('mmeth', 'mm', methodOf(menuEx)); } // done days too: applies to the remaining weeks (done workouts never change)
   document.querySelectorAll('#mpain button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
   $('menu').classList.add('open'); pushLayer('menu', () => $('menu').classList.remove('open'));
 }
@@ -628,6 +642,17 @@ $('mskip').onclick = () => {
 };
 $('mnote').onclick = () => { const ex = menuEx; closeMenu(); const v = prompt('Note for ' + ex.canonical + ' today:', dayVal(ex, 'note') || ''); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
 $('mhist').onclick = () => { const ex = menuEx; closeMenu(true); openHistory(ex, true); };
+let mmScope = 'workout';
+document.querySelectorAll('#mmscope button').forEach(b => b.onclick = () => { mmScope = b.dataset.ms; setSeg('mmscope', 'ms', mmScope); });
+document.querySelectorAll('#mmeth button').forEach(b => b.onclick = () => {
+  try {
+    const ex = menuEx, sl = ex.base ? ex.base.canonical : ex.canonical, v = b.dataset.mm, blk = blockOf(viewWeek());
+    if (mmScope === 'block') { putSetting(sl, 'bmethod:B' + blk, JSON.stringify({ v, from: viewId })); if (getSetting(sl, 'method:' + viewId)) putSetting(sl, 'method:' + viewId, ''); }
+    else putSetting(sl, 'method:' + viewId, v);
+    setSeg('mmeth', 'mm', v); sig = ''; applyState(S, false);
+    toast((v === 'match' ? 'Myo-rep match' : 'Standard myo-reps') + (mmScope === 'block' ? ' for the rest of Block ' + blk : ' for this workout'));
+  } catch (e) { toast('Could not set the method: ' + (e && e.message || e)); }
+});
 $('mdel').onclick = () => { const ex = menuEx; closeMenu(true); if (ex) delExercise(ex); };
 $('mrepl').onclick = () => { const ex = menuEx; closeMenu(true); openReplace(ex); };
 // ---------- Replace sheet ----------
@@ -785,7 +810,7 @@ function render() {
   $('sub').textContent = subWeek() + ' - ' + titleCase(d.title);
   main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + cardsFor().map((ex, i) => {
     const n = ex.note, chips = [n.sets, n.failure, n.rest].filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
-    const tips = (ex.cue ? [ex.cue] : []).concat(n.extra);
+    const tips = (ex.cue ? [ex.cue] : []).concat(n.extra).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
     return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span>' + (i + 1) + '. ' + esc(ex.canonical) + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
       (ex.swappedFrom ? '<div class="swp">Replaces ' + esc(ex.swappedFrom) + (ex.swapScope === 'block' ? ' for the rest of this block' : ' in this workout') + '</div>' : '') +

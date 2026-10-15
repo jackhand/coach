@@ -168,7 +168,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
-  <div class="sub" style="text-align:center;margin-top:12px">App version 41</div>
+  <div class="sub" style="text-align:center;margin-top:12px">App version 42</div>
 </div>
 <div id="app" style="display:none">
 <header>
@@ -255,6 +255,9 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <button class="btn sec" id="mrepl">Replace exercise</button>
   <label>Joint pain today</label>
   <div class="seg" id="mpain"><button type="button" data-p="none">None</button><button type="button" data-p="mild">Mild</button><button type="button" data-p="moderate">Moderate</button><button type="button" data-p="severe">Severe</button></div>
+  <div id="mmbox"><label>Set method</label>
+  <div class="seg" id="mmscope"><button type="button" data-ms="workout">This workout</button><button type="button" data-ms="block">Rest of block</button></div>
+  <div class="seg" id="mmeth" style="margin-top:6px"><button type="button" data-mm="standard">Standard myo-reps</button><button type="button" data-mm="match">Myo-rep match</button></div></div>
   <button class="btn sec" id="mdel" style="color:#e57373">Delete exercise</button>
   <button class="btn sec" id="mclose">Close</button>
 </div></div>
@@ -297,8 +300,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=41"></script>
-<script src="exlist.js?v=41"></script>
-<script src="app.js?v=41"></script>
+<script src="parse.js?v=42"></script>
+<script src="exlist.js?v=42"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>
