@@ -3,6 +3,9 @@
 try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
+// Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
+const APP_VERSION = 50;
+try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 const FT = ['technical','true','drop set','myo-reps','not to failure'];

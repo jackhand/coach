@@ -178,7 +178,7 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
   <button class="btn sec" id="scancel">Back</button>
-  <div class="sub" style="text-align:center;margin-top:12px">App version 44</div>
+  <div class="sub" style="text-align:center;margin-top:12px">App version <span id="appver"></span></div>
 </div>
 <div id="app" style="display:none">
 <header>
@@ -321,8 +321,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=49"></script>
-<script src="exlist.js?v=49"></script>
-<script src="app.js?v=49"></script>
+<script src="parse.js?v=50"></script>
+<script src="exlist.js?v=50"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>
