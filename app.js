@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 50;
+const APP_VERSION = 51;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -172,6 +172,8 @@ function lastTime(ex) {
 // ---------- Warm-up ramp + plate calculator (barbell and dumbbell only, never logged) ----------
 const PLATES = [45, 35, 25, 10, 5, 2.5], BAR = 45;
 function platesFor(w) { let side = (w - BAR) / 2; if (!(side > 0)) return w > 0 && w <= BAR ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return out.join(' + ') + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
+const platesShort = w => { const p = platesFor(+w); return p ? p.replace(' per side', ' /side') : ''; };
+const plateLine = (ex, w) => ex && !isStretch(ex) && eqKind(ex) === 'barbell' && +w > 0 ? platesShort(w) : '';
 const eqKind = ex => { const e = String(ex.equip || P_.equipOf(ex.canonical, ex.bodyweight) || '').toLowerCase(); return /hex|trap/.test(e) ? 'hexbar' : /barbell/.test(e) ? 'barbell' : /dumbbell/.test(e) ? 'dumbbell' : ''; };
 function warmFor(ex, list) {
   if (isStretch(ex) || ex.bodyweight) return null;
@@ -210,7 +212,7 @@ function setsHTML(ex) {
     const hold = (r.left_reps || r.right_reps)
       ? ((st ? fmtHold(r.left_reps) : r.left_reps || '?') || '-') + ' L / ' + ((st ? fmtHold(r.right_reps) : r.right_reps || '?') || '-') + ' R'
       : (st ? (fmtHold(r.reps) || r.reps) : r.reps);
-    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">' + esc(bits) + (noteTxt(r) ? '<br>' + esc(noteTxt(r)) : '') + '</div></li>';
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div>' + (plateLine(ex, r.load) ? '<div class="s2 plt">' + esc(plateLine(ex, r.load)) + '</div>' : '') + '<div class="s2">' + esc(bits) + (noteTxt(r) ? '<br>' + esc(noteTxt(r)) : '') + '</div></li>';
   }).join('');
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
@@ -224,6 +226,7 @@ function setsHTML(ex) {
         (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + '</span>' +
       '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +
       '<button class="lg' + (half && isNext ? ' half' : '') + '" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '>' + (half && isNext ? '&#189;' : '') + '</button></div>' +
+      (plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '') +
       (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + (ex.single ? (st ? ' · per side' : ' · reps per side') : '') + '</div>' : '') + '</li>';
   }
   return h;
@@ -1399,7 +1402,8 @@ function bwLine() {
   const bw = bodyweight(), add = parseFloat($('fl').value) || 0;
   $('fbw').textContent = bw ? 'Total load: ' + bw + ' body weight + ' + add + ' added = ' + (bw + add) + ' lb' : 'Set your body weight in settings (gear) to get total load.';
 }
-$('fl').oninput = bwLine;
+function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; }
+$('fl').oninput = () => { bwLine(); plUpd(); };
 function showSides(on) { $('sides').style.display = on ? 'block' : 'none'; $('repsbox').style.display = on ? 'none' : 'block'; }
 // ---------- Hold timer (stretch mode) ----------
 let hold = null; // { start, side: 'L'|'R'|'' }
@@ -1465,7 +1469,7 @@ function openForm(i, ts, row) {
     $('htime').textContent = '0:00'; holdUI();
     $('fsug').textContent = sg ? 'Suggested: ' + (ex.single ? sg.angL + '° ' + sg.repsL + ' L / ' + sg.angR + '° ' + sg.repsR + ' R' : String(sg.load) + '° for ' + sg.reps) + ' (' + sg.why + ').' : '';
   }
-  $('fbw').textContent = ''; bwLine();
+  $('fbw').textContent = ''; bwLine(); plUpd();
   $('fdel').style.display = row ? 'block' : 'none'; $('ftimer').style.display = 'none';
   $('fsave').textContent = row ? 'Save changes' : 'Save set';
   if (SR) $('heard').textContent = '';
