@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 54;
+const APP_VERSION = 55;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1109,13 +1109,15 @@ function openWm() {
 // Hard sets this week (Mon-Sun): every logged set except 'not to failure' and stretches. Primary muscle 1 set, each secondary 0.5.
 function weekSets() {
   const mon = mondayOf(S.today), end = new Date(mon + 'T12:00:00'); end.setDate(end.getDate() + 6); const sun = end.toISOString().slice(0, 10);
-  const m = {}; (window.CoachMG || []).forEach(g => m[g] = { n: 0, ex: {} });
+  const m = {}; (window.CoachMG || []).forEach(g => m[g] = { n: 0, ex: {} }); (window.CoachRegions || []).forEach(([k]) => m['r_' + k] = { n: 0, ex: {} });
   viewRows().forEach(r => {
     if (!r.date || r.date < mon || r.date > sun || r.failure_type === 'not to failure') return;
     const ex = exFor(r.exercise), c = catFind(r.exercise) || (ex ? { name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle } : null);
     if (!c || isStretch(ex) || (ex && /stretch/i.test(String(ex.types || '')))) return;
     const gs = window.CoachGroupsOf ? window.CoachGroupsOf(c) : [];
-    gs.forEach((g, i) => { if (!m[g]) return; const v = i === 0 ? 1 : 0.5; m[g].n += v; const nm = c.name || r.exercise; m[g].ex[nm] = (m[g].ex[nm] || 0) + v; });
+    const nm = c.name || r.exercise, bump = (k, v) => { if (!m[k]) return; m[k].n += v; m[k].ex[nm] = (m[k].ex[nm] || 0) + v; };
+    gs.forEach((g, i) => bump(g, i === 0 ? 1 : 0.5));
+    (window.CoachRegionsOf ? window.CoachRegionsOf(c) : []).forEach(([k, v]) => bump('r_' + k, v));
   });
   return { mon, sun, m };
 }
@@ -1124,28 +1126,41 @@ const pBand = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 15 ? 3 : n < 20 ? 4
 const PLEG = ['0', '1-4', '5-9', '10-14', '15-19', '20+'];
 // Stylized front/back figures. Each muscle is a <g data-g> with the left shape plus its mirror (viewBox 120 x 240).
 const BODY_SIL = 'M60 30 C56 30 54 32 54 34 C46 36 38 40 34 46 C28 52 25 62 24 74 C22 90 19 108 17 126 C16 132 16 138 18 142 C21 142 23 138 24 132 C28 116 31 102 33 90 C35 82 37 78 40 76 C41 92 43 104 43 112 C40 118 39 124 39 132 C38 150 39 168 41 184 C40 200 41 216 43 230 C43 234 45 237 49 237 C53 237 55 235 54 230 C55 216 56 200 56 188 C57 170 58 150 59 134 L60 132 Z';
+// Regions (left half; drawn with a mirror). Keys match CoachRegions in exlist.js.
 const BODY = {
-  front: [['Shoulders', 'M38 44 C30 44 25 52 25 62 C30 64 35 60 40 56 C42 50 42 46 38 44 Z'],
-    ['Chest', 'M42 49 C48 45 55 45 59 47 L59 66 C52 70 45 68 40 62 C39 56 40 52 42 49 Z'],
+  front: [['Traps', 'M55 32 C52 36 48 39 43 41 C48 42 53 43 57 43 L60 43 L60 32 Z'],
+    ['SideDelts', 'M33 46 C27 48 24 55 24 63 C27 63 30 60 32 56 C32 52 33 49 33 46 Z'],
+    ['FrontDelts', 'M38 44 C35 45 34 47 33 50 C32 55 32 59 33 61 C36 60 39 57 41 53 C42 49 41 46 38 44 Z'],
+    ['UpperChest', 'M42 48 C48 45 55 45 59 46 L59 55 C52 55 46 55 41 57 C41 54 41 51 42 48 Z'],
+    ['Chest', 'M41 58 C46 56 53 56 59 56 L59 66 C52 70 45 68 40 62 C40 60 40 59 41 58 Z'],
     ['Biceps', 'M27 66 C24 74 23 84 25 92 C29 93 33 87 34 79 C35 72 32 66 27 66 Z'],
     ['Forearms', 'M24 96 C21 106 18 118 18 126 C21 128 24 127 26 124 C29 114 31 104 32 96 C29 93 26 93 24 96 Z'],
-    ['Abs', 'M51 71 L59 71 L59 117 C55 120 51 118 50 114 C49 100 49 84 51 71 Z M42 71 C46 73 48 78 48 86 C48 98 48 106 47 112 C44 108 42 98 41 88 C40 80 40 74 42 71 Z'],
-    ['Quads', 'M43 128 C39 140 39 160 42 178 C46 183 52 183 55 179 C57 162 58 144 57 131 C52 126 47 125 43 128 Z'],
+    ['UpperAbs', 'M51 70 L59 70 L59 92 L50 92 C49 84 50 76 51 70 Z'],
+    ['LowerAbs', 'M50 94 L59 94 L59 118 C55 120 51 118 50 114 C49 106 49 99 50 94 Z'],
+    ['Obliques', 'M42 70 C46 72 48 78 48 86 C48 98 48 106 47 112 C44 108 42 98 41 88 C40 80 40 74 42 70 Z'],
+    ['Abductors', 'M42 117 C40 122 39 128 39 137 C41 137 42 133 43 129 C44 124 44 120 42 117 Z'],
+    ['Quads', 'M44 128 C41 140 41 160 43 178 C47 183 51 183 53 179 C54 162 54 146 53 132 C50 127 47 126 44 128 Z'],
+    ['Adductors', 'M54 131 C56 131 58 133 59 135 C59 148 57 160 55 172 C54 160 54 146 54 131 Z'],
     ['Calves', 'M43 193 C41 205 42 218 45 228 C48 230 51 229 52 226 C53 214 54 202 53 192 C50 189 46 189 43 193 Z']],
-  back: [['Traps', 'M55 31 C51 37 45 41 38 44 C46 46 52 52 56 62 L60 72 L60 31 Z'],
-    ['Shoulders', 'M38 45 C30 45 25 53 25 63 C30 65 35 61 40 57 C42 51 42 47 38 45 Z'],
-    ['Back', 'M42 56 C48 56 54 62 59 74 L59 106 C54 108 48 104 45 98 C42 88 40 72 42 56 Z'],
+  back: [['UpperBack', 'M44 50 C49 51 54 56 57 62 L60 66 L60 82 C55 80 49 74 45 66 C43 61 43 55 44 50 Z'],
+    ['Traps', 'M55 31 C51 37 45 41 38 44 C46 46 52 50 56 56 L60 64 L60 31 Z'],
+    ['SideDelts', 'M33 46 C27 48 24 55 24 63 C27 63 30 60 32 56 C32 52 33 49 33 46 Z'],
+    ['RearDelts', 'M38 45 C35 46 34 48 33 51 C32 56 32 59 33 61 C37 60 40 57 42 53 C42 49 41 46 38 45 Z'],
+    ['Lats', 'M42 62 C46 71 52 79 59 84 L59 96 C54 100 48 98 45 94 C42 84 41 72 42 62 Z'],
+    ['LowerBack', 'M50 99 C53 100 56 100 59 100 L59 114 C55 116 51 115 49 112 C49 108 49 103 50 99 Z'],
     ['Triceps', 'M27 66 C23 74 23 86 25 93 C29 94 33 88 34 80 C35 72 32 66 27 66 Z'],
     ['Forearms', 'M24 97 C21 107 18 118 18 126 C21 128 24 127 26 124 C29 114 31 105 32 97 C29 94 26 94 24 97 Z'],
-    ['Glutes', 'M43 115 C48 111 56 113 59 117 L59 140 C54 145 46 145 42 139 C40 131 40 122 43 115 Z'],
-    ['Hamstrings', 'M43 147 C41 158 41 170 44 181 C48 184 52 184 55 181 C57 169 57 157 56 147 C52 144 47 144 43 147 Z'],
+    ['Abductors', 'M42 111 C46 109 50 110 53 113 C49 115 45 118 41 121 C41 117 41 114 42 111 Z'],
+    ['Glutes', 'M43 118 C48 114 56 116 59 120 L59 140 C54 145 46 145 42 139 C40 131 40 124 43 118 Z'],
+    ['Hamstrings', 'M43 147 C41 158 41 170 44 181 C47 183 51 183 53 180 C54 168 54 156 53 147 C50 144 46 144 43 147 Z'],
+    ['Adductors', 'M54 147 C56 147 58 149 59 150 C58 160 57 170 55 178 C54 168 54 156 54 147 Z'],
     ['Calves', 'M42 192 C40 202 41 214 44 224 C48 227 52 226 53 222 C55 212 55 201 53 191 C50 187 45 187 42 192 Z']]
 };
 function bodySvg(side, m) {
   const mir = d => '<path d="' + d + '"/><path d="' + d + '" transform="translate(120 0) scale(-1 1)"/>';
   return '<svg viewBox="0 0 120 244" class="bsvg" role="img" aria-label="' + side + ' view">' +
     '<g fill="#262a31" stroke="#1a1d22" stroke-width="1">' + mir(BODY_SIL) + '<circle cx="60" cy="18" r="12"/></g>' +
-    BODY[side].map(([g, d]) => '<g data-g="' + g + '" fill="' + PCOL[pBand(m[g] ? m[g].n : 0)] + '" stroke="#11141a" stroke-width="0.8" stroke-linejoin="round">' + mir(d) + '</g>').join('') +
+    BODY[side].map(([r, d]) => '<g data-g="r_' + r + '" fill="' + PCOL[pBand(m['r_' + r] ? m['r_' + r].n : 0)] + '" stroke="#11141a" stroke-width="0.8" stroke-linejoin="round">' + mir(d) + '</g>').join('') +
     '<text x="60" y="243" text-anchor="middle" font-size="8" fill="#9aa0a6">' + (side === 'front' ? 'Front' : 'Back') + '</text></svg>';
 }
 const fmtSets = n => (Math.round(n * 2) / 2).toString();
@@ -1155,8 +1170,9 @@ function openProg() {
   $('pgh').textContent = 'Weekly sets: ' + d(w.mon) + ' to ' + d(w.sun);
   $('pgb').innerHTML = '<div class="bmap">' + bodySvg('front', w.m) + bodySvg('back', w.m) + '</div>' +
     '<div class="pleg">' + PLEG.map((l, i) => '<span><i style="background:' + PCOL[i] + '"></i>' + l + '</span>') .join('') + '</div>' +
-    '<div class="s2">Hard sets logged this week (Mon to Sun). Main muscle counts 1 set, each other listed muscle 0.5. Tap a muscle.</div><div id="pgd"></div>' +
-    '<div class="plist">' + (window.CoachMG || []).map(g => '<button type="button" class="prow" data-g="' + g + '"><span>' + g + '</span><b>' + fmtSets(w.m[g].n) + '</b></button>').join('') + '</div>';
+    '<div class="s2">Hard sets logged this week (Mon to Sun). Main muscle counts 1 set, each other listed muscle 0.5. Regions use the same rule. Tap a muscle.</div><div id="pgd"></div>' +
+    '<div class="plist">' + (window.CoachMG || []).map(g => { const subs = (window.CoachRegions || []).filter(r => r[2] === g && !(r[0] === g && (window.CoachRegions || []).filter(x => x[2] === g).length === 1));
+      return '<div class="pgrp"><button type="button" class="prow" data-g="' + g + '"><span>' + g + '</span><b>' + fmtSets(w.m[g].n) + '</b></button>' + subs.map(r => '<button type="button" class="prow psub" data-g="r_' + r[0] + '"><span>' + esc(r[1]) + '</span><b>' + fmtSets(w.m['r_' + r[0]].n) + '</b></button>').join('') + '</div>'; }).join('') + '</div>';
   progW = w; $('prog').classList.add('open');
   const close = () => $('prog').classList.remove('open');
   if (layerOpen('wm')) swapLayer('wm', 'prog', close); else pushLayer('prog', close);
@@ -1165,7 +1181,8 @@ let progW = null;
 function progDetail(g) {
   const e = progW && progW.m[g]; if (!e) return;
   const ex = Object.entries(e.ex).sort((a, b) => b[1] - a[1]);
-  $('pgd').innerHTML = '<div class="pdet"><b>' + esc(g) + ': ' + fmtSets(e.n) + (e.n === 1 ? ' set' : ' sets') + '</b>' + (ex.length ? '<br>' + ex.map(([n, v]) => esc(n) + ' ' + fmtSets(v)).join('<br>') : '<br><span class="s2">Nothing logged this week.</span>') + '</div>';
+  const rg = (window.CoachRegions || []).find(r => 'r_' + r[0] === g), lbl = rg ? rg[1] + ' (' + rg[2] + ')' : g;
+  $('pgd').innerHTML = '<div class="pdet"><b>' + esc(lbl) + ': ' + fmtSets(e.n) + (e.n === 1 ? ' set' : ' sets') + '</b>' + (ex.length ? '<br>' + ex.map(([n, v]) => esc(n) + ' ' + fmtSets(v)).join('<br>') : '<br><span class="s2">Nothing logged this week.</span>') + '</div>';
   document.querySelectorAll('#prog [data-g]').forEach(el => el.classList.toggle('psel', el.dataset.g === g));
 }
 const closeProg = () => { if (!$('prog').classList.contains('open')) return; $('prog').classList.remove('open'); popLayer('prog'); };

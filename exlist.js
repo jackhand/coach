@@ -176,6 +176,31 @@ root.CoachGroupOf = c => { const r = String((c && c.rest_muscle) || '').toLowerC
 root.CoachGroupsOf = c => { const out = [], add = g => { if (g && !out.includes(g)) out.push(g); }; add(root.CoachGroupOf(c));
   String((c && c.muscles) || '').toLowerCase().split(/[,(]|\band\b/).forEach(part => { const m = part.trim(); if (!m) return; for (const k of Object.keys(MG).sort((a, b) => b.length - a.length)) if (m.includes(k)) { add(MG[k]); break; } if (/delt|shoulder/.test(m)) add('Shoulders'); if (/lat|rhomboid|mid back|upper back/.test(m)) add('Back'); if (/brachialis/.test(m)) add('Biceps'); if (/hip flexor|oblique/.test(m)) add('Abs'); });
   return out; };
+// Sub-regions for the body map (coverage matches MacroFactor Workouts Levels, plus upper/lower abs and upper chest).
+root.CoachRegions = [
+  ['UpperChest', 'Upper chest', 'Chest'], ['Chest', 'Mid/lower chest', 'Chest'],
+  ['Lats', 'Lats', 'Back'], ['UpperBack', 'Mid/upper back', 'Back'], ['LowerBack', 'Lower back', 'Back'],
+  ['Triceps', 'Triceps', 'Triceps'], ['Biceps', 'Biceps', 'Biceps'],
+  ['FrontDelts', 'Front delts', 'Shoulders'], ['SideDelts', 'Side delts', 'Shoulders'], ['RearDelts', 'Rear delts', 'Shoulders'],
+  ['Quads', 'Quads', 'Quads'], ['Adductors', 'Inner thighs (adductors)', 'Glutes'],
+  ['Glutes', 'Glutes', 'Glutes'], ['Abductors', 'Outer hips (abductors)', 'Glutes'],
+  ['Hamstrings', 'Hamstrings', 'Hamstrings'], ['Calves', 'Calves', 'Calves'], ['Traps', 'Traps', 'Traps'], ['Forearms', 'Forearms', 'Forearms'],
+  ['UpperAbs', 'Upper abs', 'Abs'], ['LowerAbs', 'Lower abs', 'Abs'], ['Obliques', 'Obliques', 'Abs']];
+const RTXT = [[/upper chest|clavicular/, 'UpperChest'], [/lower chest|chest|pec/, 'Chest'], [/front delt|anterior delt/, 'FrontDelts'], [/side delt|lateral delt|medial delt/, 'SideDelts'], [/rear delt|posterior delt/, 'RearDelts'],
+  [/delt|shoulder/, 'SideDelts'], [/trap/, 'Traps'], [/lat\b|lats/, 'Lats'], [/mid back|upper back|rhomboid|teres/, 'UpperBack'], [/lower back|erector|spinal/, 'LowerBack'], [/back/, 'Lats'],
+  [/bicep|brachialis/, 'Biceps'], [/tricep/, 'Triceps'], [/forearm|grip|wrist/, 'Forearms'], [/oblique/, 'Obliques'], [/upper abs/, 'UpperAbs'], [/lower abs/, 'LowerAbs'], [/abs|core|abdomin/, 'UpperAbs'],
+  [/adductor|inner thigh/, 'Adductors'], [/abductor|outer hip|glute med/, 'Abductors'], [/glute/, 'Glutes'], [/hamstring/, 'Hamstrings'], [/quad/, 'Quads'], [/calf|calves/, 'Calves']];
+// Name rules pick the main region when the muscles text is too general.
+const RNAME = [[/leg raise|knee raise|captain|dragon flag|reverse crunch|l-sit/, 'LowerAbs'], [/crunch|sit-?up/, 'UpperAbs'], [/pallof|woodchop|wood chop|oblique|side plank|russian twist/, 'Obliques'],
+  [/adduct/, 'Adductors'], [/abduct/, 'Abductors'], [/back extension|hyperextension|good morning|reverse hyper/, 'LowerBack'], [/lateral raise|upright row/, 'SideDelts'],
+  [/face pull|reverse fly|reverse pec|rear delt/, 'RearDelts'], [/front raise|shoulder press|overhead press|military/, 'FrontDelts'], [/incline (barbell |dumbbell |machine |smith )?(press|bench|fly|flye)|low to high|incline press/, 'UpperChest'],
+  [/shrug/, 'Traps'], [/pulldown|pull-?up|chin-?up|pullover|straight-arm/, 'Lats'], [/\brow\b|rows\b/, 'UpperBack']];
+root.CoachRegionsOf = c => { // [[region, weight]]: main 1, others 0.5
+  const n = String((c && c.name) || '').toLowerCase(), out = [], add = (r, w) => { if (r && !out.some(o => o[0] === r)) out.push([r, w]); };
+  for (const [re, r] of RNAME) if (re.test(n)) { add(r, 1); break; }
+  String((c && c.muscles) || '').toLowerCase().replace(/front and side delts/g, 'front delts, side delts').split(/[,(]|\band\b/).forEach(part => { const m = part.trim(); if (!m) return; for (const [re, r] of RTXT) if (re.test(m)) { const fam = { UpperAbs: ['UpperAbs', 'LowerAbs', 'Obliques'], Chest: ['Chest', 'UpperChest'], SideDelts: ['SideDelts', 'FrontDelts', 'RearDelts'], Lats: ['Lats', 'UpperBack', 'LowerBack'] }[r]; if (!(fam && /^(abs|core|chest|pecs?|delts?|shoulders?|back)$/.test(m) && out.some(o => fam.includes(o[0])))) add(r, out.length ? 0.5 : 1); break; } });
+  if (/plank/.test(n)) add('Obliques', 0.5);
+  return out; };
 root.CoachEquipOf = c => { const n = String((c && c.name) || '').toLowerCase(), e = String((c && c.equip) || '').toLowerCase();
   if (/smith/.test(n) || e === 'smith') return 'Smith machine'; if (/assist/.test(n)) return 'Machine assistance';
   if (e === 'bodyweight' || /bodyweight/.test(e)) return /dip|pull-?up|chin|push-?up|back extension|hyperextension/.test(n) ? 'Bodyweight loadable' : 'Bodyweight';
