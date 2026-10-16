@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 53;
+const APP_VERSION = 54;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -66,7 +66,7 @@ if (location.hash.length > 1) {
 window.addEventListener('hashchange', () => { if (/[#&](u|k)=/.test(location.hash)) location.reload(); });
 let U = LS.getItem('coach_u') || '', K = LS.getItem('coach_k') || '';
 let P = LS.getItem('coach_p') || 'jack';
-let S = null, days = {}, dayKey = null, viewId = null, sig = '', formEx = null, firstRender = true;
+let S = null, days = {}, RAWDAYS = {}, dayKey = null, viewId = null, sig = '', formEx = null, firstRender = true;
 
 let swReg = null;
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').then(r => { swReg = r; }).catch(() => {});
@@ -1048,11 +1048,12 @@ function editSetup(i) {
   putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; toast('Setup saved');
 }
 function applyState(st, initial) {
-  S = st; S.rows = S.rows || []; LIB = P_.parseLibrary(st.library); days = P_.enrich(P_.parseProgram(st.program), LIB); swapMemo = {};
+  S = st; S.rows = S.rows || []; LIB = P_.parseLibrary(st.library); RAWDAYS = P_.enrich(P_.parseProgram(st.program), LIB); days = P_.resolveDays(RAWDAYS, viewId ? viewWeek() : 1); swapMemo = {};
   if (!layerOpen('settings')) { $('settings').style.display = 'none'; $('app').style.display = 'block'; }
   const ls = localSet(); if (migrateKeys(ls)) jset(SK(), ls);
   if (S.settings) migrateKeys(S.settings);
   if (!viewId || !wParse(viewId)) setView(loggableId() || ('W1-' + (trainDays()[0] || S.weekday)));
+  days = P_.resolveDays(RAWDAYS, viewWeek());
   const nsig = P + '|' + viewId + '|' + JSON.stringify(wStatus()) + '|' + JSON.stringify(days[dayKey] || null) + '|' + JSON.stringify(S.settings || {});
   if (nsig !== sig) { if (!formEx || initial) { const y = window.scrollY; render(); sig = nsig; if (!firstRender) window.scrollTo(0, y); } }
   else update();

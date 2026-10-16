@@ -33,11 +33,14 @@
     return note;
   }
   function parseProgram(md) {
-    const days = {}; let week = '', cur = null;
+    const days = {}; let week = '', wn = 1, cur = null;
     for (const line of String(md || '').split(/\r?\n/)) {
-      if (line.startsWith('## ')) { week = line.slice(3).trim(); continue; }
+      if (line.startsWith('## ')) { week = line.slice(3).trim(); const wm = /week\s+(\d+)/i.exec(week); wn = wm ? +wm[1] : 1; continue; }
       let m = line.match(/^###\s+([A-Za-z]+)\s*:\s*(.*)$/);
-      if (m) { const key = m[1].toLowerCase(); cur = { day: cap(key), title: m[2].trim(), week, exercises: [], footer: [] }; days[key] = cur; continue; }
+      if (m) { const key = m[1].toLowerCase(); cur = { day: cap(key), title: m[2].trim(), week, from: wn, exercises: [], footer: [] };
+        // Same day under a later '## ... Week N' heading = that day's plan from week N on (earlier weeks keep the earlier plan).
+        if (days[key] && wn > (days[key].from || 1)) (days[key].variants = days[key].variants || []).push(cur); else days[key] = cur;
+        continue; }
       if (line.startsWith('#')) { cur = null; continue; }
       m = line.match(/^\s*(\d+)[.)]\s+(.*)$/);
       if (m && cur) {
@@ -72,8 +75,13 @@
     const k = [norm(name), norm(stripParens(name))];
     return lib.find(e => k.some(x => e.keys.includes(x))) || null;
   }
+  function resolveDays(days, w) {
+    const out = {};
+    Object.keys(days).forEach(k => { let d = days[k]; (days[k].variants || []).forEach(v => { if (w >= v.from && v.from >= (d.from || 1)) d = v; }); out[k] = d; });
+    return out;
+  }
   function enrich(days, lib) {
-    Object.values(days).forEach(d => d.exercises.forEach(ex => {
+    Object.values(days).forEach(d0 => [d0].concat(d0.variants || []).forEach(d => d.exercises.forEach(ex => {
       const e = lookup(lib, ex.name) || lookup(lib, ex.full_name);
       ex.canonical = e ? e.name : ex.name; ex.video = e ? e.video : ''; ex.muscles = e ? e.muscles : '';
       ex.match_keys = e ? e.keys : [norm(ex.name)];
@@ -81,7 +89,7 @@
       ex.single = !!(e && e.single) || /\b(single|one)[ -](arm|leg)\b|\bper (arm|leg|side)\b/i.test(ex.full_name + ' ' + ex.details);
       ex.bodyweight = !!(e && e.bodyweight); ex.stretch = !!(e && e.stretch) || /\bstretch\b|flexability/i.test(ex.full_name + ' ' + ex.details); ex.setup = e ? e.setup : ''; ex.cue = e ? e.cue : ''; ex.equip = (e && e.equip) || equipOf(ex.name, ex.bodyweight);
       let sm = (ex.note.sets || '').match(/^(\d+)\s*x/i); if (!sm) sm = (ex.details || '').match(/(\d+)\s*hold/i); ex.planned_sets = sm ? +sm[1] : (ex.stretch ? 1 : 3);
-    }));
+    })));
     return days;
   }
   function equipOf(name, bw) {
@@ -139,6 +147,6 @@
     out.notes = t.replace(/\s+/g, ' ').trim().replace(/^(and|with|reps?|lbs?|pounds?)\b\s*/, '').replace(/\s*\band$/, '').trim();
     return out;
   }
-  const api = { platesToLoad, equipOf, norm, stripParens, parseNote, parseProgram, parseLibrary, lookup, enrich, e1rm, parseSpeech };
+  const api = { platesToLoad, equipOf, norm, stripParens, parseNote, parseProgram, resolveDays, parseLibrary, lookup, enrich, e1rm, parseSpeech };
   if (typeof module !== 'undefined') module.exports = api; else root.CoachParse = api;
 })(this);
