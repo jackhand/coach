@@ -681,7 +681,7 @@ function resItem(c, cur, custom) {
   const ok = rMode === 'add' || custom || related(c, cur), g = grpOf(c), e = eqOf(c), ld = custom ? '' : lastDone(c);
   const col = (window.CoachMGColor || {})[g] || '#9e9e9e', sel = rSel.some(x => P_.norm(x.name) === P_.norm(c.name));
   const ldTxt = ld ? new Date(ld + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: ld.slice(0, 4) === String(new Date().getFullYear()) ? undefined : 'numeric' }) : '';
-  return '<div class="ri' + (sel ? ' sel' : '') + '" data-pick="' + esc(c.name) + '"' + (custom ? ' data-custom="1"' : '') + '><span class="ck"></span><div class="rt"><b>' + esc(custom ? 'Use "' + c.name + '"' : c.name) + '</b>' + (c.mine ? ' <small class="mine">in your library</small>' : '') + '<br>' +
+  return '<div class="ri' + (sel ? ' sel' : '') + '" data-pick="' + esc(c.name) + '"' + (custom ? ' data-custom="1"' : '') + '><span class="ck"></span><div class="rt"><b>' + esc(custom ? 'Use "' + c.name + '"' : c.name) + '</b>' + '' + '<br>' +
     (custom ? '<span class="s2">Custom exercise. Coach looks it up later and adds a demo.</span>' :
       (g ? '<span class="mg" style="background:' + col + '">' + esc(g) + '</span>' : '<span class="s2">muscles unknown</span>') + (e ? ' <span class="s2">&bull; ' + esc(e) + '</span>' : '') + (ldTxt ? '<br><span class="rlast">Last done ' + esc(ldTxt) + '</span>' : '') + ' <span class="s2">&middot;</span> ' + demoLink(c)) +
     (ok ? '' : '<div class="warn">&#9888; Does not work the same muscles as ' + esc(cur.canonical) + '</div>') + '</div></div>';
