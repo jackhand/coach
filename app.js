@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 58;
+const APP_VERSION = 59;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1112,7 +1112,7 @@ function weekSets() {
   const m = {}; (window.CoachMG || []).forEach(g => m[g] = { n: 0, ex: {} }); (window.CoachRegions || []).forEach(([k]) => m['r_' + k] = { n: 0, ex: {} });
   viewRows().forEach(r => {
     if (!r.date || r.date < mon || r.date > sun || r.failure_type === 'not to failure') return;
-    const ex = exFor(r.exercise), c = catFind(r.exercise) || (ex ? { name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle } : null);
+    const ex = exFor(r.exercise), c = catFind(r.exercise) || (ex ? { name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle } : { name: r.exercise });
     if (!c || isStretch(ex) || (ex && /stretch/i.test(String(ex.types || '')))) return;
     const gs = window.CoachGroupsOf ? window.CoachGroupsOf(c) : [];
     const nm = c.name || r.exercise, bump = (k, v) => { if (!m[k]) return; m[k].n += v; m[k].ex[nm] = (m[k].ex[nm] || 0) + v; };

@@ -69,7 +69,7 @@ const L = [
 ['T-bar row','Mid back, lats','back','machine','compound','landmine row'],
 ['Rope straight-arm pulldown','Lats','back','cable','isolation','straight-arm cable pulldown, rope straight pulldowns, rope straight pulldown, lat prayer, straight arm pulldown, straight arm rope pulldown, straight-arm rope pulldown, rope pulldown, straight arm rope pulldowns'],
 ['Back extension','Lower back, glutes, hamstrings','lower back','bodyweight','compound','hyperextension, 45 degree back extension'],
-['Back squat','Quads, glutes, adductors','quads','barbell','compound','squat'],
+['Back squat','Quads, glutes, adductors','quads','barbell','compound','squat, barbell back squat, barbell squat, high bar squat, low bar squat'],
 ['Hack squat','Quads, glutes','quads','machine','compound','hack squat machine'],
 ['Pendulum squat','Quads, glutes','quads','machine','compound',''],
 ['Smith machine squat','Quads, glutes','quads','machine','compound','smith squat'],
@@ -199,10 +199,16 @@ const RNAME = [[/neck (curl|extension|flexion|harness)|neck$/, 'Neck', []], [/ti
   [/face pull/, 'RearDelts', ['MidTraps', 'UpperBack']], [/reverse fly|reverse pec|rear delt/, 'RearDelts', ['UpperBack']], [/front raise|shoulder press|overhead press|military/, 'FrontDelts', []],
   [/incline (barbell |dumbbell |machine |smith )?(press|bench|fly|flye)|low to high|incline press/, 'UpperChest', []],
   [/shrug/, 'Traps', []], [/pulldown|pull-?up|chin-?up|straight-arm/, 'Lats', []], [/\brow\b|rows\b/, 'UpperBack', ['MidTraps']], [/deadlift|rdl/, '', ['LowerBack']]];
+// Last-resort name rules for exercises with no muscles text: [pattern, [main, ...extras]]
+const RFALL = [[/split squat|lunge|step-?up/, ['Quads', 'Glutes']], [/squat|leg press|hack|pendulum/, ['Quads', 'Glutes', 'Adductors']], [/leg extension/, ['Quads']],
+  [/leg curl|nordic|ham curl/, ['Hamstrings']], [/hip thrust|glute bridge|kickback|glute/, ['Glutes', 'Hamstrings']], [/romanian|rdl|stiff/, ['Hamstrings', 'Glutes', 'LowerBack']], [/deadlift/, ['Glutes', 'Hamstrings', 'LowerBack']],
+  [/calf/, ['Calves']], [/fly|flye|pec/, ['Chest', 'FrontDelts']], [/bench|chest press|push-?up/, ['Chest', 'FrontDelts', 'Triceps']], [/dip/, ['Chest', 'Triceps']],
+  [/pushdown|skull|tricep|overhead extension|kickback/, ['Triceps']], [/curl/, ['Biceps', 'Forearms']], [/press/, ['FrontDelts', 'Triceps']], [/plank|ab |abs|core/, ['UpperAbs', 'Obliques']]];
 root.CoachRegionsOf = c => { // [[region, weight]]: main 1, others 0.5
   const n = String((c && c.name) || '').toLowerCase(), out = [], add = (r, w) => { if (r && !out.some(o => o[0] === r)) out.push([r, w]); };
   let extra = []; for (const [re, r, ex] of RNAME) if (re.test(n)) { if (r) add(r, 1); extra = ex; break; }
   String((c && c.muscles) || '').toLowerCase().replace(/front and side delts/g, 'front delts, side delts').split(/[,(]|\band\b/).forEach(part => { const m = part.trim(); if (!m) return; for (const [re, r] of RTXT) if (re.test(m)) { const fam = { UpperAbs: ['UpperAbs', 'LowerAbs', 'Obliques'], Chest: ['Chest', 'UpperChest'], SideDelts: ['SideDelts', 'FrontDelts', 'RearDelts'], Lats: ['Lats', 'UpperBack', 'LowerBack'] }[r]; if (!(fam && /^(abs|core|chest|pecs?|delts?|shoulders?|back)$/.test(m) && out.some(o => fam.includes(o[0])))) add(r, out.length ? 0.5 : 1); break; } });
+  if (!out.length) for (const [re, rs] of RFALL) if (re.test(n)) { rs.forEach((r, i) => add(r, i ? 0.5 : 1)); break; }
   if (/plank/.test(n)) add('Obliques', 0.5);
   extra.forEach(r => add(r, 0.5));
   return out; };
