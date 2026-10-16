@@ -101,7 +101,21 @@
     return { ep: Math.round(w * (1 + r / 30)), br: Math.round(w * 36 / (37 - r)) };
   }
   const NUMW = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50 };
-  function parseSpeech(raw) {
+  // Plates as totals on the bar: '4x45 2x25', '4 45s 2 25s', 'four 45s and two 25s' -> 45 bar + 4*45 + 2*25 = 275. Null if no plate pattern.
+  const PLATE_RE = /(\d+)\s*(?:x|×|\*)\s*(45|35|25|10|5|2\.5)(?:'?s)?(?![\d.])|(\d+)\s+(45|35|25|10|5|2\.5)'?s\b/g;
+  function platesToLoad(raw, bar) {
+    let t = ' ' + String(raw || '').toLowerCase().replace(/fourty/g, 'forty').replace(/forty[ -]?fives?/g, '45s').replace(/thirty[ -]?fives?/g, '35s').replace(/twenty[ -]?fives?/g, '25s').replace(/\btens\b/g, '10s').replace(/\bfives\b/g, '5s').replace(/two and a halfs?|two point fives?/g, '2.5s') + ' ';
+    t = t.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/g, m => ' ' + NUMW[m] + ' ');
+    let tot = 0, hit = 0, m; PLATE_RE.lastIndex = 0;
+    const spans = [];
+    while ((m = PLATE_RE.exec(t))) { const n = +(m[1] || m[3]), w = +(m[2] || m[4]); if (n > 0 && n <= 12 && n % 2 === 0) { tot += n * w; hit++; spans.push(m[0]); } }
+    if (!hit) return null;
+    let rest = t; spans.forEach(s => { rest = rest.replace(s, ' '); });
+    return { load: Math.round(((bar == null ? 45 : bar) + tot) * 10) / 10, rest: rest.replace(/\band\b|\bplus\b|\bon the bar\b|\bplates?\b/g, ' ').replace(/\s+/g, ' ').trim() };
+  }
+  function parseSpeech(raw, opts) { // opts.barbell: read plate counts ('four 45s and two 25s') as total load with a 45 bar
+    const pl = opts && opts.barbell ? platesToLoad(raw, opts.bar) : null;
+    if (pl) { const o = parseSpeech(pl.rest.replace(/^(for|x|times|by)\s+(?=\d)/, '')); o.load = String(pl.load); return o; }
     let t = ' ' + String(raw).toLowerCase().replace(/,/g, ' ') + ' ';
     t = t.replace(/\b(twenty|thirty|forty|fifty)[ -](one|two|three|four|five|six|seven|eight|nine)\b/g, (m, a, b) => ' ' + (NUMW[a] + NUMW[b]) + ' ');
     t = t.replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\b/g, m => ' ' + NUMW[m] + ' ');
@@ -125,6 +139,6 @@
     out.notes = t.replace(/\s+/g, ' ').trim().replace(/^(and|with|reps?|lbs?|pounds?)\b\s*/, '').replace(/\s*\band$/, '').trim();
     return out;
   }
-  const api = { equipOf, norm, stripParens, parseNote, parseProgram, parseLibrary, lookup, enrich, e1rm, parseSpeech };
+  const api = { platesToLoad, equipOf, norm, stripParens, parseNote, parseProgram, parseLibrary, lookup, enrich, e1rm, parseSpeech };
   if (typeof module !== 'undefined') module.exports = api; else root.CoachParse = api;
 })(this);

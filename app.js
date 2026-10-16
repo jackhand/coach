@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 52;
+const APP_VERSION = 53;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1121,19 +1121,31 @@ function weekSets() {
 const PCOL = ['#3a3f47', '#2e5d3a', '#3f8f4f', '#f2c14e', '#f28c38', '#e04f4f'];
 const pBand = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 15 ? 3 : n < 20 ? 4 : 5;
 const PLEG = ['0', '1-4', '5-9', '10-14', '15-19', '20+'];
-// Simple front/back figure. Each shape carries data-g (muscle group).
+// Stylized front/back figures. Each muscle is a <g data-g> with the left shape plus its mirror (viewBox 120 x 240).
+const BODY_SIL = 'M60 30 C56 30 54 32 54 34 C46 36 38 40 34 46 C28 52 25 62 24 74 C22 90 19 108 17 126 C16 132 16 138 18 142 C21 142 23 138 24 132 C28 116 31 102 33 90 C35 82 37 78 40 76 C41 92 43 104 43 112 C40 118 39 124 39 132 C38 150 39 168 41 184 C40 200 41 216 43 230 C43 234 45 237 49 237 C53 237 55 235 54 230 C55 216 56 200 56 188 C57 170 58 150 59 134 L60 132 Z';
 const BODY = {
-  front: [['Shoulders', 'M38 58 q-14 2 -16 18 l14 4 z M82 58 q14 2 16 18 l-14 4 z'], ['Chest', 'M42 60 h17 v20 q-10 2 -19 -4 z M61 60 h17 l2 16 q-9 6 -19 4 z'],
-    ['Biceps', 'M22 80 l13 3 -3 26 -12 -2 z M98 80 l-13 3 3 26 12 -2 z'], ['Forearms', 'M20 110 l12 2 -4 30 -11 -2 z M100 110 l-12 2 4 30 11 -2 z'],
-    ['Abs', 'M46 84 h28 v40 q-14 6 -28 0 z'], ['Quads', 'M44 132 h15 l-2 52 h-12 z M61 132 h15 l-1 52 h-12 z'], ['Calves', 'M45 192 h11 l-1 40 h-8 z M64 192 h11 l-2 40 h-8 z']],
-  back: [['Traps', 'M48 46 l12 -4 12 4 6 12 h-36 z'], ['Shoulders', 'M38 58 q-14 2 -16 18 l14 4 z M82 58 q14 2 16 18 l-14 4 z'], ['Back', 'M42 60 h36 l-2 46 q-16 8 -32 0 z'],
-    ['Triceps', 'M22 80 l13 3 -3 26 -12 -2 z M98 80 l-13 3 3 26 12 -2 z'], ['Forearms', 'M20 110 l12 2 -4 30 -11 -2 z M100 110 l-12 2 4 30 11 -2 z'],
-    ['Glutes', 'M44 110 h32 v22 q-16 6 -32 0 z'], ['Hamstrings', 'M44 136 h15 l-2 48 h-12 z M61 136 h15 l-1 48 h-12 z'], ['Calves', 'M45 192 h11 l-1 40 h-8 z M64 192 h11 l-2 40 h-8 z']]
+  front: [['Shoulders', 'M38 44 C30 44 25 52 25 62 C30 64 35 60 40 56 C42 50 42 46 38 44 Z'],
+    ['Chest', 'M42 49 C48 45 55 45 59 47 L59 66 C52 70 45 68 40 62 C39 56 40 52 42 49 Z'],
+    ['Biceps', 'M27 66 C24 74 23 84 25 92 C29 93 33 87 34 79 C35 72 32 66 27 66 Z'],
+    ['Forearms', 'M24 96 C21 106 18 118 18 126 C21 128 24 127 26 124 C29 114 31 104 32 96 C29 93 26 93 24 96 Z'],
+    ['Abs', 'M51 71 L59 71 L59 117 C55 120 51 118 50 114 C49 100 49 84 51 71 Z M42 71 C46 73 48 78 48 86 C48 98 48 106 47 112 C44 108 42 98 41 88 C40 80 40 74 42 71 Z'],
+    ['Quads', 'M43 128 C39 140 39 160 42 178 C46 183 52 183 55 179 C57 162 58 144 57 131 C52 126 47 125 43 128 Z'],
+    ['Calves', 'M43 193 C41 205 42 218 45 228 C48 230 51 229 52 226 C53 214 54 202 53 192 C50 189 46 189 43 193 Z']],
+  back: [['Traps', 'M55 31 C51 37 45 41 38 44 C46 46 52 52 56 62 L60 72 L60 31 Z'],
+    ['Shoulders', 'M38 45 C30 45 25 53 25 63 C30 65 35 61 40 57 C42 51 42 47 38 45 Z'],
+    ['Back', 'M42 56 C48 56 54 62 59 74 L59 106 C54 108 48 104 45 98 C42 88 40 72 42 56 Z'],
+    ['Triceps', 'M27 66 C23 74 23 86 25 93 C29 94 33 88 34 80 C35 72 32 66 27 66 Z'],
+    ['Forearms', 'M24 97 C21 107 18 118 18 126 C21 128 24 127 26 124 C29 114 31 105 32 97 C29 94 26 94 24 97 Z'],
+    ['Glutes', 'M43 115 C48 111 56 113 59 117 L59 140 C54 145 46 145 42 139 C40 131 40 122 43 115 Z'],
+    ['Hamstrings', 'M43 147 C41 158 41 170 44 181 C48 184 52 184 55 181 C57 169 57 157 56 147 C52 144 47 144 43 147 Z'],
+    ['Calves', 'M42 192 C40 202 41 214 44 224 C48 227 52 226 53 222 C55 212 55 201 53 191 C50 187 45 187 42 192 Z']]
 };
 function bodySvg(side, m) {
-  return '<svg viewBox="0 0 120 240" class="bsvg" role="img" aria-label="' + side + ' view"><circle cx="60" cy="24" r="14" fill="#2a2e35"/><rect x="54" y="38" width="12" height="8" fill="#2a2e35"/>' +
-    BODY[side].map(([g, d]) => '<path data-g="' + g + '" d="' + d + '" fill="' + PCOL[pBand(m[g] ? m[g].n : 0)] + '" stroke="#11141a" stroke-width="1"/>').join('') +
-    '<text x="60" y="238" text-anchor="middle" font-size="9" fill="#9aa0a6">' + (side === 'front' ? 'Front' : 'Back') + '</text></svg>';
+  const mir = d => '<path d="' + d + '"/><path d="' + d + '" transform="translate(120 0) scale(-1 1)"/>';
+  return '<svg viewBox="0 0 120 244" class="bsvg" role="img" aria-label="' + side + ' view">' +
+    '<g fill="#262a31" stroke="#1a1d22" stroke-width="1">' + mir(BODY_SIL) + '<circle cx="60" cy="18" r="12"/></g>' +
+    BODY[side].map(([g, d]) => '<g data-g="' + g + '" fill="' + PCOL[pBand(m[g] ? m[g].n : 0)] + '" stroke="#11141a" stroke-width="0.8" stroke-linejoin="round">' + mir(d) + '</g>').join('') +
+    '<text x="60" y="243" text-anchor="middle" font-size="8" fill="#9aa0a6">' + (side === 'front' ? 'Front' : 'Back') + '</text></svg>';
 }
 const fmtSets = n => (Math.round(n * 2) / 2).toString();
 function openProg() {
@@ -1402,16 +1414,19 @@ function bwLine() {
   const bw = bodyweight(), add = parseFloat($('fl').value) || 0;
   $('fbw').textContent = bw ? 'Total load: ' + bw + ' body weight + ' + add + ' added = ' + (bw + add) + ' lb' : 'Set your body weight in settings (gear) to get total load.';
 }
-function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; const bb = !!formEx && !isStretch(formEx) && eqKind(formEx) === 'barbell'; $('pbt').style.display = bb ? '' : 'none'; if (!bb) $('pbx').hidden = true; }
+function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; const bb = !!formEx && !isStretch(formEx) && eqKind(formEx) === 'barbell'; $('pbt').style.display = bb ? '' : 'none'; $('fl').inputMode = bb ? 'text' : 'decimal'; $('fl').placeholder = bb ? 'e.g. 185 or 4x45 2x25' : ''; if (!bb) $('pbx').hidden = true; }
 // Plate-first: tap plates (one per side each), chips remove, total = 45 bar + 2 x plates.
-let pbList = [];
-function pbRender() { const tot = BAR + 2 * pbList.reduce((a, b) => a + b, 0); $('pbc').innerHTML = pbList.map((p, i) => '<button type="button" class="pchip" data-pi="' + i + '" aria-label="Remove ' + p + '">' + p + ' &times;</button>').join('') || '<span class="s2">Empty bar. Tap plates to add one per side.</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
+let pbList = []; // one entry per pair (one plate each side)
+function pbRender() { const tot = BAR + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + ' &times;</button>').join('') || '<span class="s2">Empty bar. Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
 $('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; pbRender(); } $('pbt').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; };
 $('pbp').addEventListener('click', e => { const b = e.target.closest('[data-pp]'); if (!b) return; pbList.push(+b.dataset.pp); pbList.sort((a, c) => c - a); pbRender(); });
-$('pbc').addEventListener('click', e => { const b = e.target.closest('[data-pi]'); if (!b) return; pbList.splice(+b.dataset.pi, 1); pbRender(); });
+$('pbc').addEventListener('click', e => { const b = e.target.closest('[data-pr]'); if (!b) return; const i = pbList.indexOf(+b.dataset.pr); if (i >= 0) pbList.splice(i, 1); pbRender(); });
 $('pbclr').onclick = () => { pbList = []; pbRender(); };
 $('pbuse').onclick = () => { $('fl').value = String(BAR + 2 * pbList.reduce((a, b) => a + b, 0)); bwLine(); plUpd(); };
-$('fl').oninput = () => { bwLine(); plUpd(); };
+const isBB = () => !!formEx && !isStretch(formEx) && eqKind(formEx) === 'barbell';
+function flPlates() { const pl = isBB() ? P_.platesToLoad($('fl').value, BAR) : null; if (pl && !pl.rest) { $('fl').value = String(pl.load); bwLine(); plUpd(); return true; } return false; }
+$('fl').oninput = () => { bwLine(); const pl = isBB() ? P_.platesToLoad($('fl').value, BAR) : null; if (pl && !pl.rest) $('fpl').textContent = '= ' + pl.load + ' lb (tap away to use)'; else plUpd(); };
+$('fl').addEventListener('blur', flPlates);
 function showSides(on) { $('sides').style.display = on ? 'block' : 'none'; $('repsbox').style.display = on ? 'none' : 'block'; }
 // ---------- Hold timer (stretch mode) ----------
 let hold = null; // { start, side: 'L'|'R'|'' }
@@ -1535,7 +1550,7 @@ $('fsave').onclick = () => {
     reps = L && R && Number(L) !== Number(R) ? L + '/' + R : (L || R);
   }
   if (!reps) { $('ferr').textContent = 'Reps are required.'; return; }
-  const load = $('fl').value.trim();
+  flPlates(); const load = $('fl').value.trim();
   let bw = '', total = '';
   if (ex.bodyweight) { const b = bodyweight(); if (b) { bw = String(b); total = String(Math.round((b + (parseFloat(load) || 0)) * 10) / 10); } }
   const mtok = minis > 0 && $('fmini').style.display !== 'none' ? '[mini ' + minis + ']' : '';
@@ -1631,7 +1646,7 @@ $('mic').onclick = () => {
     $('heard').textContent = 'Heard: "' + txt + '"'; if (fin) fill(txt); };
   try { rec.start(); } catch (err) { $('heard').textContent = 'Could not start voice: ' + err.message; }
 };
-function fill(txt) { const p = P_.parseSpeech(txt);
+function fill(txt) { const p = P_.parseSpeech(txt, { barbell: isBB(), bar: BAR });
   if (p.load != null) $('fl').value = p.load; if (p.reps != null) $('fr').value = p.reps; if (p.ft === 'drop set') { ffSel.value = 'true'; setDrops(Math.max(1, drops)); } else if (p.ft) ffSel.value = p.ft; miniUI(); if (p.notes) $('fn').value = p.notes;
   $('heard').textContent = 'Heard: "' + txt + '". Check and edit, then Save.'; }
 
