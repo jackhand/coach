@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 56;
+const APP_VERSION = 57;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1121,47 +1121,55 @@ function weekSets() {
   });
   return { mon, sun, m };
 }
-const PCOL = ['#3a3f47', '#2e5d3a', '#3f8f4f', '#f2c14e', '#f28c38', '#e04f4f'];
+const PCOL = ['#2c3036', '#2e5d3a', '#3f8f4f', '#f2c14e', '#f28c38', '#e04f4f'];
 const pBand = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 15 ? 3 : n < 20 ? 4 : 5;
 const PLEG = ['0', '1-4', '5-9', '10-14', '15-19', '20+'];
 // Stylized front/back figures. Each muscle is a <g data-g> with the left shape plus its mirror (viewBox 120 x 240).
-const BODY_SIL = 'M60 30 C56 30 54 32 54 34 C46 36 38 40 34 46 C28 52 25 62 24 74 C22 90 19 108 17 126 C16 132 16 138 18 142 C21 142 23 138 24 132 C28 116 31 102 33 90 C35 82 37 78 40 76 C41 92 43 104 43 112 C40 118 39 124 39 132 C38 150 39 168 41 184 C40 200 41 216 43 230 C43 234 45 237 49 237 C53 237 55 235 54 230 C55 216 56 200 56 188 C57 170 58 150 59 134 L60 132 Z';
-// Regions (left half; drawn with a mirror). Keys match CoachRegions in exlist.js.
+// MacroFactor-style figure (viewBox 160 x 304): broad V-taper silhouette with hands and feet, rounded muscle pieces with dark gaps.
+// Each entry is [region, path]; the left half is drawn and mirrored. Extra heads (quads, hamstrings, forearms, triceps, calves) share one region.
+const BODY_SIL = 'M80 38 C76 38 74 40 73 44 L72 48 C62 50 50 52 40 55 C32 57 26 63 24 72 C22 86 22 100 23 114 C21 128 18 146 16 164 C15 174 14 182 13 188 C10 194 8 202 10 210 C12 214 17 212 19 206 L22 198 C25 192 27 186 29 180 C33 162 37 146 40 130 C42 118 44 106 46 94 C48 110 51 126 53 140 C51 148 49 156 49 166 C48 190 49 214 52 238 C50 254 50 270 52 284 C49 289 46 294 48 299 C56 301 66 301 72 299 C74 294 73 290 72 286 C74 270 76 254 76 240 C77 222 78 196 79 174 L80 172 Z';
+const FARMS = 'M24 126 C21 140 18 156 17 170 C19 171 21 170 22 168 C24 154 26 140 28 128 C27 126 25 126 24 126 Z M30 128 C28 142 26 158 24 172 C26 173 28 172 29 170 C31 156 33 142 34 130 C33 128 31 128 30 128 Z M36 131 C35 144 33 156 31 168 C33 168 34 167 35 165 C37 154 38 142 38 132 C37 131 36 131 36 131 Z';
 const BODY = {
-  front: [['Traps', 'M55 32 C52 36 48 39 43 41 C48 42 53 43 57 43 L60 43 L60 32 Z'],
-    ['SideDelts', 'M33 46 C27 48 24 55 24 63 C27 63 30 60 32 56 C32 52 33 49 33 46 Z'],
-    ['FrontDelts', 'M38 44 C35 45 34 47 33 50 C32 55 32 59 33 61 C36 60 39 57 41 53 C42 49 41 46 38 44 Z'],
-    ['UpperChest', 'M42 48 C48 45 55 45 59 46 L59 55 C52 55 46 55 41 57 C41 54 41 51 42 48 Z'],
-    ['Chest', 'M41 58 C46 56 53 56 59 56 L59 66 C52 70 45 68 40 62 C40 60 40 59 41 58 Z'],
-    ['Biceps', 'M27 66 C24 74 23 84 25 92 C29 93 33 87 34 79 C35 72 32 66 27 66 Z'],
-    ['Forearms', 'M24 96 C21 106 18 118 18 126 C21 128 24 127 26 124 C29 114 31 104 32 96 C29 93 26 93 24 96 Z'],
-    ['UpperAbs', 'M51 70 L59 70 L59 92 L50 92 C49 84 50 76 51 70 Z'],
-    ['LowerAbs', 'M50 94 L59 94 L59 118 C55 120 51 118 50 114 C49 106 49 99 50 94 Z'],
-    ['Obliques', 'M42 70 C46 72 48 78 48 86 C48 98 48 106 47 112 C44 108 42 98 41 88 C40 80 40 74 42 70 Z'],
-    ['Abductors', 'M42 117 C40 122 39 128 39 137 C41 137 42 133 43 129 C44 124 44 120 42 117 Z'],
-    ['Quads', 'M44 128 C41 140 41 160 43 178 C47 183 51 183 53 179 C54 162 54 146 53 132 C50 127 47 126 44 128 Z'],
-    ['Adductors', 'M54 131 C56 131 58 133 59 135 C59 148 57 160 55 172 C54 160 54 146 54 131 Z'],
-    ['Calves', 'M43 193 C41 205 42 218 45 228 C48 230 51 229 52 226 C53 214 54 202 53 192 C50 189 46 189 43 193 Z']],
-  back: [['UpperBack', 'M44 50 C49 51 54 56 57 62 L60 66 L60 82 C55 80 49 74 45 66 C43 61 43 55 44 50 Z'],
-    ['Traps', 'M55 31 C51 37 45 41 38 44 C46 46 52 50 56 56 L60 64 L60 31 Z'],
-    ['SideDelts', 'M33 46 C27 48 24 55 24 63 C27 63 30 60 32 56 C32 52 33 49 33 46 Z'],
-    ['RearDelts', 'M38 45 C35 46 34 48 33 51 C32 56 32 59 33 61 C37 60 40 57 42 53 C42 49 41 46 38 45 Z'],
-    ['Lats', 'M42 62 C46 71 52 79 59 84 L59 96 C54 100 48 98 45 94 C42 84 41 72 42 62 Z'],
-    ['LowerBack', 'M50 99 C53 100 56 100 59 100 L59 114 C55 116 51 115 49 112 C49 108 49 103 50 99 Z'],
-    ['Triceps', 'M27 66 C23 74 23 86 25 93 C29 94 33 88 34 80 C35 72 32 66 27 66 Z'],
-    ['Forearms', 'M24 97 C21 107 18 118 18 126 C21 128 24 127 26 124 C29 114 31 105 32 97 C29 94 26 94 24 97 Z'],
-    ['Abductors', 'M42 111 C46 109 50 110 53 113 C49 115 45 118 41 121 C41 117 41 114 42 111 Z'],
-    ['Glutes', 'M43 118 C48 114 56 116 59 120 L59 140 C54 145 46 145 42 139 C40 131 40 124 43 118 Z'],
-    ['Hamstrings', 'M43 147 C41 158 41 170 44 181 C47 183 51 183 53 180 C54 168 54 156 53 147 C50 144 46 144 43 147 Z'],
-    ['Adductors', 'M54 147 C56 147 58 149 59 150 C58 160 57 170 55 178 C54 168 54 156 54 147 Z'],
-    ['Calves', 'M42 192 C40 202 41 214 44 224 C48 227 52 226 53 222 C55 212 55 201 53 191 C50 187 45 187 42 192 Z']]
+  front: [['Neck', 'M75 43 C77 47 78 51 78 55 L80 55 L80 41 C78 41 76 42 75 43 Z'],
+    ['Traps', 'M72 50 C64 52 56 54 49 57 C56 58 64 58 72 57 C73 55 73 52 72 50 Z'],
+    ['SideDelts', 'M42 59 C34 61 29 67 28 77 C31 81 35 81 37 77 C37 71 39 65 42 59 Z'],
+    ['FrontDelts', 'M47 60 C42 62 40 68 40 77 C43 79 46 77 48 73 C50 69 51 64 47 60 Z'],
+    ['UpperChest', 'M52 61 C60 59 70 59 78 60 L78 72 C68 72 58 73 51 76 C50 70 50 65 52 61 Z'],
+    ['Chest', 'M51 79 C58 76 68 75 78 75 L78 90 C70 96 58 96 51 90 C50 86 50 82 51 79 Z'],
+    ['Lats', 'M45 82 C47 88 47 95 47 102 C45 99 43 92 43 86 C43 84 44 83 45 82 Z'],
+    ['Serratus', 'M49 95 C52 96 54 99 54 102 L49 103 C48 100 48 97 49 95 Z M49 106 L55 106 C55 110 53 112 50 113 C49 110 49 108 49 106 Z'],
+    ['Biceps', 'M29 84 C26 94 26 106 28 118 C33 120 38 114 39 104 C40 94 37 86 29 84 Z'],
+    ['Forearms', FARMS],
+    ['UpperAbs', 'M68 95 L78 95 L78 106 L67 106 C67 102 67 98 68 95 Z M67 109 L78 109 L78 121 L66 121 C66 117 66 113 67 109 Z'],
+    ['LowerAbs', 'M66 124 L78 124 L78 136 L66 136 Z M66 139 L78 139 L78 163 C74 161 70 155 67 149 C66 145 66 142 66 139 Z'],
+    ['Obliques', 'M57 100 C61 104 63 110 63 120 C63 132 63 142 62 149 C58 143 56 131 55 119 C55 111 55 105 57 100 Z'],
+    ['Abductors', 'M53 152 C51 160 51 168 52 176 C55 172 57 166 58 158 C57 154 55 152 53 152 Z'],
+    ['Quads', 'M53 181 C51 196 52 214 55 230 C58 230 60 226 60 220 C59 206 58 192 57 181 C56 179 54 179 53 181 Z M60 168 C58 182 59 200 62 220 C64 220 67 210 68 196 C68 184 66 172 63 166 C62 166 61 167 60 168 Z M67 214 C65 222 65 228 68 234 C72 234 74 230 74 224 C72 220 70 216 67 214 Z'],
+    ['Adductors', 'M70 168 C72 168 75 170 78 174 C77 188 75 200 72 208 C70 196 69 182 70 168 Z'],
+    ['Tibialis', 'M56 248 C54 260 54 272 56 282 C58 282 60 280 60 276 C61 266 61 256 60 248 C59 247 57 247 56 248 Z'],
+    ['Calves', 'M63 248 C65 256 67 264 67 276 C69 272 71 262 71 254 C69 250 66 248 63 248 Z']],
+  back: [['Neck', 'M74 40 C75 44 76 48 77 50 L80 50 L80 38 C78 38 76 39 74 40 Z'],
+    ['Traps', 'M73 47 C66 51 56 54 48 57 C56 59 64 60 72 62 L79 64 L79 53 C77 51 75 49 73 47 Z'],
+    ['MidTraps', 'M79 67 C75 71 72 76 70 83 C72 95 75 106 79 116 Z'],
+    ['SideDelts', 'M40 58 C33 60 29 66 28 76 C31 78 33 78 34 76 C34 70 36 64 40 58 Z'],
+    ['RearDelts', 'M45 59 C39 60 36 64 36 71 C39 73 43 72 46 70 C47 66 47 62 45 59 Z'],
+    ['UpperBack', 'M54 66 C60 64 66 66 68 72 C68 80 64 86 58 88 C52 86 50 80 50 74 C50 70 52 67 54 66 Z'],
+    ['Lats', 'M50 92 C56 92 63 90 69 88 C72 100 73 112 74 124 C67 128 60 130 55 132 C52 120 50 106 50 92 Z'],
+    ['LowerBack', 'M75 120 C76 130 77 142 78 152 L73 152 C72 142 72 130 73 120 C74 120 74 120 75 120 Z'],
+    ['Triceps', 'M28 82 C25 92 25 104 27 116 C30 116 32 112 33 106 C33 96 32 88 28 82 Z M35 86 C34 96 34 106 36 116 C39 114 41 106 41 98 C40 92 38 88 35 86 Z'],
+    ['Forearms', FARMS],
+    ['Abductors', 'M53 146 C59 144 65 144 71 146 C67 150 61 154 53 156 C52 152 52 148 53 146 Z'],
+    ['Glutes', 'M53 158 C61 154 72 154 79 158 L79 186 C70 192 59 192 53 186 C51 176 51 166 53 158 Z'],
+    ['Hamstrings', 'M53 194 C51 208 52 222 54 234 C57 234 59 230 59 226 C59 214 58 202 57 194 C56 193 54 193 53 194 Z M60 194 C59 208 60 222 62 234 C65 234 67 230 67 224 C67 212 66 202 64 194 C63 193 61 193 60 194 Z'],
+    ['Adductors', 'M69 194 C71 194 75 196 78 198 C77 210 75 222 72 230 C70 220 69 206 69 194 Z'],
+    ['Calves', 'M54 244 C52 252 52 262 55 270 C58 270 61 266 62 260 C62 252 61 246 58 243 C57 243 55 243 54 244 Z M63 243 C65 246 68 252 69 260 C69 266 67 270 64 270 C63 262 63 252 63 243 Z M55 273 C57 278 61 282 65 282 C67 278 68 274 67 272 C63 274 59 274 55 273 Z']]
 };
 function bodySvg(side, m) {
-  const mir = d => '<path d="' + d + '"/><path d="' + d + '" transform="translate(120 0) scale(-1 1)"/>';
-  return '<svg viewBox="0 0 120 244" class="bsvg" role="img" aria-label="' + side + ' view">' +
-    '<g fill="#262a31" stroke="#1a1d22" stroke-width="1">' + mir(BODY_SIL) + '<circle cx="60" cy="18" r="12"/></g>' +
-    BODY[side].map(([r, d]) => '<g data-g="r_' + r + '" fill="' + PCOL[pBand(m['r_' + r] ? m['r_' + r].n : 0)] + '" stroke="#11141a" stroke-width="0.8" stroke-linejoin="round">' + mir(d) + '</g>').join('') +
-    '<text x="60" y="243" text-anchor="middle" font-size="8" fill="#9aa0a6">' + (side === 'front' ? 'Front' : 'Back') + '</text></svg>';
+  const mir = d => '<path d="' + d + '"/><path d="' + d + '" transform="translate(160 0) scale(-1 1)"/>';
+  return '<svg viewBox="0 0 160 312" class="bsvg" role="img" aria-label="' + side + ' view">' +
+    '<g fill="#4a4f57">' + mir(BODY_SIL) + '<ellipse cx="80" cy="22" rx="13" ry="16"/></g>' +
+    BODY[side].map(([r, d]) => '<g data-g="r_' + r + '" fill="' + PCOL[pBand(m['r_' + r] ? m['r_' + r].n : 0)] + '" stroke="#202328" stroke-width="1.4" stroke-linejoin="round">' + mir(d) + '</g>').join('') +
+    '<text x="80" y="310" text-anchor="middle" font-size="9" fill="#9aa0a6">' + (side === 'front' ? 'Front' : 'Back') + '</text></svg>';
 }
 const fmtSets = n => (Math.round(n * 2) / 2).toString();
 function openProg() {

@@ -167,7 +167,7 @@ const V = {
 };
 root.CoachExList = L.map(a => ({ video: V[a[0]] || '', name: a[0], muscles: a[1], rest_muscle: a[2], equip: a[3], types: a[4].split(','), aliases: a[5] ? a[5].split(',').map(s => s.trim()) : [] }));
 // Filter metadata (RP style): one muscle group and one equipment label per exercise.
-const MG = { chest: 'Chest', 'upper chest': 'Chest', back: 'Back', lats: 'Back', 'lower back': 'Back', 'upper back': 'Back', triceps: 'Triceps', biceps: 'Biceps', shoulders: 'Shoulders', delts: 'Shoulders', 'rear delts': 'Shoulders', 'side delts': 'Shoulders', 'front delts': 'Shoulders', quads: 'Quads', glutes: 'Glutes', adductors: 'Glutes', hamstrings: 'Hamstrings', calves: 'Calves', traps: 'Traps', forearms: 'Forearms', abs: 'Abs', core: 'Abs' };
+const MG = { chest: 'Chest', 'upper chest': 'Chest', back: 'Back', lats: 'Back', 'lower back': 'Back', 'upper back': 'Back', triceps: 'Triceps', biceps: 'Biceps', shoulders: 'Shoulders', delts: 'Shoulders', 'rear delts': 'Shoulders', 'side delts': 'Shoulders', 'front delts': 'Shoulders', quads: 'Quads', glutes: 'Glutes', adductors: 'Glutes', hamstrings: 'Hamstrings', calves: 'Calves', traps: 'Traps', forearms: 'Forearms', abs: 'Abs', core: 'Abs', neck: 'Traps', serratus: 'Back', tibialis: 'Calves', shins: 'Calves' };
 root.CoachMG = ['Chest', 'Back', 'Triceps', 'Biceps', 'Shoulders', 'Quads', 'Glutes', 'Hamstrings', 'Calves', 'Traps', 'Forearms', 'Abs'];
 root.CoachEQ = ['Barbell', 'Bodyweight loadable', 'Bodyweight', 'Cable', 'Dumbbell', 'Machine', 'Machine assistance', 'Smith machine'];
 root.CoachMGColor = { Chest: '#e57373', Back: '#64b5f6', Triceps: '#ba68c8', Biceps: '#4db6ac', Shoulders: '#ffb74d', Quads: '#81c784', Glutes: '#f06292', Hamstrings: '#a1887f', Calves: '#90a4ae', Traps: '#7986cb', Forearms: '#dce775', Abs: '#ffd54f' };
@@ -179,27 +179,32 @@ root.CoachGroupsOf = c => { const out = [], add = g => { if (g && !out.includes(
 // Sub-regions for the body map (coverage matches MacroFactor Workouts Levels, plus upper/lower abs and upper chest).
 root.CoachRegions = [
   ['UpperChest', 'Upper chest', 'Chest'], ['Chest', 'Mid/lower chest', 'Chest'],
-  ['Lats', 'Lats', 'Back'], ['UpperBack', 'Mid/upper back', 'Back'], ['LowerBack', 'Lower back', 'Back'],
+  ['Lats', 'Lats', 'Back'], ['Serratus', 'Serratus', 'Back'], ['UpperBack', 'Rhomboids/teres', 'Back'], ['LowerBack', 'Lower back', 'Back'],
   ['Triceps', 'Triceps', 'Triceps'], ['Biceps', 'Biceps', 'Biceps'],
   ['FrontDelts', 'Front delts', 'Shoulders'], ['SideDelts', 'Side delts', 'Shoulders'], ['RearDelts', 'Rear delts', 'Shoulders'],
-  ['Quads', 'Quads', 'Quads'], ['Adductors', 'Inner thighs (adductors)', 'Glutes'],
-  ['Glutes', 'Glutes', 'Glutes'], ['Abductors', 'Outer hips (abductors)', 'Glutes'],
-  ['Hamstrings', 'Hamstrings', 'Hamstrings'], ['Calves', 'Calves', 'Calves'], ['Traps', 'Traps', 'Traps'], ['Forearms', 'Forearms', 'Forearms'],
+  ['Quads', 'Quads', 'Quads'],
+  ['Glutes', 'Glute max', 'Glutes'], ['Adductors', 'Inner thighs (adductors)', 'Glutes'], ['Abductors', 'Outer hips (abductors)', 'Glutes'],
+  ['Hamstrings', 'Hamstrings', 'Hamstrings'], ['Calves', 'Calves (gastroc, soleus)', 'Calves'], ['Tibialis', 'Tibialis (shins)', 'Calves'],
+  ['Traps', 'Upper traps', 'Traps'], ['MidTraps', 'Mid/lower traps', 'Traps'], ['Neck', 'Neck', 'Traps'],
+  ['Forearms', 'Forearms', 'Forearms'],
   ['UpperAbs', 'Upper abs', 'Abs'], ['LowerAbs', 'Lower abs', 'Abs'], ['Obliques', 'Obliques', 'Abs']];
-const RTXT = [[/upper chest|clavicular/, 'UpperChest'], [/lower chest|chest|pec/, 'Chest'], [/front delt|anterior delt/, 'FrontDelts'], [/side delt|lateral delt|medial delt/, 'SideDelts'], [/rear delt|posterior delt/, 'RearDelts'],
-  [/delt|shoulder/, 'SideDelts'], [/trap/, 'Traps'], [/lat\b|lats/, 'Lats'], [/mid back|upper back|rhomboid|teres/, 'UpperBack'], [/lower back|erector|spinal/, 'LowerBack'], [/back/, 'Lats'],
+const RTXT = [[/neck/, 'Neck'], [/upper chest|clavicular/, 'UpperChest'], [/serratus/, 'Serratus'], [/lower chest|chest|pec/, 'Chest'], [/front delt|anterior delt/, 'FrontDelts'], [/side delt|lateral delt|medial delt/, 'SideDelts'], [/rear delt|posterior delt/, 'RearDelts'],
+  [/delt|shoulder/, 'SideDelts'], [/mid trap|middle trap|lower trap/, 'MidTraps'], [/trap/, 'Traps'], [/lat\b|lats/, 'Lats'], [/mid back|upper back|rhomboid|teres/, 'UpperBack'], [/lower back|erector|spinal/, 'LowerBack'], [/back/, 'Lats'],
   [/bicep|brachialis/, 'Biceps'], [/tricep/, 'Triceps'], [/forearm|grip|wrist/, 'Forearms'], [/oblique/, 'Obliques'], [/upper abs/, 'UpperAbs'], [/lower abs/, 'LowerAbs'], [/abs|core|abdomin/, 'UpperAbs'],
-  [/adductor|inner thigh/, 'Adductors'], [/abductor|outer hip|glute med/, 'Abductors'], [/glute/, 'Glutes'], [/hamstring/, 'Hamstrings'], [/quad/, 'Quads'], [/calf|calves/, 'Calves']];
-// Name rules pick the main region when the muscles text is too general.
-const RNAME = [[/leg raise|knee raise|captain|dragon flag|reverse crunch|l-sit/, 'LowerAbs'], [/crunch|sit-?up/, 'UpperAbs'], [/pallof|woodchop|wood chop|oblique|side plank|russian twist/, 'Obliques'],
-  [/adduct/, 'Adductors'], [/abduct/, 'Abductors'], [/back extension|hyperextension|good morning|reverse hyper/, 'LowerBack'], [/lateral raise|upright row/, 'SideDelts'],
-  [/face pull|reverse fly|reverse pec|rear delt/, 'RearDelts'], [/front raise|shoulder press|overhead press|military/, 'FrontDelts'], [/incline (barbell |dumbbell |machine |smith )?(press|bench|fly|flye)|low to high|incline press/, 'UpperChest'],
-  [/shrug/, 'Traps'], [/pulldown|pull-?up|chin-?up|pullover|straight-arm/, 'Lats'], [/\brow\b|rows\b/, 'UpperBack']];
+  [/adductor|inner thigh/, 'Adductors'], [/abductor|outer hip|glute med/, 'Abductors'], [/glute/, 'Glutes'], [/hamstring/, 'Hamstrings'], [/quad/, 'Quads'], [/tibialis|shin/, 'Tibialis'], [/calf|calves|soleus/, 'Calves']];
+// Name rules: [pattern, main region, extra regions at 0.5]
+const RNAME = [[/neck (curl|extension|flexion|harness)|neck$/, 'Neck', []], [/tib(ialis)? raise|tibialis/, 'Tibialis', []], [/pullover/, 'Lats', ['Serratus']],
+  [/leg raise|knee raise|captain|dragon flag|reverse crunch|l-sit/, 'LowerAbs', []], [/crunch|sit-?up/, 'UpperAbs', []], [/pallof|woodchop|wood chop|oblique|side plank|russian twist/, 'Obliques', []],
+  [/adduct/, 'Adductors', []], [/abduct/, 'Abductors', []], [/back extension|hyperextension|good morning|reverse hyper/, 'LowerBack', []], [/lateral raise|upright row/, 'SideDelts', []],
+  [/face pull/, 'RearDelts', ['MidTraps', 'UpperBack']], [/reverse fly|reverse pec|rear delt/, 'RearDelts', ['UpperBack']], [/front raise|shoulder press|overhead press|military/, 'FrontDelts', []],
+  [/incline (barbell |dumbbell |machine |smith )?(press|bench|fly|flye)|low to high|incline press/, 'UpperChest', []],
+  [/shrug/, 'Traps', []], [/pulldown|pull-?up|chin-?up|straight-arm/, 'Lats', []], [/\brow\b|rows\b/, 'UpperBack', ['MidTraps']], [/deadlift|rdl/, '', ['LowerBack']]];
 root.CoachRegionsOf = c => { // [[region, weight]]: main 1, others 0.5
   const n = String((c && c.name) || '').toLowerCase(), out = [], add = (r, w) => { if (r && !out.some(o => o[0] === r)) out.push([r, w]); };
-  for (const [re, r] of RNAME) if (re.test(n)) { add(r, 1); break; }
+  let extra = []; for (const [re, r, ex] of RNAME) if (re.test(n)) { if (r) add(r, 1); extra = ex; break; }
   String((c && c.muscles) || '').toLowerCase().replace(/front and side delts/g, 'front delts, side delts').split(/[,(]|\band\b/).forEach(part => { const m = part.trim(); if (!m) return; for (const [re, r] of RTXT) if (re.test(m)) { const fam = { UpperAbs: ['UpperAbs', 'LowerAbs', 'Obliques'], Chest: ['Chest', 'UpperChest'], SideDelts: ['SideDelts', 'FrontDelts', 'RearDelts'], Lats: ['Lats', 'UpperBack', 'LowerBack'] }[r]; if (!(fam && /^(abs|core|chest|pecs?|delts?|shoulders?|back)$/.test(m) && out.some(o => fam.includes(o[0])))) add(r, out.length ? 0.5 : 1); break; } });
   if (/plank/.test(n)) add('Obliques', 0.5);
+  extra.forEach(r => add(r, 0.5));
   return out; };
 root.CoachEquipOf = c => { const n = String((c && c.name) || '').toLowerCase(), e = String((c && c.equip) || '').toLowerCase();
   if (/smith/.test(n) || e === 'smith') return 'Smith machine'; if (/assist/.test(n)) return 'Machine assistance';
