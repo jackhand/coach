@@ -667,11 +667,73 @@ function related(a, b) {
 const baseOf = ex => ex.base || ex;
 function swapLog() { const s = (S && S.settings && S.settings.swaps) || {}, pq = pendingSet().swaps || {}, l = localSet().swaps || {}; return Object.values(Object.assign({}, s, pq, l)).map(v => { try { return JSON.parse(v); } catch (e) { return null; } }).filter(Boolean).sort((a, b) => (b.at || '').localeCompare(a.at || '')); }
 function demoLink(c) { const u = c.video || 'https://www.youtube.com/results?search_query=' + encodeURIComponent(c.name + ' exercise demo'); return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + (c.video ? 'Demo' : 'Find a demo') + '</a>'; }
-function resItem(c, cur) {
-  const ok = rMode === 'add' || related(c, cur);
-  return '<div class="ri" data-pick="' + esc(c.name) + '"><b>' + esc(c.name) + '</b>' + (c.mine ? ' <small class="mine">in your library</small>' : '') + '<br><span class="s2">' + esc(c.muscles || 'muscles unknown') + (c.equip ? ' · ' + esc(c.equip) : '') + ' · </span>' + demoLink(c) +
-    (ok ? '' : '<div class="warn">&#9888; Does not work the same muscles as ' + esc(cur.canonical) + '</div>') + '</div>';
+// RP style picker: rows with muscle tag + equipment + last done, filter sheet, multi-select then Add.
+let rSel = [], rF = { mg: [], eq: [], done: false }, rDraft = null;
+const grpOf = c => (window.CoachGroupOf ? window.CoachGroupOf(c) : '');
+const eqOf = c => (window.CoachEquipOf ? window.CoachEquipOf(c) : '');
+function lastDone(c) {
+  if (!S || !S.rows) return '';
+  const ks = new Set([P_.norm(c.name)].concat((c.aliases || []).map(P_.norm)));
+  const ds = viewRows().filter(r => ks.has(P_.norm(r.exercise))).map(r => r.date).filter(Boolean).sort();
+  return ds.length ? ds[ds.length - 1] : '';
 }
+function resItem(c, cur, custom) {
+  const ok = rMode === 'add' || custom || related(c, cur), g = grpOf(c), e = eqOf(c), ld = custom ? '' : lastDone(c);
+  const col = (window.CoachMGColor || {})[g] || '#9e9e9e', sel = rSel.some(x => P_.norm(x.name) === P_.norm(c.name));
+  const ldTxt = ld ? new Date(ld + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: ld.slice(0, 4) === String(new Date().getFullYear()) ? undefined : 'numeric' }) : '';
+  return '<div class="ri' + (sel ? ' sel' : '') + '" data-pick="' + esc(c.name) + '"' + (custom ? ' data-custom="1"' : '') + '><span class="ck"></span><div class="rt"><b>' + esc(custom ? 'Use "' + c.name + '"' : c.name) + '</b>' + (c.mine ? ' <small class="mine">in your library</small>' : '') + '<br>' +
+    (custom ? '<span class="s2">Custom exercise. Coach looks it up later and adds a demo.</span>' :
+      (g ? '<span class="mg" style="background:' + col + '">' + esc(g) + '</span>' : '<span class="s2">muscles unknown</span>') + (e ? ' <span class="s2">&bull; ' + esc(e) + '</span>' : '') + (ldTxt ? '<br><span class="rlast">Last done ' + esc(ldTxt) + '</span>' : '') + ' <span class="s2">&middot;</span> ' + demoLink(c)) +
+    (ok ? '' : '<div class="warn">&#9888; Does not work the same muscles as ' + esc(cur.canonical) + '</div>') + '</div></div>';
+}
+function rFilt(c) {
+  if (rF.mg.length && !rF.mg.includes(grpOf(c))) return false;
+  if (rF.eq.length && !rF.eq.includes(eqOf(c))) return false;
+  if (rF.done && !lastDone(c)) return false;
+  return true;
+}
+function rPills() {
+  const p = [];
+  if (rF.mg.length) p.push(['mg', rF.mg.length === 1 ? rF.mg[0] : '+' + rF.mg.length + ' Muscle groups']);
+  if (rF.eq.length) p.push(['eq', rF.eq.length === 1 ? rF.eq[0] : '+' + rF.eq.length + ' Equipment']);
+  if (rF.done) p.push(['done', 'Only done']);
+  $('rpills').innerHTML = p.map(x => '<button type="button" class="pill" data-clr="' + x[0] + '">' + esc(x[1]) + '<b aria-label="Clear">&times;</b></button>').join('');
+  $('rfb').textContent = p.length ? 'Filter (' + p.length + ')' : 'Filter';
+}
+function rRender() {
+  rPills();
+  const q = $('rq').value.trim(), cur = curInfo(rEx);
+  const excl = rMode === 'replace' ? new Set([P_.norm(rEx.canonical)]) : new Set(cardsFor().map(c => P_.norm(c.canonical)));
+  let list = (q ? searchCat(q, true) : catalog().slice().sort((a, b) => a.name.localeCompare(b.name))).filter(c => !excl.has(P_.norm(c.name)) && rFilt(c));
+  const n = list.length; list = list.slice(0, 100);
+  $('rres').innerHTML = (list.length ? list.map(c => resItem(c, cur)).join('') + (n > 100 ? '<div class="s2">Showing 100 of ' + n + '. Search or filter to narrow it.</div>' : '') : '<div class="s2">No match' + (rF.mg.length || rF.eq.length || rF.done ? ' with these filters' : '') + '.</div>') +
+    (q ? resItem({ name: q }, cur, true) : '');
+  rGo();
+}
+function rGo() { const n = rSel.length; $('rgo').classList.toggle('on', n > 0); $('rgob').textContent = rMode === 'add' ? 'Add' + (n > 1 ? ' ' + n + ' exercises' : '') : 'Replace with ' + (rSel[0] ? rSel[0].name : ''); }
+function rToggle(name, custom) {
+  const i = rSel.findIndex(x => P_.norm(x.name) === P_.norm(name));
+  if (i >= 0) rSel.splice(i, 1); else if (rMode === 'add') rSel.push({ name, custom }); else rSel = [{ name, custom }];
+  document.querySelectorAll('#repl .ri').forEach(el => el.classList.toggle('sel', rSel.some(x => P_.norm(x.name) === P_.norm(el.dataset.pick))));
+  rGo();
+}
+function chipRow(id, all, on) { $(id).innerHTML = all.map(v => '<button type="button" data-v="' + esc(v) + '" class="' + (on.includes(v) ? 'on' : '') + '">' + esc(v) + '</button>').join(''); }
+function openFilter() {
+  rDraft = { mg: rF.mg.slice(), eq: rF.eq.slice(), done: rF.done };
+  chipRow('rfmg', window.CoachMG || [], rDraft.mg); chipRow('rfeq', window.CoachEQ || [], rDraft.eq); $('rfdone').checked = rDraft.done;
+  $('rfil').classList.add('open'); pushLayer('rfil', () => $('rfil').classList.remove('open'));
+}
+const closeFilter = () => { if (!$('rfil').classList.contains('open')) return; $('rfil').classList.remove('open'); popLayer('rfil'); };
+$('rfb').onclick = openFilter; $('rfc').onclick = closeFilter;
+$('rfil').addEventListener('click', e => {
+  if (e.target.id === 'rfil') return closeFilter();
+  const b = e.target.closest('.chips2 button'); if (!b) return;
+  const arr = b.parentElement.id === 'rfmg' ? rDraft.mg : rDraft.eq, v = b.dataset.v, i = arr.indexOf(v);
+  if (i >= 0) arr.splice(i, 1); else arr.push(v); b.classList.toggle('on', i < 0);
+});
+$('rfa').onclick = () => { rDraft.done = $('rfdone').checked; rF = rDraft; closeFilter(); rRender(); };
+$('rpills').addEventListener('click', e => { const b = e.target.closest('[data-clr]'); if (!b) return; const k = b.dataset.clr; if (k === 'done') rF.done = false; else rF[k] = []; rRender(); });
+$('rgob').onclick = () => { if (!rSel.length) return; if (rMode === 'add') addMany(rSel.slice()); else pickReplace(rSel[0].name, !!rSel[0].custom); };
 function curInfo(ex) { return { canonical: ex.canonical, name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle, types: ex.types }; }
 function replMode(add) {
   rMode = add ? 'add' : 'replace';
@@ -681,9 +743,24 @@ function replMode(add) {
 function openAdd() {
   replMode(true); rEx = { canonical: 'this workout', note: {}, muscles: '', types: [] }; rScope = 'workout'; rReason = 'added';
   $('rh').textContent = 'Add exercise to ' + wLabel(viewId); setSeg('rscope', 's', rScope);
-  $('rq').value = ''; $('rres').innerHTML = ''; $('rlist').innerHTML = ''; $('rundo').style.display = 'none';
+  $('rq').value = ''; $('rlist').innerHTML = ''; $('rundo').style.display = 'none'; rSel = []; rF = { mg: [], eq: [], done: false }; rRender();
   $('repl').classList.add('open'); pushLayer('repl', () => $('repl').classList.remove('open'));
   requestAnimationFrame(() => { $('repl').querySelector('.in').scrollTop = 0; });
+}
+function addMany(items) {
+  try {
+    const k = addKey(rScope); let list = readAdds(k); const added = [], unknown = [];
+    items.forEach(it => {
+      const c = catFind(it.name), to = c ? c.name : it.name.replace(/^./, x => x.toUpperCase());
+      if (cardsFor().some(x => P_.norm(x.canonical) === P_.norm(to)) || list.some(a => P_.norm(a.name) === P_.norm(to))) return;
+      list = list.concat([Object.assign({ name: to, at: new Date().toISOString() }, rScope === 'block' ? { from: viewId } : {})]); added.push(to);
+      if (!c) { unknown.push(to); putSetting('pending_exercises', P_.norm(to), JSON.stringify({ name: to, at: new Date().toISOString(), wid: viewId, added: true, scope: rScope })); }
+    });
+    if (!added.length) return toast('Already in this workout.');
+    putSetting('adds', k, JSON.stringify(list));
+    closeRepl(); swapMemo = {}; sig = ''; applyState(S, true);
+    toast(unknown.length ? "Added it for now. I'll look it up and add the info, like a demo, later." : 'Added ' + (added.length === 1 ? added[0] : added.length + ' exercises') + (rScope === 'block' ? ' for the rest of Block ' + blockOf(viewWeek()) : ' to this workout'), unknown.length ? 7000 : 5000);
+  } catch (e) { closeRepl(); toast('Could not add: ' + (e && e.message || e), 6000); }
 }
 function pickAdd(name, custom) {
   try {
@@ -700,7 +777,8 @@ function openReplace(ex) {
   replMode(false); rEx = ex; rScope = 'workout'; rReason = '';
   $('rh').textContent = 'Replace ' + ex.canonical;
   setSeg('rscope', 's', rScope); setSeg('rreason', 'r', '');
-  $('rq').value = ''; $('rres').innerHTML = '';
+  $('rq').value = ''; rSel = [];
+  { const g = grpOf(catFind(ex.canonical) || { name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle, equip: ex.equip }); rF = { mg: g ? [g] : [], eq: [], done: false }; }
   $('rundo').style.display = ex.swappedFrom ? 'block' : 'none';
   if (ex.swappedFrom) $('rundo').textContent = 'Go back to ' + ex.swappedFrom;
   const b = baseOf(ex), cur = curInfo(ex), cat = catalog(), excl = new Set([P_.norm(ex.canonical)].concat(cardsFor().map(c => P_.norm(c.canonical))));
@@ -712,7 +790,8 @@ function openReplace(ex) {
     .map(c => ({ c, sc: (c.rest_muscle === ex.rest_muscle ? 4 : 0) + (((c.types || []).includes('isolation')) === iso ? 2 : 0) + (c.mine ? 1 : 0) }))
     .sort((a, b) => b.sc - a.sc).slice(0, 4).map(x => x.c);
   $('rlist').innerHTML = (used.length ? '<label>You used before</label>' + used.slice(0, 4).map(c => resItem(c, cur)).join('') : '') +
-    (same.length ? '<label>Same muscles</label>' + same.map(c => resItem(c, cur)).join('') : '');
+    '';
+  rRender();
   $('repl').classList.add('open'); swapLayer('menu', 'repl', () => $('repl').classList.remove('open'));
   requestAnimationFrame(() => { $('repl').querySelector('.in').scrollTop = 0; });
 }
@@ -720,23 +799,18 @@ function setSeg(id, attr, v) { document.querySelectorAll('#' + id + ' button').f
 document.querySelectorAll('#rscope button').forEach(b => b.onclick = () => { rScope = b.dataset.s; setSeg('rscope', 's', rScope); });
 document.querySelectorAll('#rreason button').forEach(b => b.onclick = () => { rReason = b.dataset.r; setSeg('rreason', 'r', rReason); });
 const SYN = { db: 'dumbbell', dbs: 'dumbbell', bb: 'barbell', hs: 'hammer', 'plate-loaded': 'hammer', pec: 'chest', pecs: 'chest', delt: 'delts', shoulder: 'delts', shoulders: 'delts', lat: 'lats', tri: 'triceps', tris: 'triceps', bi: 'biceps', bis: 'biceps', quad: 'quads', ham: 'hamstrings', hams: 'hamstrings', glute: 'glutes', trap: 'traps', ab: 'abs' };
-function searchCat(q) {
+function searchCat(q, all) {
   const toks = q.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean).map(t => SYN[t] || t).map(t => t.length > 3 ? t.replace(/s$/, '') : t);
   if (!toks.length) return [];
   const cur = curInfo(rEx);
   return catalog().filter(c => { const h = (c.name + ' ' + (c.aliases || []).join(' ') + ' ' + c.muscles + ' ' + c.equip + ' ' + c.rest_muscle).toLowerCase().replace(/shoulders?/g, 'delts shoulder'); return toks.every(t => h.includes(t)); })
-    .sort((a, b) => (related(b, cur) - related(a, cur)) || a.name.localeCompare(b.name)).slice(0, 15);
+    .sort((a, b) => (related(b, cur) - related(a, cur)) || a.name.localeCompare(b.name)).slice(0, all ? 1000 : 15);
 }
-$('rq').oninput = () => {
-  const q = $('rq').value.trim(); if (!q) { $('rres').innerHTML = ''; return; }
-  const r = searchCat(q), cur = curInfo(rEx);
-  $('rres').innerHTML = (r.length ? r.map(c => resItem(c, cur)).join('') : '<div class="s2">No match in your library or the common list.</div>') +
-    '<div class="ri" data-pick="' + esc(q) + '" data-custom="1"><b>Use "' + esc(q) + '"</b><br><span class="s2">Custom exercise. Coach looks it up later and adds a demo.</span></div>';
-};
+$('rq').oninput = rRender;
 $('repl').addEventListener('click', e => {
   if (e.target.id === 'repl') return closeRepl();
   if (e.target.closest('a')) return;
-  const it = e.target.closest('[data-pick]'); if (it) (rMode === 'add' ? pickAdd : pickReplace)(it.dataset.pick, !!it.dataset.custom);
+  const it = e.target.closest('[data-pick]'); if (it) rToggle(it.dataset.pick, !!it.dataset.custom);
 });
 const closeRepl = () => { $('repl').classList.remove('open'); popLayer('repl'); };
 $('rclose').onclick = closeRepl;

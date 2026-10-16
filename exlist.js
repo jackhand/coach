@@ -94,7 +94,21 @@ const L = [
 ['Captain\'s chair leg raise','Abs, hip flexors','abs','bodyweight','isolation','leg raise, vertical knee raise, leg raise machine, hanging leg raise station, bosu leg raise, captains chair leg raise, captain chair leg raise, knee raise'],
 ['Ab crunch machine','Abs','abs','machine','isolation','crunch machine'],
 ['Dragon flag','Abs','abs','bodyweight','isolation',''],
-['Plank','Abs, core','abs','bodyweight','isolation','']
+['Plank','Abs, core','abs','bodyweight','isolation',''],
+['Wrist curl','Forearms','forearms','dumbbell','isolation','forearm curl'],
+['Reverse barbell curl','Forearms, biceps','forearms','barbell','isolation','reverse curl'],
+['Assisted dip machine','Chest, triceps','chest','machine','compound','assisted dips']
 ];
 root.CoachExList = L.map(a => ({ name: a[0], muscles: a[1], rest_muscle: a[2], equip: a[3], types: a[4].split(','), aliases: a[5] ? a[5].split(',').map(s => s.trim()) : [] }));
+// Filter metadata (RP style): one muscle group and one equipment label per exercise.
+const MG = { chest: 'Chest', 'upper chest': 'Chest', back: 'Back', lats: 'Back', 'lower back': 'Back', 'upper back': 'Back', triceps: 'Triceps', biceps: 'Biceps', shoulders: 'Shoulders', delts: 'Shoulders', 'rear delts': 'Shoulders', 'side delts': 'Shoulders', 'front delts': 'Shoulders', quads: 'Quads', glutes: 'Glutes', adductors: 'Glutes', hamstrings: 'Hamstrings', calves: 'Calves', traps: 'Traps', forearms: 'Forearms', abs: 'Abs', core: 'Abs' };
+root.CoachMG = ['Chest', 'Back', 'Triceps', 'Biceps', 'Shoulders', 'Quads', 'Glutes', 'Hamstrings', 'Calves', 'Traps', 'Forearms', 'Abs'];
+root.CoachEQ = ['Barbell', 'Bodyweight loadable', 'Bodyweight', 'Cable', 'Dumbbell', 'Machine', 'Machine assistance', 'Smith machine'];
+root.CoachMGColor = { Chest: '#e57373', Back: '#64b5f6', Triceps: '#ba68c8', Biceps: '#4db6ac', Shoulders: '#ffb74d', Quads: '#81c784', Glutes: '#f06292', Hamstrings: '#a1887f', Calves: '#90a4ae', Traps: '#7986cb', Forearms: '#dce775', Abs: '#ffd54f' };
+root.CoachGroupOf = c => { const r = String((c && c.rest_muscle) || '').toLowerCase().trim(); if (MG[r]) return MG[r]; const m = String((c && c.muscles) || '').toLowerCase().split(/[,(]/)[0].trim(); for (const k of Object.keys(MG).sort((a, b) => b.length - a.length)) if (m.includes(k)) return MG[k]; return ''; };
+root.CoachEquipOf = c => { const n = String((c && c.name) || '').toLowerCase(), e = String((c && c.equip) || '').toLowerCase();
+  if (/smith/.test(n) || e === 'smith') return 'Smith machine'; if (/assist/.test(n)) return 'Machine assistance';
+  if (e === 'bodyweight' || /bodyweight/.test(e)) return /dip|pull-?up|chin|push-?up|back extension|hyperextension/.test(n) ? 'Bodyweight loadable' : 'Bodyweight';
+  if (/hex|trap bar|barbell|ez/.test(e)) return 'Barbell'; if (/dumbbell|db/.test(e)) return 'Dumbbell'; if (/cable|rope/.test(e)) return 'Cable'; if (/machine|hammer|plate/.test(e)) return 'Machine';
+  if (/cable|rope/.test(n)) return 'Cable'; if (/dumbbell/.test(n)) return 'Dumbbell'; if (/barbell/.test(n)) return 'Barbell'; if (/machine|hammer strength|press machine/.test(n)) return 'Machine'; return ''; };
 })(this);

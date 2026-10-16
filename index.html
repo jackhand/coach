@@ -147,6 +147,11 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
 .calnow{text-align:center;font-weight:700;margin-bottom:6px}.calnow small{display:block;color:var(--mut);font-weight:600}
 .donedt{font-size:15px;margin-top:2px}
 #fxrow{display:flex;gap:10px;flex-wrap:wrap}#fxrow>div{flex:1 1 150px}.dim{opacity:.4}#fxhint{margin:4px 0 6px}.hm{font-weight:700;margin:14px 0 4px;color:var(--mut);text-transform:uppercase;font-size:13px;letter-spacing:.04em}.hr{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.hr.dl{opacity:.5}.hx{text-align:right;font-size:12px;color:var(--mut);white-space:nowrap}#rstw{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:none;align-items:flex-end}#rstw.open{display:flex}#rstw .in{position:relative;background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom))}#rstx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px}#rstt{margin:8px 34px 14px 0;font-size:16px}#rsty{background:#c62828;color:#fff;margin-bottom:8px}
+.rsrch{display:flex;gap:8px}.rsrch input{flex:1}.rsrch .btn{width:auto;margin:0;padding:0 14px}#rpills{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pill{border:1px solid var(--line);background:var(--card2);color:inherit;border-radius:16px;padding:6px 10px;font-size:13px}.pill b{margin-left:6px}
+.ri{display:flex;gap:10px;align-items:center}.ri .rt{flex:1;min-width:0}.ri .ck{width:24px;height:24px;border-radius:50%;border:2px solid var(--mut);flex:none;display:flex;align-items:center;justify-content:center;font-size:14px}.ri.sel .ck{background:var(--acc);border-color:var(--acc);color:#000}.ri .ck:after{content:''}.ri.sel .ck:after{content:'\2713'}.mg{display:inline-block;border-radius:6px;padding:1px 6px;font-size:12px;font-weight:700;color:#111}.rlast{font-size:12px;color:var(--mut)}
+#rgo{position:sticky;bottom:0;padding:8px 0;background:var(--card);display:none}#rgo.on{display:block}
+#rfil{position:fixed;inset:0;z-index:41;background:rgba(0,0,0,.6);display:none;align-items:flex-end}#rfil.open{display:flex}#rfil .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
+.chips2{display:flex;flex-wrap:wrap;gap:6px}.chips2 button{border:1px solid var(--line);background:var(--card2);color:inherit;border-radius:16px;padding:7px 12px;font-size:14px}.chips2 button.on{background:var(--acc);color:#000;border-color:var(--acc)}.tgl{display:flex;gap:8px;align-items:center;margin:14px 0}.rfb2{display:flex;gap:8px}.rfb2 .btn{flex:1}
 #delw{z-index:40}#delw .in{position:relative}#delx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px}#delt{margin:8px 34px 14px 0;font-size:16px}#dely{background:#c62828;color:#fff;margin-bottom:8px}
 #wmenu{font-size:26px;font-weight:800;min-width:36px}.wmi small{display:block;font-size:13px;font-weight:600;color:var(--mut)}
 #holdbox .holdt{background:var(--card2);border-radius:12px;padding:10px;margin-top:8px;text-align:center}
@@ -272,9 +277,10 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
   <label>Why</label>
   <div class="seg" id="rreason"><button type="button" data-r="equipment busy">Equipment busy</button><button type="button" data-r="pain">Pain</button><button type="button" data-r="preference">Preference</button></div>
   <div id="rlist"></div>
-  <label for="rq">Search any exercise</label>
-  <input id="rq" placeholder="e.g. chest machine, hammer strength" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+  <div class="rsrch"><input id="rq" placeholder="Search exercises" aria-label="Search exercises" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button type="button" class="btn sec" id="rfb">Filter</button></div>
+  <div id="rpills"></div>
   <div id="rres" style="margin-top:8px"></div>
+  <div id="rgo"><button type="button" class="btn" id="rgob">Add</button></div>
   <button class="btn sec" id="rundo" style="display:none">Go back</button>
   <button class="btn sec" id="rclose">Close</button>
 </div></div>
@@ -282,6 +288,12 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
 <div id="delw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="delx" aria-label="Close">&times;</button><h3 id="delh"></h3><p id="delt">Are you sure? This will delete it from the entire rest of the meso. If you just want to delete it from this workout, just skip it.</p><button type="button" class="btn" id="dely">Delete</button><button type="button" class="btn sec" id="deln">Cancel</button></div></div>
 <div id="wmw"><div class="in"><h3 id="wmh"></h3><div id="wml"></div><button class="btn sec" id="wmclose">Close</button></div></div>
 <div id="rstw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="rstx" aria-label="Close">&times;</button><h3>Reset this workout?</h3><p id="rstt"></p><button type="button" class="btn" id="rsty">Reset</button><button type="button" class="btn sec" id="rstn">Cancel</button></div></div>
+<div id="rfil" role="dialog" aria-modal="true"><div class="in"><h3>Filter</h3>
+  <label>Muscle groups</label><div class="chips2" id="rfmg"></div>
+  <label>Equipment</label><div class="chips2" id="rfeq"></div>
+  <label class="tgl"><input type="checkbox" id="rfdone"> Only exercises I've done</label>
+  <div class="rfb2"><button type="button" class="btn sec" id="rfc">Cancel</button><button type="button" class="btn" id="rfa">Apply</button></div>
+</div></div>
 <div id="hist"><div class="in"><h3 id="hh"></h3><div id="hb"></div><button class="btn sec" id="hclose">Close</button></div></div>
 <div class="toast" id="toast"></div>
 
@@ -304,8 +316,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=46"></script>
-<script src="exlist.js?v=46"></script>
-<script src="app.js?v=46"></script>
+<script src="parse.js?v=47"></script>
+<script src="exlist.js?v=47"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>
