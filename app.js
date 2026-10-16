@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 55;
+const APP_VERSION = 56;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1436,7 +1436,7 @@ function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').t
 // Plate-first: tap plates (one per side each), chips remove, total = 45 bar + 2 x plates.
 let pbList = []; // one entry per pair (one plate each side)
 function pbRender() { const tot = BAR + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + ' &times;</button>').join('') || '<span class="s2">Empty bar. Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
-$('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; pbRender(); } $('pbt').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; };
+$('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; pbRender(); } $('pbtl').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; $('pbt').classList.toggle('on', !x.hidden); };
 $('pbp').addEventListener('click', e => { const b = e.target.closest('[data-pp]'); if (!b) return; pbList.push(+b.dataset.pp); pbList.sort((a, c) => c - a); pbRender(); });
 $('pbc').addEventListener('click', e => { const b = e.target.closest('[data-pr]'); if (!b) return; const i = pbList.indexOf(+b.dataset.pr); if (i >= 0) pbList.splice(i, 1); pbRender(); });
 $('pbclr').onclick = () => { pbList = []; pbRender(); };
@@ -1510,7 +1510,7 @@ function openForm(i, ts, row) {
     $('htime').textContent = '0:00'; holdUI();
     $('fsug').textContent = sg ? 'Suggested: ' + (ex.single ? sg.angL + '° ' + sg.repsL + ' L / ' + sg.angR + '° ' + sg.repsR + ' R' : String(sg.load) + '° for ' + sg.reps) + ' (' + sg.why + ').' : '';
   }
-  $('fbw').textContent = ''; $('pbx').hidden = true; $('pbt').textContent = 'Build from plates'; pbList = []; bwLine(); plUpd();
+  $('fbw').textContent = ''; $('pbx').hidden = true; $('pbtl').textContent = 'Build from plates'; $('pbt').classList.remove('on'); pbList = []; bwLine(); plUpd();
   $('fdel').style.display = row ? 'block' : 'none'; $('ftimer').style.display = 'none';
   $('fsave').textContent = row ? 'Save changes' : 'Save set';
   if (SR) $('heard').textContent = '';

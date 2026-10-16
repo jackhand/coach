@@ -156,7 +156,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
 .bmap{display:flex;gap:8px;justify-content:center}.bsvg{width:46%;max-width:200px}.bsvg [data-g]{cursor:pointer}.bsvg [data-g].psel{stroke:#fff;stroke-width:1.6}.pleg{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:8px 0;font-size:12px}.pleg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
 .pdet{background:var(--card2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px}.plist{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;align-items:start}.pgrp{display:flex;flex-direction:column;gap:4px}.psub{font-size:12px;padding:5px 10px 5px 18px;color:var(--mut)}.prow{display:flex;justify-content:space-between;border:1px solid var(--line);background:var(--card2);color:inherit;border-radius:10px;padding:8px 10px;font-size:14px}.prow.psel{border-color:var(--acc)}
 details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:14px}details.wu summary{cursor:pointer;font-weight:600}details.wu ul{list-style:none;padding:0;margin:6px 0}details.wu li{padding:3px 0}.wuw{border:1px solid var(--line);background:var(--card);color:inherit;border-radius:8px;padding:3px 8px;font-size:14px}
-#pbt{margin-top:4px}#pbx{background:var(--card2);border-radius:10px;padding:8px;margin:6px 0}.pbp{display:flex;gap:6px;flex-wrap:wrap}.pbp .wuw{min-width:44px;min-height:40px}.pbc{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.pchip{border:1px solid var(--acc);background:none;color:inherit;border-radius:14px;padding:4px 10px;font-size:14px}.pbrow{display:flex;gap:8px;align-items:center}.pbrow b{flex:1}
+#pbt{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0 4px;border:1.5px solid var(--acc);color:var(--acc);font-weight:700}#pbt.on{background:var(--acc);color:#06210f}#pbx{background:var(--card2);border-radius:10px;padding:8px;margin:6px 0}.pbp{display:flex;gap:6px;flex-wrap:wrap}.pbp .wuw{min-width:44px;min-height:40px}.pbc{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.pchip{border:1px solid var(--acc);background:none;color:inherit;border-radius:14px;padding:4px 10px;font-size:14px}.pbrow{display:flex;gap:8px;align-items:center}.pbrow b{flex:1}
 #delw{z-index:40}#delw .in{position:relative}#delx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px}#delt{margin:8px 34px 14px 0;font-size:16px}#dely{background:#c62828;color:#fff;margin-bottom:8px}
 #wmenu{font-size:26px;font-weight:800;min-width:36px}.wmi small{display:block;font-size:13px;font-weight:600;color:var(--mut)}
 #holdbox .holdt{background:var(--card2);border-radius:12px;padding:10px;margin-top:8px;text-align:center}
@@ -215,7 +215,7 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
     <button class="btn" id="mic" type="button">Tap and speak</button>
     <div id="heard"></div>
     <div class="grid" id="liftgrid">
-      <div><label for="fl" id="fll">Load (lb)</label><input id="fl" inputmode="decimal" autocomplete="off"><div class="s2" id="fpl"></div><button type="button" class="wuw" id="pbt" style="display:none">Build from plates</button></div>
+      <div><label for="fl" id="fll">Load (lb)</label><input id="fl" inputmode="decimal" autocomplete="off"><div class="s2" id="fpl"></div></div>
       <div id="repsbox"><label for="fr">Reps</label><input id="fr" inputmode="numeric" autocomplete="off"></div>
     </div>
     <div id="holdbox" style="display:none">
@@ -241,6 +241,7 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
       <div class="s2" id="hprev"></div>
       <button class="btn sec" id="fsame" type="button">Same both sides</button>
     </div>
+    <button type="button" class="btn sec" id="pbt" style="display:none"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg><span id="pbtl">Build from plates</span></button>
     <div id="pbx" hidden><div class="pbp" id="pbp"><button type="button" class="wuw" data-pp="45">45</button><button type="button" class="wuw" data-pp="35">35</button><button type="button" class="wuw" data-pp="25">25</button><button type="button" class="wuw" data-pp="10">10</button><button type="button" class="wuw" data-pp="5">5</button><button type="button" class="wuw" data-pp="2.5">2.5</button></div><div id="pbc" class="pbc"></div><div class="pbrow"><b id="pbtot"></b><button type="button" class="wuw" id="pbclr">Clear</button><button type="button" class="wuw" id="pbuse">Use this weight</button></div></div>
     <div id="liftxtra">
     <div id="fxrow"><div id="fdwrap"><label>Drop sets</label>
@@ -323,8 +324,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=55"></script>
-<script src="exlist.js?v=55"></script>
-<script src="app.js?v=55"></script>
+<script src="parse.js?v=56"></script>
+<script src="exlist.js?v=56"></script>
+<script src="app.js?v=56"></script>
 </body>
 </html>
