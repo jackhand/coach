@@ -172,6 +172,10 @@ root.CoachMG = ['Chest', 'Back', 'Triceps', 'Biceps', 'Shoulders', 'Quads', 'Glu
 root.CoachEQ = ['Barbell', 'Bodyweight loadable', 'Bodyweight', 'Cable', 'Dumbbell', 'Machine', 'Machine assistance', 'Smith machine'];
 root.CoachMGColor = { Chest: '#e57373', Back: '#64b5f6', Triceps: '#ba68c8', Biceps: '#4db6ac', Shoulders: '#ffb74d', Quads: '#81c784', Glutes: '#f06292', Hamstrings: '#a1887f', Calves: '#90a4ae', Traps: '#7986cb', Forearms: '#dce775', Abs: '#ffd54f' };
 root.CoachGroupOf = c => { const r = String((c && c.rest_muscle) || '').toLowerCase().trim(); if (MG[r]) return MG[r]; const m = String((c && c.muscles) || '').toLowerCase().split(/[,(]/)[0].trim(); for (const k of Object.keys(MG).sort((a, b) => b.length - a.length)) if (m.includes(k)) return MG[k]; return ''; };
+// Every group a row works, from its muscles text (primary first). Used by the weekly sets body map.
+root.CoachGroupsOf = c => { const out = [], add = g => { if (g && !out.includes(g)) out.push(g); }; add(root.CoachGroupOf(c));
+  String((c && c.muscles) || '').toLowerCase().split(/[,(]|\band\b/).forEach(part => { const m = part.trim(); if (!m) return; for (const k of Object.keys(MG).sort((a, b) => b.length - a.length)) if (m.includes(k)) { add(MG[k]); break; } if (/delt|shoulder/.test(m)) add('Shoulders'); if (/lat|rhomboid|mid back|upper back/.test(m)) add('Back'); if (/brachialis/.test(m)) add('Biceps'); if (/hip flexor|oblique/.test(m)) add('Abs'); });
+  return out; };
 root.CoachEquipOf = c => { const n = String((c && c.name) || '').toLowerCase(), e = String((c && c.equip) || '').toLowerCase();
   if (/smith/.test(n) || e === 'smith') return 'Smith machine'; if (/assist/.test(n)) return 'Machine assistance';
   if (e === 'bodyweight' || /bodyweight/.test(e)) return /dip|pull-?up|chin|push-?up|back extension|hyperextension/.test(n) ? 'Bodyweight loadable' : 'Bodyweight';

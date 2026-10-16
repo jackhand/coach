@@ -166,6 +166,31 @@ function lastTime(ex) {
   const ls = lastSession(ex); if (!ls) return '';
   return 'Last time (' + wLabel(ls.date) + ', ' + ls.rows[0].date + '): ' + ls.rows.map(setTxt).join(', ');
 }
+// ---------- Warm-up ramp + plate calculator (barbell and dumbbell only, never logged) ----------
+const PLATES = [45, 35, 25, 10, 5, 2.5], BAR = 45;
+function platesFor(w) { let side = (w - BAR) / 2; if (!(side > 0)) return w > 0 && w <= BAR ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return out.join(' + ') + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
+const eqKind = ex => { const e = String(ex.equip || P_.equipOf(ex.canonical, ex.bodyweight) || '').toLowerCase(); return /hex|trap/.test(e) ? 'hexbar' : /barbell/.test(e) ? 'barbell' : /dumbbell/.test(e) ? 'dumbbell' : ''; };
+function warmFor(ex, list) {
+  if (isStretch(ex) || ex.bodyweight) return null;
+  const k = eqKind(ex); if (!k) return null;
+  const firstFree = list.find(x => !isStretch(x) && !x.bodyweight && eqKind(x));
+  if (k !== 'barbell' && firstFree !== ex) return null;
+  const sg = suggest(ex, 0), ks = keysOf(ex); let w = num(sg && sg.load) || settled(rowsFor(ex, false)) || settled(viewRows().filter(r => ks.has(P_.norm(r.exercise)) && widOf(r) !== viewId)) || settled(rowsFor(ex, true)); if (!w) return null;
+  const r5 = v => Math.round(v / 5) * 5, steps = [];
+  if (k === 'dumbbell') { [[0.5, 8], [0.75, 4]].forEach(([p, n]) => { const x = r5(w * p); if (x > 0 && x < w && !steps.some(s => s.w === x)) steps.push({ w: x, n }); }); }
+  else {
+    if (k === 'barbell') steps.push({ w: BAR, n: 10 });
+    [[0.5, 5], [0.7, 3], [0.85, 1]].forEach(([p, n]) => { const x = r5(w * p); if (x > (k === 'barbell' ? BAR : 0) && x < w && !steps.some(s => s.w === x)) steps.push({ w: x, n }); });
+  }
+  return { k, w, steps };
+}
+function warmHTML(ex, i, list) {
+  const wu = warmFor(ex, list); if (!wu) return '';
+  const pl = wu.k === 'barbell', unit = wu.k === 'dumbbell' ? ' lb each' : ' lb';
+  const row = (w, n, work) => '<li><button type="button" class="wuw"' + (pl ? ' data-pl="' + w + '"' : '') + '>' + w + unit + '</button> x ' + n + (work ? ' <span class="s2">working weight</span>' : '') + (pl ? '<div class="s2 wup" hidden>' + esc(platesFor(w)) + '</div>' : '') + '</li>';
+  return '<details class="wu"><summary>Warm-up (not logged)</summary><ul>' + wu.steps.map(s => row(s.w, s.n)).join('') + row(wu.w, 'sets', true) + '</ul>' +
+    '<div class="s2">' + (pl ? 'Tap a weight to see plates (45 lb bar). ' : '') + (wu.k === 'hexbar' ? 'Hex bars vary in weight, so no plate math. ' : '') + 'Rest about 1 min between ramp sets.</div></details>';
+}
 function setsHTML(ex) {
   const rs = rowsFor(ex, true), n = Math.max(plannedCount(ex), rs.length);
   if (!n) return '<li class="s2 none">Skipped today.</li>';
@@ -904,6 +929,7 @@ function render() {
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
       '<div class="note"><b>Coach:</b><div class="chips">' + chips + '</div>' + extra + '</div>' +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || 'tap to add (seat, pins, angle)') + '</span> <span class="ed">edit</span></div>' +
+      warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
       '</div></div>';
@@ -913,6 +939,8 @@ function render() {
   main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
   enableDrag(main);
   main.onclick = e => {
+    const plb = e.target.closest('[data-pl]'); if (plb) { const d = plb.parentElement.querySelector('.wup'); if (d) d.hidden = !d.hidden; return; }
+    if (e.target.closest('details.wu')) return;
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
     if (e.target.closest('#wstartb')) { startWorkout(false); return; }
     if (e.target.closest('#wreset')) { openReset(); return; }
@@ -1060,6 +1088,7 @@ function wmItems() {
   const ws = wStatus()[viewId], next = viewId === loggableId() || (testOn() && !ws);
   return [
     { id: 'skip', label: 'Skip workout', on: !!S && next && !ws, why: ws ? 'Already ' + ws.state : 'Only the next workout (' + wLabel(loggableId()) + ') can be skipped', run: skipWorkout },
+    { id: 'prog', label: 'Progress: weekly sets', on: !!S, why: '', run: openProg },
     { id: 'add', label: 'Add exercise', on: !!S && !!days[dayKey] && !ws, why: !days[dayKey] ? 'No session planned' : 'Already ' + (ws && ws.state), run: openAdd }
   ];
 }
@@ -1069,6 +1098,61 @@ function openWm() {
   $('wml').innerHTML = wmItems().map((it, i) => '<button class="btn sec wmi" data-wi="' + i + '"' + (it.on ? '' : ' disabled') + '>' + esc(it.label) + (it.on ? '' : '<small>' + esc(it.why) + '</small>') + '</button>').join('');
   $('wmw').classList.add('open'); pushLayer('wm', () => $('wmw').classList.remove('open'));
 }
+// ---------- Progress: weekly sets body map (volume only) ----------
+// Hard sets this week (Mon-Sun): every logged set except 'not to failure' and stretches. Primary muscle 1 set, each secondary 0.5.
+function weekSets() {
+  const mon = mondayOf(S.today), end = new Date(mon + 'T12:00:00'); end.setDate(end.getDate() + 6); const sun = end.toISOString().slice(0, 10);
+  const m = {}; (window.CoachMG || []).forEach(g => m[g] = { n: 0, ex: {} });
+  viewRows().forEach(r => {
+    if (!r.date || r.date < mon || r.date > sun || r.failure_type === 'not to failure') return;
+    const ex = exFor(r.exercise), c = catFind(r.exercise) || (ex ? { name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle } : null);
+    if (!c || isStretch(ex) || (ex && /stretch/i.test(String(ex.types || '')))) return;
+    const gs = window.CoachGroupsOf ? window.CoachGroupsOf(c) : [];
+    gs.forEach((g, i) => { if (!m[g]) return; const v = i === 0 ? 1 : 0.5; m[g].n += v; const nm = c.name || r.exercise; m[g].ex[nm] = (m[g].ex[nm] || 0) + v; });
+  });
+  return { mon, sun, m };
+}
+const PCOL = ['#3a3f47', '#2e5d3a', '#3f8f4f', '#f2c14e', '#f28c38', '#e04f4f'];
+const pBand = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 15 ? 3 : n < 20 ? 4 : 5;
+const PLEG = ['0', '1-4', '5-9', '10-14', '15-19', '20+'];
+// Simple front/back figure. Each shape carries data-g (muscle group).
+const BODY = {
+  front: [['Shoulders', 'M38 58 q-14 2 -16 18 l14 4 z M82 58 q14 2 16 18 l-14 4 z'], ['Chest', 'M42 60 h17 v20 q-10 2 -19 -4 z M61 60 h17 l2 16 q-9 6 -19 4 z'],
+    ['Biceps', 'M22 80 l13 3 -3 26 -12 -2 z M98 80 l-13 3 3 26 12 -2 z'], ['Forearms', 'M20 110 l12 2 -4 30 -11 -2 z M100 110 l-12 2 4 30 11 -2 z'],
+    ['Abs', 'M46 84 h28 v40 q-14 6 -28 0 z'], ['Quads', 'M44 132 h15 l-2 52 h-12 z M61 132 h15 l-1 52 h-12 z'], ['Calves', 'M45 192 h11 l-1 40 h-8 z M64 192 h11 l-2 40 h-8 z']],
+  back: [['Traps', 'M48 46 l12 -4 12 4 6 12 h-36 z'], ['Shoulders', 'M38 58 q-14 2 -16 18 l14 4 z M82 58 q14 2 16 18 l-14 4 z'], ['Back', 'M42 60 h36 l-2 46 q-16 8 -32 0 z'],
+    ['Triceps', 'M22 80 l13 3 -3 26 -12 -2 z M98 80 l-13 3 3 26 12 -2 z'], ['Forearms', 'M20 110 l12 2 -4 30 -11 -2 z M100 110 l-12 2 4 30 11 -2 z'],
+    ['Glutes', 'M44 110 h32 v22 q-16 6 -32 0 z'], ['Hamstrings', 'M44 136 h15 l-2 48 h-12 z M61 136 h15 l-1 48 h-12 z'], ['Calves', 'M45 192 h11 l-1 40 h-8 z M64 192 h11 l-2 40 h-8 z']]
+};
+function bodySvg(side, m) {
+  return '<svg viewBox="0 0 120 240" class="bsvg" role="img" aria-label="' + side + ' view"><circle cx="60" cy="24" r="14" fill="#2a2e35"/><rect x="54" y="38" width="12" height="8" fill="#2a2e35"/>' +
+    BODY[side].map(([g, d]) => '<path data-g="' + g + '" d="' + d + '" fill="' + PCOL[pBand(m[g] ? m[g].n : 0)] + '" stroke="#11141a" stroke-width="1"/>').join('') +
+    '<text x="60" y="238" text-anchor="middle" font-size="9" fill="#9aa0a6">' + (side === 'front' ? 'Front' : 'Back') + '</text></svg>';
+}
+const fmtSets = n => (Math.round(n * 2) / 2).toString();
+function openProg() {
+  if (!S) return;
+  const w = weekSets(), d = s => new Date(s + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  $('pgh').textContent = 'Weekly sets: ' + d(w.mon) + ' to ' + d(w.sun);
+  $('pgb').innerHTML = '<div class="bmap">' + bodySvg('front', w.m) + bodySvg('back', w.m) + '</div>' +
+    '<div class="pleg">' + PLEG.map((l, i) => '<span><i style="background:' + PCOL[i] + '"></i>' + l + '</span>') .join('') + '</div>' +
+    '<div class="s2">Hard sets logged this week (Mon to Sun). Main muscle counts 1 set, each other listed muscle 0.5. Tap a muscle.</div><div id="pgd"></div>' +
+    '<div class="plist">' + (window.CoachMG || []).map(g => '<button type="button" class="prow" data-g="' + g + '"><span>' + g + '</span><b>' + fmtSets(w.m[g].n) + '</b></button>').join('') + '</div>';
+  progW = w; $('prog').classList.add('open');
+  const close = () => $('prog').classList.remove('open');
+  if (layerOpen('wm')) swapLayer('wm', 'prog', close); else pushLayer('prog', close);
+}
+let progW = null;
+function progDetail(g) {
+  const e = progW && progW.m[g]; if (!e) return;
+  const ex = Object.entries(e.ex).sort((a, b) => b[1] - a[1]);
+  $('pgd').innerHTML = '<div class="pdet"><b>' + esc(g) + ': ' + fmtSets(e.n) + (e.n === 1 ? ' set' : ' sets') + '</b>' + (ex.length ? '<br>' + ex.map(([n, v]) => esc(n) + ' ' + fmtSets(v)).join('<br>') : '<br><span class="s2">Nothing logged this week.</span>') + '</div>';
+  document.querySelectorAll('#prog [data-g]').forEach(el => el.classList.toggle('psel', el.dataset.g === g));
+}
+const closeProg = () => { if (!$('prog').classList.contains('open')) return; $('prog').classList.remove('open'); popLayer('prog'); };
+$('pgclose').onclick = closeProg;
+$('prog').addEventListener('click', e => { if (e.target.id === 'prog') return closeProg(); const g = e.target.closest('[data-g]'); if (g) progDetail(g.dataset.g); });
+
 function openDel() {
   $('wmh').textContent = 'Delete exercise';
   $('wml').innerHTML = cardsFor().map((ex, i) => '<button class="btn sec wmi" data-del="' + i + '">' + esc(ex.canonical) + '</button>').join('');
