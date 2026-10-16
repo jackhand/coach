@@ -146,6 +146,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
 #cal{color:var(--txt);display:inline-flex;align-items:center;justify-content:center}
 .calnow{text-align:center;font-weight:700;margin-bottom:6px}.calnow small{display:block;color:var(--mut);font-weight:600}
 .donedt{font-size:15px;margin-top:2px}
+#fxrow{display:flex;gap:10px;flex-wrap:wrap}#fxrow>div{flex:1 1 150px}.dim{opacity:.4}#fxhint{margin:4px 0 6px}.hm{font-weight:700;margin:14px 0 4px;color:var(--mut);text-transform:uppercase;font-size:13px;letter-spacing:.04em}.hr{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.hr.dl{opacity:.5}.hx{text-align:right;font-size:12px;color:var(--mut);white-space:nowrap}#rstw{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:none;align-items:flex-end}#rstw.open{display:flex}#rstw .in{position:relative;background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom))}#rstx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px}#rstt{margin:8px 34px 14px 0;font-size:16px}#rsty{background:#c62828;color:#fff;margin-bottom:8px}
 #delw{z-index:40}#delw .in{position:relative}#delx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px}#delt{margin:8px 34px 14px 0;font-size:16px}#dely{background:#c62828;color:#fff;margin-bottom:8px}
 #wmenu{font-size:26px;font-weight:800;min-width:36px}.wmi small{display:block;font-size:13px;font-weight:600;color:var(--mut)}
 #holdbox .holdt{background:var(--card2);border-radius:12px;padding:10px;margin-top:8px;text-align:center}
@@ -231,10 +232,10 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
       <button class="btn sec" id="fsame" type="button">Same both sides</button>
     </div>
     <div id="liftxtra">
-    <div id="fdwrap"><label>Drop sets after this set</label>
+    <div id="fxrow"><div id="fdwrap"><label>Drop sets</label>
     <div class="seg" id="fd"><button type="button" data-d="0">0</button><button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button></div></div>
-    <div id="fmini" style="display:none"><label>Mini-sets after the opener</label>
-    <div class="seg" id="fms"><button type="button" id="fmm" aria-label="One fewer mini-set">&minus;</button><button type="button" id="fmv" class="on" disabled>0</button><button type="button" id="fmp" aria-label="One more mini-set">+</button></div></div>
+    <div id="fmini" style="display:none"><label>Myo-rep mini-sets</label>
+    <div class="seg" id="fms"><button type="button" id="fmm" aria-label="One fewer mini-set">&minus;</button><button type="button" id="fmv" class="on" disabled>0</button><button type="button" id="fmp" aria-label="One more mini-set">+</button></div></div></div><div class="s2" id="fxhint" style="display:none"></div>
     <label for="ff">Failure type</label>
     <select id="ff"></select>
     </div>
@@ -280,6 +281,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
 <div id="calw"><div class="in"><h3>Meso calendar</h3><div id="calnow" class="calnow"></div><div id="calb"></div><button class="btn sec" id="calclose">Close</button></div></div>
 <div id="delw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="delx" aria-label="Close">&times;</button><h3 id="delh"></h3><p id="delt">Are you sure? This will delete it from the entire rest of the meso. If you just want to delete it from this workout, just skip it.</p><button type="button" class="btn" id="dely">Delete</button><button type="button" class="btn sec" id="deln">Cancel</button></div></div>
 <div id="wmw"><div class="in"><h3 id="wmh"></h3><div id="wml"></div><button class="btn sec" id="wmclose">Close</button></div></div>
+<div id="rstw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="rstx" aria-label="Close">&times;</button><h3>Reset this workout?</h3><p id="rstt"></p><button type="button" class="btn" id="rsty">Reset</button><button type="button" class="btn sec" id="rstn">Cancel</button></div></div>
 <div id="hist"><div class="in"><h3 id="hh"></h3><div id="hb"></div><button class="btn sec" id="hclose">Close</button></div></div>
 <div class="toast" id="toast"></div>
 
@@ -302,8 +304,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=45"></script>
-<script src="exlist.js?v=45"></script>
-<script src="app.js?v=45"></script>
+<script src="parse.js?v=46"></script>
+<script src="exlist.js?v=46"></script>
+<script src="app.js?v=46"></script>
 </body>
 </html>

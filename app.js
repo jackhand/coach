@@ -772,15 +772,25 @@ $('rundo').onclick = () => {
   closeRepl(); swapMemo = {}; sig = ''; applyState(S, true); toast('Back to ' + b.canonical);
 };
 document.querySelectorAll('#mpain button').forEach(b => b.onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'pain', b.dataset.p === 'none' ? '' : b.dataset.p); toast('Joint pain: ' + b.dataset.p); });
+function histLine(rs) { // RP style: '160 lbs x 12, 12, 7' or '190 x 11, 180 x 8, 8 +1D'
+  const ld = r => String(r.total_load || r.load || ''), rp = r => (r.left_reps || r.right_reps) ? (r.left_reps || '-') + '/' + (r.right_reps || '-') : String(r.reps || '');
+  const tag = r => (+r.drops ? ' +' + r.drops + 'D' : '') + (miniOf(r) ? ' +' + miniOf(r) + 'M' : '');
+  const same = rs.every(r => ld(r) === ld(rs[0])), u = isStretch(exFor(rs[0].exercise)) ? '°' : ' lbs';
+  if (same) return (ld(rs[0]) ? ld(rs[0]) + u + ' x ' : '') + rs.map(r => rp(r) + tag(r)).join(', ');
+  let prev = null; return rs.map(r => { const w = ld(r), t = (w !== prev ? (w || 'BW') + ' x ' : '') + rp(r) + tag(r); prev = w; return t; }).join(', ');
+}
 function openHistory(ex, fromMenu) {
-  const rs = viewRows().filter(r => keysOf(ex).has(P_.norm(r.exercise)));
-  const by = {}; rs.forEach(r => (by[r.date] = by[r.date] || []).push(r));
-  const ds = Object.keys(by).sort().reverse();
-  $('hh').textContent = ex.canonical + ' history';
-  $('hb').innerHTML = ds.length ? ds.map(d => {
-    const best = by[d].map(r => P_.e1rm(loadOf(r), repN(r))).filter(Boolean).reduce((m, e) => Math.max(m, e.ep), 0);
-    const wid = widOf(by[d][0]), pain = getSetting(ex.canonical, 'pain:' + wid), note = getSetting(ex.canonical, 'note:' + wid);
-    return '<div class="hd"><b>' + esc(d) + '</b>' + (best ? ' · best e1RM ' + best : '') + (pain ? ' · pain ' + esc(pain) : '') + '<br>' + by[d].map(r => esc(setTxt(r)) + (+r.drops ? ' +' + r.drops + 'D' : '')).join(', ') + (note ? '<br><i>' + esc(note) + '</i>' : '') + '</div>';
+  const rs = viewRows().filter(r => keysOf(ex).has(P_.norm(r.exercise))).sort((a, b) => tsOf(a) - tsOf(b));
+  const by = {}; rs.forEach(r => { const k = widOf(r) || r.date; (by[k] = by[k] || []).push(r); });
+  const ks = Object.keys(by).sort((a, b) => (tsOf(by[b][0]) - tsOf(by[a][0])) || (by[b][0].date || '').localeCompare(by[a][0].date || ''));
+  const td = trainDays(); let lastB = null;
+  $('hh').textContent = ex.canonical;
+  $('hb').innerHTML = ks.length ? ks.map(k => {
+    const g = by[k], p = wParse(widOf(g[0])), w = p ? p.w : weekOf(g[0].date), dl = isDeload(w), bl = blockOf(w);
+    const dn = p ? td.indexOf(p.day) + 1 : 0, dt = g[0].date ? new Date(g[0].date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const head = bl !== lastB ? '<div class="hm">Block ' + bl + '</div>' : ''; lastB = bl;
+    const wid = widOf(g[0]), pain = getSetting(ex.canonical, 'pain:' + wid), note = getSetting(ex.canonical, 'note:' + wid);
+    return head + '<div class="hr' + (dl ? ' dl' : '') + '"><div class="hl">' + esc(histLine(g)) + (pain ? '<div class="s2">pain ' + esc(pain) + '</div>' : '') + (note ? '<div class="s2"><i>' + esc(note) + '</i></div>' : '') + '</div><div class="hx">' + (dl ? 'DELOAD' : 'WEEK ' + wib(w)) + (dn > 0 ? ' - DAY ' + dn : '') + '<br>' + esc(dt) + '</div></div>';
   }).join('') : '<div class="s2">No history yet.</div>';
   $('hist').classList.add('open');
   const close = () => $('hist').classList.remove('open');
@@ -831,7 +841,7 @@ function render() {
   main.onclick = e => {
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
     if (e.target.closest('#wstartb')) { startWorkout(false); return; }
-    if (e.target.closest('#wrestart')) { startWorkout(true); return; }
+    if (e.target.closest('#wreset')) { openReset(); return; }
     const tf = e.target.closest('li.plan [data-f]');
     if (tf) { const lb = tf.closest('li').querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, tf.dataset.f); return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
@@ -861,11 +871,24 @@ function workoutStart() { const rs = workoutRows().map(tsOf).filter(Boolean), m 
 function wstartHTML() {
   const ws = wStatus()[viewId]; if (ws || !canLog() || !days[dayKey]) return '';
   const n = workoutRows().length, m = manualStart();
-  if (n) return '<div class="wst"><span>Workout time</span> <b id="wstt"></b></div>';
-  if (m) return '<div class="wst"><span>Workout started</span> <b id="wstt"></b><button class="wsr" id="wrestart">Restart</button></div>';
+  if (n || m) return '<div class="wst"><span>' + (n ? 'Workout time' : 'Workout started') + '</span> <b id="wstt"></b><button class="wsr" id="wreset">Reset</button></div>';
   return '<button class="btn sec wsb" id="wstartb">Start workout (warm-ups count)</button>';
 }
 function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); }
+// Reset: stop the workout and clear only this workout's logged sets (after a warning).
+function openReset() { const n = workoutRows().length; $('rstt').textContent = 'This will stop the workout' + (n ? ' and clear the ' + n + (n === 1 ? ' set' : ' sets') + ' you logged in it' : '') + '. Nothing else changes.'; $('rstw').classList.add('open'); pushLayer('rst', () => $('rstw').classList.remove('open')); }
+const closeReset = () => { if (!$('rstw').classList.contains('open')) return; $('rstw').classList.remove('open'); popLayer('rst'); };
+$('rstx').onclick = closeReset; $('rstn').onclick = closeReset;
+$('rstw').addEventListener('click', e => { if (e.target.id === 'rstw') closeReset(); });
+$('rsty').onclick = () => { closeReset(); doReset(); };
+function doReset() {
+  const ids = new Set(workoutRows().map(r => r.set_id)); let q = getQ();
+  const pend = new Set(q.filter(x => x.action === 'log' && ids.has(x.set.set_id)).map(x => x.set.set_id));
+  q = q.filter(x => !((x.action === 'log' && ids.has(x.set.set_id)) || (x.action === 'edit' && ids.has(x.set_id)))); setQ(q);
+  ids.forEach(id => { if (!pend.has(id)) enqueue({ action: 'undo', set_id: id }); });
+  LS.removeItem(WSK()); setT(null); sig = ''; applyState(S, true);
+  toast('Workout reset' + (ids.size ? '. Cleared ' + ids.size + (ids.size === 1 ? ' set.' : ' sets.') : '.'), 4000);
+}
 function updWstart() { const z = $('wstart'); if (!z) return; const h = wstartHTML(); if (z.innerHTML.replace(/<b id="wstt">[^<]*<\/b>/, '<b id="wstt"></b>') !== h) z.innerHTML = h; tickDur(); }
 const NY = 'America/New_York';
 function doneText() { // 'Done Tue, Oct 13 · 49 min' from the finish time in New York
@@ -893,6 +916,11 @@ function finishWorkout() {
   const now = Date.now(), st = workoutStart(), dur = st ? Math.max(0, Math.round((now - st) / 60000)) : null;
   enqueue({ action: 'finish', session: { session_id: uid(), client_ts: now, date: S.today, day: viewId, sets: String(rs.length), exercises: String(ex.size), notes: dur != null ? 'duration_min=' + dur : '' } });
   const t = getT(); if (t) { t.hidden = true; setT(t); }
+  try { // show this workout in the order it was actually done (first logged set of each exercise); this workout only
+    const cs = cardsFor(), first = ex => { const t = rowsFor(ex, true).map(tsOf).filter(Boolean); return t.length ? Math.min.apply(null, t) : Infinity; };
+    const ord = cs.map((c, i) => ({ n: c.canonical, f: first(c), i })).sort((a, b) => a.f - b.f || a.i - b.i).map(x => x.n);
+    if (ord.join('|') !== cs.map(c => c.canonical).join('|')) putSetting('order', dayKeyOf(), JSON.stringify(ord));
+  } catch (e) { console.warn('reorder', e); }
   LS.removeItem(WSK());
   sig = ''; applyState(S, true); toast('Workout finished. Nice work.', 6000);
 }
@@ -1057,7 +1085,7 @@ function restNotify(t) {
       if (Notification.permission !== 'granted') return;
       const at = new Date(end).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
       navigator.serviceWorker.ready.then(reg => {
-        reg.showNotification('Rest ends at ' + at, { tag: 'coach-rest', body: t.exercise + (t.next ? ' · ' + t.next : ''), silent: true, renotify: false, icon: 'icon-192.png' }).catch(() => {});
+        reg.showNotification(t.exercise || 'Rest', { tag: 'coach-rest', body: 'Rest ends ' + at + (t.next ? ' · ' + t.next : ''), silent: true, renotify: false, icon: 'icon-192.png' }).catch(() => {});
         clearTimeout(notifTimer);
         const over = { tag: 'coach-rest', body: 'Rest is over. ' + (t.next || ''), renotify: true, vibrate: [200, 100, 200], icon: 'icon-192.png' };
         if ('TimestampTrigger' in window) { try { reg.showNotification('Rest is over', Object.assign({ showTrigger: new window.TimestampTrigger(end) }, over)).catch(() => {}); return; } catch (e) {} }
@@ -1157,10 +1185,12 @@ const MINI_RE = /\s*\[mini (\d+)\]\s*$/i;
 const miniOf = r => { const m = MINI_RE.exec((r && r.notes) || ''); return m ? +m[1] : 0; };
 const noteTxt = r => String((r && r.notes) || '').replace(MINI_RE, '');
 let minis = 0, formSetIdx = 0;
-function setMini(n) { minis = Math.max(0, Math.min(20, n | 0)); $('fmv').textContent = String(minis); }
+function setMini(n, keep) { minis = Math.max(0, Math.min(20, n | 0)); $('fmv').textContent = String(minis); if (minis && !keep && drops) setDrops(0, true); exclUI(); }
+// Last set: myo-reps (mini-sets) or a drop set, never both. Picking one clears the other.
+function exclUI() { const both = $('fmini').style.display !== 'none' && $('fdwrap').style.display !== 'none'; $('fxhint').style.display = both ? 'block' : 'none'; $('fdwrap').classList.toggle('dim', both && minis > 0); $('fmini').classList.toggle('dim', both && drops > 0); $('fxhint').textContent = !both ? '' : minis > 0 ? 'Myo-reps on. Tap a drop count to switch to a drop set.' : drops > 0 ? 'Drop set on. Tap + to switch to myo-reps.' : 'Pick one: drop sets or myo-rep mini-sets.'; }
 function setKeys(ex, i, n) { const tq = ex ? techFor(ex) : null; return tq ? tqShow(tq, i, n) : []; }
-function miniUI() { const ex = formEx, on = !!ex && !isStretch(ex) && (ffSel.value === 'myo-reps' || setKeys(ex, formSetIdx, plannedCount(ex)).some(k => k === 'myo' || k === 'match')); $('fmini').style.display = on ? 'block' : 'none'; }
-function setDrops(n) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); }
+function miniUI() { const ex = formEx, n = ex ? Math.max(plannedCount(ex), rowsFor(ex, true).length + (editId ? 0 : 1)) : 0; const last = formSetIdx >= n - 1; const on = !!ex && !isStretch(ex) && (ffSel.value === 'myo-reps' || minis > 0 || (last && methodOf(ex) !== 'match') || setKeys(ex, formSetIdx, plannedCount(ex)).some(k => k === 'myo' || k === 'match')); $('fmini').style.display = on ? '' : 'none'; exclUI(); }
+function setDrops(n, keep) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); if (n && !keep && minis) setMini(0, true); if (n && ffSel.value === 'myo-reps' && !keep) ffSel.value = FT_OPTS.includes('true') ? 'true' : ffSel.value; exclUI(); }
 document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
 $('fmm').onclick = () => setMini(minis - 1); $('fmp').onclick = () => setMini(minis + 1);
 ffSel.addEventListener('change', miniUI);
@@ -1188,7 +1218,7 @@ function setDone(i) {
   audio(); // unlock audio on a user tap (needed on iPhone and Chrome)
   const ex = cardsFor()[i], now = Date.now(), t = getT();
   const same = t && P_.norm(t.exercise) === P_.norm(ex.canonical);
-  if (isStretch(ex)) { prevRest = t && !t.hidden ? (now - t.start) / 1000 : null; openForm(i, now); return; }
+  if (isStretch(ex)) { prevRest = t && !t.hidden ? (now - t.start) / 1000 : null; if (t && !t.hidden) { t.hidden = true; setT(t); } openForm(i, now); return; }
   if (ex.single && !(same && t.firstSide)) {
     prevRest = t && !t.hidden ? (now - t.start) / 1000 : null;
     const nt = nextTarget(ex.canonical);
@@ -1199,7 +1229,7 @@ function setDone(i) {
   if (same && t.firstSide) { ts = t.start; prevRest = t.prevRest; }
   else {
     prevRest = t && !t.hidden ? (now - t.start) / 1000 : null;
-    setT({ start: now, exercise: ex.canonical, target: (ex.note.rest_target_sec || 120), next: '' });
+    if (t && !t.hidden) { t.hidden = true; t.firstSide = false; setT(t); } // a new set's log window ends the running rest; the next rest starts when this set is saved
   }
   openForm(i, ts);
 }
@@ -1317,7 +1347,7 @@ function sheetTop() { // after open, layout, and keyboard: put the popup at its 
   const go = () => { inn.scrollTop = 0; $('sheet').scrollTop = 0; inn.querySelectorAll('*').forEach(e => { if (e.scrollTop) e.scrollTop = 0; }); };
   go(); requestAnimationFrame(() => { go(); requestAnimationFrame(go); }); setTimeout(go, 80); setTimeout(go, 250);
 }
-function closeForm(fromPop) { $('sheet').classList.remove('open'); stopHold(); formEx = null; editId = null; stopRec(); if (fromPop !== true) popLayer('sheet'); if (S) applyState(S, false); }
+function closeForm(fromPop) { if (formEx && !editId) { const t = getT(); if (t && t.firstSide) { t.hidden = true; t.firstSide = false; setT(t); } } $('sheet').classList.remove('open'); stopHold(); formEx = null; editId = null; stopRec(); if (fromPop !== true) popLayer('sheet'); if (S) applyState(S, false); }
 $('fcancel').onclick = closeForm;
 $('fdel').onclick = () => { const id = editId; if (!confirm('Delete this set?')) return; closeForm(); deleteSet(id, false); };
 $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeForm(); });
@@ -1349,9 +1379,11 @@ $('fsave').onclick = () => {
   }
   const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical, workout: viewId }, fields);
   const before = viewRows();
+  if (!workoutRows().length && !manualStart()) jset(WSK(), { wid: viewId, ts: doneTs });
   enqueue({ action: 'log', date: S.today, set });
-  const nt = nextTarget(ex.canonical), t = getT();
-  if (t) { t.target = nt.target; t.next = nt.next; t.firstSide = false; t.hidden = false; t.exercise = ex.canonical; setT(t); }
+  const nt = nextTarget(ex.canonical); let t = getT();
+  if (t && !t.hidden) { t.target = nt.target; t.next = nt.next; t.firstSide = false; t.hidden = false; t.exercise = ex.canonical; setT(t); }
+  else { t = { start: doneTs, exercise: ex.canonical, target: nt.target, next: nt.next }; setT(t); }
   $('sheet').classList.remove('open'); formEx = null; stopRec(); popLayer('sheet');
   update(); feedback(ex, set, before, prevRest, t ? t.target : 120);
 };
@@ -1381,8 +1413,9 @@ function saveStretch(ex) {
     closeForm(); toast('Hold updated'); return;
   }
   const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical, workout: viewId }, fields);
+  if (!workoutRows().length && !manualStart()) jset(WSK(), { wid: viewId, ts: doneTs });
   enqueue({ action: 'log', date: S.today, set });
-  const nt = nextTarget(ex.canonical), t = getT();
+  const nt = nextTarget(ex.canonical);
   setT({ start: Date.now(), exercise: ex.canonical, target: nt.target || 60, next: nt.next, hidden: false });
   $('sheet').classList.remove('open'); formEx = null; stopRec(); popLayer('sheet');
   update(); toast('Hold saved: ' + setTxt(set), 4000);
