@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 51;
+const APP_VERSION = 52;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1402,7 +1402,15 @@ function bwLine() {
   const bw = bodyweight(), add = parseFloat($('fl').value) || 0;
   $('fbw').textContent = bw ? 'Total load: ' + bw + ' body weight + ' + add + ' added = ' + (bw + add) + ' lb' : 'Set your body weight in settings (gear) to get total load.';
 }
-function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; }
+function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; const bb = !!formEx && !isStretch(formEx) && eqKind(formEx) === 'barbell'; $('pbt').style.display = bb ? '' : 'none'; if (!bb) $('pbx').hidden = true; }
+// Plate-first: tap plates (one per side each), chips remove, total = 45 bar + 2 x plates.
+let pbList = [];
+function pbRender() { const tot = BAR + 2 * pbList.reduce((a, b) => a + b, 0); $('pbc').innerHTML = pbList.map((p, i) => '<button type="button" class="pchip" data-pi="' + i + '" aria-label="Remove ' + p + '">' + p + ' &times;</button>').join('') || '<span class="s2">Empty bar. Tap plates to add one per side.</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
+$('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; pbRender(); } $('pbt').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; };
+$('pbp').addEventListener('click', e => { const b = e.target.closest('[data-pp]'); if (!b) return; pbList.push(+b.dataset.pp); pbList.sort((a, c) => c - a); pbRender(); });
+$('pbc').addEventListener('click', e => { const b = e.target.closest('[data-pi]'); if (!b) return; pbList.splice(+b.dataset.pi, 1); pbRender(); });
+$('pbclr').onclick = () => { pbList = []; pbRender(); };
+$('pbuse').onclick = () => { $('fl').value = String(BAR + 2 * pbList.reduce((a, b) => a + b, 0)); bwLine(); plUpd(); };
 $('fl').oninput = () => { bwLine(); plUpd(); };
 function showSides(on) { $('sides').style.display = on ? 'block' : 'none'; $('repsbox').style.display = on ? 'none' : 'block'; }
 // ---------- Hold timer (stretch mode) ----------
@@ -1469,7 +1477,7 @@ function openForm(i, ts, row) {
     $('htime').textContent = '0:00'; holdUI();
     $('fsug').textContent = sg ? 'Suggested: ' + (ex.single ? sg.angL + '° ' + sg.repsL + ' L / ' + sg.angR + '° ' + sg.repsR + ' R' : String(sg.load) + '° for ' + sg.reps) + ' (' + sg.why + ').' : '';
   }
-  $('fbw').textContent = ''; bwLine(); plUpd();
+  $('fbw').textContent = ''; $('pbx').hidden = true; $('pbt').textContent = 'Build from plates'; pbList = []; bwLine(); plUpd();
   $('fdel').style.display = row ? 'block' : 'none'; $('ftimer').style.display = 'none';
   $('fsave').textContent = row ? 'Save changes' : 'Save set';
   if (SR) $('heard').textContent = '';
