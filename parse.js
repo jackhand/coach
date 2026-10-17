@@ -87,20 +87,10 @@
       ex.match_keys = e ? e.keys : [norm(ex.name)];
       ex.rest_muscle = e ? e.rest_muscle : norm(ex.name); ex.types = e ? e.types : [];
       ex.single = !!(e && e.single) || /\b(single|one)[ -](arm|leg)\b|\bper (arm|leg|side)\b/i.test(ex.full_name + ' ' + ex.details);
-      ex.bodyweight = !!(e && e.bodyweight); ex.stretch = !!(e && e.stretch) || /\bstretch\b|flexability/i.test(ex.full_name + ' ' + ex.details); ex.setup = e ? e.setup : ''; ex.cue = e ? e.cue : ''; ex.equip = (e && e.equip) || equipOf(ex.name, ex.bodyweight);
+      ex.bodyweight = !!(e && e.bodyweight); ex.stretch = !!(e && e.stretch) || /\bstretch\b|flexability/i.test(ex.full_name + ' ' + ex.details); ex.setup = e ? e.setup : ''; ex.cue = e ? e.cue : ''; ex.equip = (e && e.equip) || ''; // raw field; the app's equipType() is the one place that interprets it
       let sm = (ex.note.sets || '').match(/^(\d+)\s*x/i); if (!sm) sm = (ex.details || '').match(/(\d+)\s*hold/i); ex.planned_sets = sm ? +sm[1] : (ex.stretch ? 1 : 3);
     })));
     return days;
-  }
-  function equipOf(name, bw) {
-    const n = String(name || '').toLowerCase();
-    if (/hex|trap bar/.test(n)) return 'hexbar';
-    if (/barbell|\bbb\b|smith|ez bar/.test(n)) return 'barbell';
-    if (/dumbbell|\bdb\b/.test(n)) return 'dumbbell';
-    if (/cable|rope|pulldown|pushdown|face pull/.test(n)) return 'cable';
-    if (/machine|pec deck|hack|leg press|hammer strength|smith|selectorized|leg extension|leg curl/.test(n)) return 'machine';
-    if (bw || /dip|pull-?up|chin-?up|push-?up|bodyweight|plank|crunch|leg raise/.test(n)) return 'bodyweight';
-    return 'machine';
   }
   function e1rm(load, reps) {
     const w = parseFloat(load), r = parseInt(reps, 10);
@@ -147,6 +137,6 @@
     out.notes = t.replace(/\s+/g, ' ').trim().replace(/^(and|with|reps?|lbs?|pounds?)\b\s*/, '').replace(/\s*\band$/, '').trim();
     return out;
   }
-  const api = { platesToLoad, equipOf, norm, stripParens, parseNote, parseProgram, resolveDays, parseLibrary, lookup, enrich, e1rm, parseSpeech };
+  const api = { platesToLoad, norm, stripParens, parseNote, parseProgram, resolveDays, parseLibrary, lookup, enrich, e1rm, parseSpeech };
   if (typeof module !== 'undefined') module.exports = api; else root.CoachParse = api;
 })(this);

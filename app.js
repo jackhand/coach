@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 68;
+const APP_VERSION = 69;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -171,30 +171,47 @@ function lastTime(ex) {
 }
 // ---------- Warm-up ramp + plate calculator (barbell and dumbbell only, never logged) ----------
 const PLATES = [45, 35, 25, 10, 5, 2.5], BAR = 45;
-function platesFor(w) { let side = (w - BAR) / 2; if (!(side > 0)) return w > 0 && w <= BAR ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return out.join(' + ') + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
-const platesShort = w => { const p = platesFor(+w); return p ? p.replace(' per side', ' /side') : ''; };
-const plateLine = (ex, w) => ex && !isStretch(ex) && eqKind(ex) === 'barbell' && +w > 0 ? platesShort(w) : '';
-const eqKind = ex => { const e = String(ex.equip || P_.equipOf(ex.canonical, ex.bodyweight) || '').toLowerCase(); return /hex|trap/.test(e) ? 'hexbar' : /barbell/.test(e) ? 'barbell' : /dumbbell/.test(e) ? 'dumbbell' : ''; };
+// ONE equipment type for every equipment-specific feature (see CoachEquipType in exlist.js).
+// Explicit equip field (library / built-in list) first, then the built-in catalog entry, name fallback last.
+function equipType(ex) {
+  if (!ex) return 'other';
+  const nm = ex.canonical || ex.name || '', c = ex.equip ? null : catFind(nm);
+  return window.CoachEquipType({ name: nm, equip: ex.equip || (c && c.equip) || '', bodyweight: ex.bodyweight });
+}
+const PLATE_T = { barbell: 1, hexbar: 1, ez: 1 }, BAR_DEF = { barbell: 45, hexbar: 45, ez: 45 }; // Smith bars vary and are often counterbalanced: no plate math
+const BAR_NAME = { barbell: 'bar', hexbar: 'hex bar', ez: 'EZ bar' };
+const plateT = ex => !!ex && !isStretch(ex) && !!PLATE_T[equipType(ex)];
+// Bar weight: per-exercise equipment setup can say e.g. "55 lb bar" or "bar weight 55"; else the type default.
+function barWeight(ex) {
+  const t = equipType(ex), s = String((ex && setupFor(ex)) || '');
+  const m = s.match(/\b(\d+(?:\.\d+)?)\s*(?:lb|lbs)\s*(?:hex |trap |ez |smith )?bar\b/i) || s.match(/\bbar\s*(?:weight|wt)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  const v = m ? parseFloat(m[1]) : NaN; return v > 0 && v < 200 ? v : (BAR_DEF[t] || BAR);
+}
+function platesFor(w, bar) { bar = bar || BAR; let side = (w - bar) / 2; if (!(side > 0)) return w > 0 && w <= bar ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return out.join(' + ') + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
+const platesShort = (w, bar) => { const p = platesFor(+w, bar); return p ? p.replace(' per side', ' /side') : ''; };
+const plateLine = (ex, w) => plateT(ex) && +w > 0 ? platesShort(w, barWeight(ex)) : '';
+// Warm-up kind: 'plate' (bar types), 'dumbbell', or '' (no ramp).
+const eqKind = ex => plateT(ex) ? 'plate' : equipType(ex) === 'dumbbell' ? 'dumbbell' : '';
 function warmFor(ex, list) {
   if (isStretch(ex) || ex.bodyweight) return null;
   const k = eqKind(ex); if (!k) return null;
   const firstFree = list.find(x => !isStretch(x) && !x.bodyweight && eqKind(x));
-  if (k !== 'barbell' && firstFree !== ex) return null;
+  if (k !== 'plate' && firstFree !== ex) return null;
   const sg = suggest(ex, 0), ks = keysOf(ex); let w = num(sg && sg.load) || settled(rowsFor(ex, false)) || settled(viewRows().filter(r => ks.has(P_.norm(r.exercise)) && widOf(r) !== viewId)) || settled(rowsFor(ex, true)); if (!w) return null;
   const r5 = v => Math.round(v / 5) * 5, steps = [];
   if (k === 'dumbbell') { [[0.5, 8], [0.75, 4]].forEach(([p, n]) => { const x = r5(w * p); if (x > 0 && x < w && !steps.some(s => s.w === x)) steps.push({ w: x, n }); }); }
   else {
-    if (k === 'barbell') steps.push({ w: BAR, n: 10 });
-    [[0.5, 5], [0.7, 3], [0.85, 1]].forEach(([p, n]) => { const x = r5(w * p); if (x > (k === 'barbell' ? BAR : 0) && x < w && !steps.some(s => s.w === x)) steps.push({ w: x, n }); });
+    const bar = barWeight(ex); if (bar < w) steps.push({ w: bar, n: 10 });
+    [[0.5, 5], [0.7, 3], [0.85, 1]].forEach(([p, n]) => { const x = r5(w * p); if (x > bar && x < w && !steps.some(s => s.w === x)) steps.push({ w: x, n }); });
   }
-  return { k, w, steps };
+  return { k, w, steps, bar: k === 'plate' ? barWeight(ex) : 0, bn: BAR_NAME[equipType(ex)] || 'bar' };
 }
 function warmHTML(ex, i, list) {
   const wu = warmFor(ex, list); if (!wu) return '';
-  const pl = wu.k === 'barbell', unit = wu.k === 'dumbbell' ? ' lb each' : ' lb';
-  const row = (w, n, work) => '<li><button type="button" class="wuw"' + (pl ? ' data-pl="' + w + '"' : '') + '>' + w + unit + '</button> x ' + n + (work ? ' <span class="s2">working weight</span>' : '') + (pl ? '<div class="s2 wup" hidden>' + esc(platesFor(w)) + '</div>' : '') + '</li>';
+  const pl = wu.k === 'plate', unit = wu.k === 'dumbbell' ? ' lb each' : ' lb';
+  const row = (w, n, work) => '<li><button type="button" class="wuw"' + (pl ? ' data-pl="' + w + '"' : '') + '>' + w + unit + '</button> x ' + n + (work ? ' <span class="s2">working weight</span>' : '') + (pl ? '<div class="s2 wup" hidden>' + esc(platesFor(w, wu.bar)) + '</div>' : '') + '</li>';
   return '<details class="wu"><summary>Warm-up (not logged)</summary><ul>' + wu.steps.map(s => row(s.w, s.n)).join('') + row(wu.w, 'sets', true) + '</ul>' +
-    '<div class="s2">' + (pl ? 'Tap a weight to see plates (45 lb bar). ' : '') + (wu.k === 'hexbar' ? 'Hex bars vary in weight, so no plate math. ' : '') + 'Rest about 1 min between ramp sets.</div></details>';
+    '<div class="s2">' + (pl ? 'Tap a weight to see plates (' + wu.bar + ' lb ' + wu.bn + '). ' : '') + 'Rest about 1 min between ramp sets.</div></details>';
 }
 function setsHTML(ex) {
   const rs = rowsFor(ex, true), n = Math.max(plannedCount(ex), rs.length);
@@ -381,7 +398,7 @@ function swapInfo(base) {
 }
 function catalog() { // his library first, then the built-in list
   const out = [], seen = new Set();
-  LIB.forEach(e => { seen.add(P_.norm(e.name)); out.push({ name: e.name, aliases: e.aliases, muscles: e.muscles, rest_muscle: e.rest_muscle, equip: e.equip || P_.equipOf(e.name, e.bodyweight), types: e.types, video: e.video, mine: true }); });
+  LIB.forEach(e => { seen.add(P_.norm(e.name)); out.push({ name: e.name, aliases: e.aliases, muscles: e.muscles, rest_muscle: e.rest_muscle, equip: e.equip || '', types: e.types, video: e.video, mine: true }); });
   (window.CoachExList || []).forEach(e => { if (!seen.has(P_.norm(e.name)) && !P_.lookup(LIB, e.name)) out.push(Object.assign({ video: '' }, e)); });
   return out;
 }
@@ -443,18 +460,20 @@ function lastSession(ex) {
   return { date: d, rows: rs.filter(r => widOf(r) === d) };
 }
 const r5 = (w, step) => Math.max(step, Math.round(w / step) * step);
-const EQUIP = [[/hex|trap bar/i, 1], [/barbell|\bbb\b|smith/i, 1], [/dumbbell|\bdb\b/i, 0.38], [/machine|pec deck|hack|leg press/i, 0.9], [/cable|rope/i, 0.45]];
-const eqFactor = n => { for (const [re, f] of EQUIP) if (re.test(n)) return f; return 0.8; };
+const EQ_F = { barbell: 1, hexbar: 1, ez: 1, smith: 1, dumbbell: 0.38, machine: 0.9, machine_plate: 0.9, machine_assisted: 0.9, cable: 0.45 };
+const eqFactor = ex => EQ_F[equipType(ex)] || 0.8;
 // Overload step sized to the equipment. Barbell steps are plate pairs (2 x 2.5 = 5, 2 x 5 = 10).
 function stepFor(ex) {
-  const e = ex.equip || P_.equipOf(ex.canonical, ex.bodyweight), lower = LOWER.test(ex.rest_muscle + ' ' + ex.muscles), iso = (ex.types || []).includes('isolation');
-  if (e === 'bodyweight' || ex.bodyweight) return { step: 0, unit: 1, txt: '' };
+  const e = equipType(ex), lower = LOWER.test(ex.rest_muscle + ' ' + ex.muscles), iso = (ex.types || []).includes('isolation');
+  if (e === 'bodyweight' || e === 'bodyweight_loadable' || ex.bodyweight) return { step: 0, unit: 1, txt: '' };
   if (e === 'dumbbell') return { step: 5, unit: 5, txt: ' (next dumbbell)' };
-  if (e === 'barbell' || e === 'hexbar') return lower || e === 'hexbar' ? { step: 10, unit: 5, txt: ' (2 x 5 plates)' } : { step: 5, unit: 5, txt: ' (2 x 2.5 plates)' };
+  if (PLATE_T[e]) return lower || e === 'hexbar' ? { step: 10, unit: 5, txt: ' (2 x 5 plates)' } : { step: 5, unit: 5, txt: ' (2 x 2.5 plates)' };
   if (e === 'cable') return { step: 5, unit: 2.5, txt: '' };
   return iso ? { step: 5, unit: 5, txt: '' } : lower ? { step: 15, unit: 5, txt: '' } : { step: 10, unit: 5, txt: '' };
 }
 const num = v => { const x = parseFloat(v); return isFinite(x) ? x : null; };
+// Test-mode only hook for the headless equipment tests (no data, no writes).
+if (testOn()) window.__coachT = { get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor };
 // Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
 const sideReps = r => { const L = parseInt(r.left_reps, 10), Rr = parseInt(r.right_reps, 10); return { L: isFinite(L) ? L : null, R: isFinite(Rr) ? Rr : null }; };
 function repN(r) { const s = sideReps(r), v = [s.L, s.R].filter(x => x != null); return v.length ? Math.min.apply(null, v) : (parseInt(r.reps, 10) || 0); }
@@ -516,7 +535,7 @@ function suggestNext(ex, idx) {
     for (const r of viewRows().filter(x => keysOf(o).has(P_.norm(x.exercise)))) {
       const w = num(loadOf(r)), n = repN(r); if (!(w > 0) || !(n >= 1 && n <= 20)) continue;
       const e = n <= 10 ? P_.e1rm(w, n) : { ep: Math.round(w * (1 + n / 30)), br: Math.round(w * (1 + n / 30)) };
-      const v = (e.ep + e.br) / 2 * eqFactor(ex.canonical) / eqFactor(o.canonical)
+      const v = (e.ep + e.br) / 2 * eqFactor(ex) / eqFactor(o)
         * ((ex.types || []).includes('isolation') && !(o.types || []).includes('isolation') ? 0.6 : 1);
       if (!best || v > best.v) best = { v, from: o.canonical };
     }
@@ -934,7 +953,7 @@ function render() {
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
       '<div class="note"><b>Coach:</b><div class="chips">' + chips + '</div>' + extra + '</div>' +
-      '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || 'tap to add (seat, pins, angle)') + '</span> <span class="ed">edit</span></div>' +
+      '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + ')' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
       warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
@@ -1043,9 +1062,9 @@ function skipWorkout() {
 }
 function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
-  const v = prompt('Equipment setup for ' + ex.canonical + ' (seat, pins, bench angle):', cur);
+  const v = prompt('Equipment setup for ' + ex.canonical + (plateT(ex) ? ' (seat, pins, angle; bar weight like "45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + '" sets plate math, now ' + barWeight(ex) + ' lb):' : ' (seat, pins, bench angle):'), cur);
   if (v == null) return;
-  putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; toast('Setup saved');
+  putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; toast('Setup saved'); if (plateT(ex)) render();
 }
 function applyState(st, initial) {
   S = st; S.rows = S.rows || []; LIB = P_.parseLibrary(st.library); RAWDAYS = P_.enrich(P_.parseProgram(st.program), LIB); days = P_.resolveDays(RAWDAYS, viewId ? viewWeek() : 1); swapMemo = {};
@@ -1449,18 +1468,18 @@ function bwLine() {
   const bw = bodyweight(), add = parseFloat($('fl').value) || 0;
   $('fbw').textContent = bw ? 'Total load: ' + bw + ' body weight + ' + add + ' added = ' + (bw + add) + ' lb' : 'Set your body weight in settings (gear) to get total load.';
 }
-function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; const bb = !!formEx && !isStretch(formEx) && eqKind(formEx) === 'barbell'; $('pbt').style.display = bb ? '' : 'none'; $('fl').inputMode = bb ? 'text' : 'decimal'; $('fl').placeholder = bb ? 'e.g. 185 or 4x45 2x25' : ''; if (!bb) $('pbx').hidden = true; }
-// Plate-first: tap plates (one per side each), chips remove, total = 45 bar + 2 x plates.
+function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; const bb = plateT(formEx); $('pbt').style.display = bb ? '' : 'none'; $('fl').inputMode = bb ? 'text' : 'decimal'; $('fl').placeholder = bb ? 'e.g. 185 or 4x45 2x25' : ''; if (!bb) $('pbx').hidden = true; }
+// Plate-first: tap plates (one per side each), chips remove, total = bar weight (barWeight) + 2 x plates.
 let pbList = []; // one entry per pair (one plate each side)
-function pbRender() { const tot = BAR + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + ' &times;</button>').join('') || '<span class="s2">Empty bar. Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
+function pbRender() { const tot = barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + ' &times;</button>').join('') || '<span class="s2">Empty ' + (BAR_NAME[equipType(formEx)] || 'bar') + ' (' + barWeight(formEx) + ' lb). Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
 $('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; pbRender(); } $('pbtl').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; $('pbt').classList.toggle('on', !x.hidden); };
 $('pbp').addEventListener('click', e => { const b = e.target.closest('[data-pp]'); if (!b) return; pbList.push(+b.dataset.pp); pbList.sort((a, c) => c - a); pbRender(); });
 $('pbc').addEventListener('click', e => { const b = e.target.closest('[data-pr]'); if (!b) return; const i = pbList.indexOf(+b.dataset.pr); if (i >= 0) pbList.splice(i, 1); pbRender(); });
 $('pbclr').onclick = () => { pbList = []; pbRender(); };
-$('pbuse').onclick = () => { $('fl').value = String(BAR + 2 * pbList.reduce((a, b) => a + b, 0)); bwLine(); plUpd(); };
-const isBB = () => !!formEx && !isStretch(formEx) && eqKind(formEx) === 'barbell';
-function flPlates() { const pl = isBB() ? P_.platesToLoad($('fl').value, BAR) : null; if (pl && !pl.rest) { $('fl').value = String(pl.load); bwLine(); plUpd(); return true; } return false; }
-$('fl').oninput = () => { bwLine(); const pl = isBB() ? P_.platesToLoad($('fl').value, BAR) : null; if (pl && !pl.rest) $('fpl').textContent = '= ' + pl.load + ' lb (tap away to use)'; else plUpd(); };
+$('pbuse').onclick = () => { $('fl').value = String(barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0)); bwLine(); plUpd(); };
+const isBB = () => plateT(formEx);
+function flPlates() { const pl = isBB() ? P_.platesToLoad($('fl').value, barWeight(formEx)) : null; if (pl && !pl.rest) { $('fl').value = String(pl.load); bwLine(); plUpd(); return true; } return false; }
+$('fl').oninput = () => { bwLine(); const pl = isBB() ? P_.platesToLoad($('fl').value, barWeight(formEx)) : null; if (pl && !pl.rest) $('fpl').textContent = '= ' + pl.load + ' lb (tap away to use)'; else plUpd(); };
 $('fl').addEventListener('blur', flPlates);
 function showSides(on) { $('sides').style.display = on ? 'block' : 'none'; $('repsbox').style.display = on ? 'none' : 'block'; }
 // ---------- Hold timer (stretch mode) ----------
@@ -1681,7 +1700,7 @@ $('mic').onclick = () => {
     $('heard').textContent = 'Heard: "' + txt + '"'; if (fin) fill(txt); };
   try { rec.start(); } catch (err) { $('heard').textContent = 'Could not start voice: ' + err.message; }
 };
-function fill(txt) { const p = P_.parseSpeech(txt, { barbell: isBB(), bar: BAR });
+function fill(txt) { const p = P_.parseSpeech(txt, { barbell: isBB(), bar: isBB() ? barWeight(formEx) : BAR });
   if (p.load != null) $('fl').value = p.load; if (p.reps != null) $('fr').value = p.reps; if (p.ft === 'drop set') { ffSel.value = 'true'; setDrops(Math.max(1, drops)); } else if (p.ft) ffSel.value = p.ft; miniUI(); if (p.notes) $('fn').value = p.notes;
   $('heard').textContent = 'Heard: "' + txt + '". Check and edit, then Save.'; }
 

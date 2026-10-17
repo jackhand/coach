@@ -6,23 +6,23 @@ const L = [
 ['Dumbbell bench press','Chest, front delts, triceps','chest','dumbbell','compound','db bench, flat db press'],
 ['Incline barbell press','Upper chest, front delts, triceps','chest','barbell','compound','incline bench'],
 ['Incline dumbbell press','Upper chest, front delts, triceps','chest','dumbbell','compound','incline db press'],
-['Smith machine bench press','Chest, front delts, triceps','chest','machine','compound','smith bench'],
-['Smith machine incline press','Upper chest, front delts, triceps','chest','machine','compound','smith incline'],
+['Smith machine bench press','Chest, front delts, triceps','chest','smith','compound','smith bench'],
+['Smith machine incline press','Upper chest, front delts, triceps','chest','smith','compound','smith incline'],
 ['Machine chest press','Chest, front delts, triceps','chest','machine','compound','chest press machine, selectorized chest press'],
-['Hammer Strength chest press','Chest, front delts, triceps','chest','machine','compound','hammer strength bench, plate loaded chest press, iso-lateral bench'],
-['Hammer Strength incline press','Upper chest, front delts, triceps','chest','machine','compound','plate loaded incline, iso-lateral incline'],
-['Hammer Strength decline press','Lower chest, triceps','chest','machine','compound','plate loaded decline'],
+['Hammer Strength chest press','Chest, front delts, triceps','chest','machine_plate','compound','hammer strength bench, plate loaded chest press, iso-lateral bench'],
+['Hammer Strength incline press','Upper chest, front delts, triceps','chest','machine_plate','compound','plate loaded incline, iso-lateral incline'],
+['Hammer Strength decline press','Lower chest, triceps','chest','machine_plate','compound','plate loaded decline'],
 ['Machine chest fly','Chest','chest','machine','isolation','pec deck'],
 ['Cable fly','Chest','chest','cable','isolation','cable crossover, standing cable fly'],
 ['Low to high cable fly','Upper chest','chest','cable','isolation','low cable fly'],
 ['Dumbbell fly','Chest','chest','dumbbell','isolation','db fly'],
-['Chest dips','Lower chest, triceps, front delts','chest','bodyweight','compound','dips'],
-['Push-up','Chest, front delts, triceps','chest','bodyweight','compound','pushups'],
+['Chest dips','Lower chest, triceps, front delts','chest','bodyweight_loadable','compound','dips'],
+['Push-up','Chest, front delts, triceps','chest','bodyweight_loadable','compound','pushups'],
 ['Seated dumbbell overhead press','Front and side delts, triceps','shoulders','dumbbell','compound','db shoulder press'],
 ['Standing barbell overhead press','Front and side delts, triceps','shoulders','barbell','compound','ohp, military press'],
 ['Machine shoulder press','Front and side delts, triceps','shoulders','machine','compound','shoulder press machine'],
-['Hammer Strength shoulder press','Front and side delts, triceps','shoulders','machine','compound','plate loaded shoulder press'],
-['Smith machine shoulder press','Front and side delts, triceps','shoulders','machine','compound','smith ohp'],
+['Hammer Strength shoulder press','Front and side delts, triceps','shoulders','machine_plate','compound','plate loaded shoulder press'],
+['Smith machine shoulder press','Front and side delts, triceps','shoulders','smith','compound','smith ohp'],
 ['Dumbbell lateral raise','Side delts','shoulders','dumbbell','isolation','db lateral raise, side raise'],
 ['Cable lateral raise','Side delts','shoulders','cable','isolation','single arm cable lateral'],
 ['Machine lateral raise','Side delts','shoulders','machine','isolation','lateral raise machine'],
@@ -42,7 +42,7 @@ const L = [
 ['Straight bar pushdown','Triceps','triceps','cable','isolation','bar pushdown, v-bar pushdown'],
 ['Single-arm cable overhead triceps extension','Triceps (long head)','triceps','cable','isolation','overhead cable extension'],
 ['Cable overhead rope extension','Triceps (long head)','triceps','cable','isolation','rope overhead extension'],
-['EZ bar skull crusher','Triceps','triceps','barbell','isolation','skull crushers, lying triceps extension'],
+['EZ bar skull crusher','Triceps','triceps','ez','isolation','skull crushers, lying triceps extension'],
 ['Dumbbell overhead triceps extension','Triceps (long head)','triceps','dumbbell','isolation','db overhead extension'],
 ['Machine triceps extension','Triceps','triceps','machine','isolation','triceps machine'],
 ['Machine dip','Triceps, lower chest','triceps','machine','compound','assisted dip, seated dip machine'],
@@ -55,25 +55,25 @@ const L = [
 ['Preacher curl machine','Biceps','biceps','machine','isolation','machine curl, preacher curl'],
 ['Lat pulldown','Lats, upper back, biceps','back','cable','compound','pulldown, wide grip pulldown'],
 ['Close-grip lat pulldown','Lats, biceps','back','cable','compound','v-bar pulldown'],
-['Pull-up','Lats, upper back, biceps','back','bodyweight','compound','pullups, chin-up'],
-['Assisted pull-up machine','Lats, upper back, biceps','back','machine','compound','assisted pullup'],
+['Pull-up','Lats, upper back, biceps','back','bodyweight_loadable','compound','pullups, chin-up'],
+['Assisted pull-up machine','Lats, upper back, biceps','back','machine_assisted','compound','assisted pullup'],
 ['Seated cable row','Mid back, lats, biceps','back','cable','compound','cable row'],
 ['Chest-supported machine row','Mid back, lats','back','machine','compound','machine row, seated row machine'],
-['Hammer Strength row','Mid back, lats','back','machine','compound','iso-lateral row, plate loaded row'],
-['Hammer Strength high row','Upper back, lats','back','machine','compound','iso-lateral high row'],
-['Hammer Strength low row','Lats, mid back','back','machine','compound','iso-lateral low row'],
-['Hammer Strength pulldown','Lats, upper back','back','machine','compound','iso-lateral pulldown, plate loaded pulldown'],
+['Hammer Strength row','Mid back, lats','back','machine_plate','compound','iso-lateral row, plate loaded row'],
+['Hammer Strength high row','Upper back, lats','back','machine_plate','compound','iso-lateral high row'],
+['Hammer Strength low row','Lats, mid back','back','machine_plate','compound','iso-lateral low row'],
+['Hammer Strength pulldown','Lats, upper back','back','machine_plate','compound','iso-lateral pulldown, plate loaded pulldown'],
 ['Chest-supported dumbbell row','Mid back, lats','back','dumbbell','compound','incline db row, seal row'],
 ['Single-arm dumbbell row','Lats, mid back','back','dumbbell','compound','db row, one arm row'],
 ['Barbell row','Mid back, lats, lower back','back','barbell','compound','bent over row'],
-['T-bar row','Mid back, lats','back','machine','compound','landmine row'],
+['T-bar row','Mid back, lats','back','machine_plate','compound','landmine row'],
 ['Rope straight-arm pulldown','Lats','back','cable','isolation','straight-arm cable pulldown, rope straight pulldowns, rope straight pulldown, lat prayer, straight arm pulldown, straight arm rope pulldown, straight-arm rope pulldown, rope pulldown, straight arm rope pulldowns'],
-['Back extension','Lower back, glutes, hamstrings','lower back','bodyweight','compound','hyperextension, 45 degree back extension'],
+['Back extension','Lower back, glutes, hamstrings','lower back','bodyweight_loadable','compound','hyperextension, 45 degree back extension'],
 ['Back squat','Quads, glutes, adductors','quads','barbell','compound','squat, barbell back squat, barbell squat, high bar squat, low bar squat'],
-['Hack squat','Quads, glutes','quads','machine','compound','hack squat machine'],
-['Pendulum squat','Quads, glutes','quads','machine','compound',''],
-['Smith machine squat','Quads, glutes','quads','machine','compound','smith squat'],
-['Leg press','Quads, glutes','quads','machine','compound','45 degree leg press, hammer strength leg press'],
+['Hack squat','Quads, glutes','quads','machine_plate','compound','hack squat machine'],
+['Pendulum squat','Quads, glutes','quads','machine_plate','compound',''],
+['Smith machine squat','Quads, glutes','quads','smith','compound','smith squat'],
+['Leg press','Quads, glutes','quads','machine_plate','compound','45 degree leg press, hammer strength leg press'],
 ['Goblet squat','Quads, glutes','quads','dumbbell','compound','db squat'],
 ['Leg extension','Quads','quads','machine','isolation','quad extension'],
 ['Romanian deadlift','Hamstrings, glutes, lower back','hamstrings','barbell','compound','rdl'],
@@ -88,7 +88,7 @@ const L = [
 ['Hip adduction machine','Adductors','adductors','machine','isolation','adductor'],
 ['Standing calf raise','Calves','calves','machine','isolation','calf raise machine'],
 ['Seated calf raise','Calves (soleus)','calves','machine','isolation',''],
-['Leg press calf raise','Calves','calves','machine','isolation',''],
+['Leg press calf raise','Calves','calves','machine_plate','isolation',''],
 ['Cable crunch','Abs','abs','cable','isolation','kneeling cable crunch'],
 ['Hanging leg raise','Abs, hip flexors','abs','bodyweight','isolation','leg raises'],
 ['Captain\'s chair leg raise','Abs, hip flexors','abs','bodyweight','isolation','leg raise, vertical knee raise, leg raise machine, hanging leg raise station, bosu leg raise, captains chair leg raise, captain chair leg raise, knee raise'],
@@ -97,7 +97,7 @@ const L = [
 ['Plank','Abs, core','abs','bodyweight','isolation',''],
 ['Wrist curl','Forearms','forearms','dumbbell','isolation','forearm curl'],
 ['Reverse barbell curl','Forearms, biceps','forearms','barbell','isolation','reverse curl'],
-['Assisted dip machine','Chest, triceps','chest','machine','compound','assisted dips']
+['Assisted dip machine','Chest, triceps','chest','machine_assisted','compound','assisted dips']
 ];
 // Demo videos (checked Oct 16, 2026: link loads and title matches).
 const V = {
@@ -169,7 +169,7 @@ root.CoachExList = L.map(a => ({ video: V[a[0]] || '', name: a[0], muscles: a[1]
 // Filter metadata (RP style): one muscle group and one equipment label per exercise.
 const MG = { chest: 'Chest', 'upper chest': 'Chest', back: 'Back', lats: 'Back', 'lower back': 'Back', 'upper back': 'Back', triceps: 'Triceps', biceps: 'Biceps', shoulders: 'Shoulders', delts: 'Shoulders', 'rear delts': 'Shoulders', 'side delts': 'Shoulders', 'front delts': 'Shoulders', quads: 'Quads', glutes: 'Glutes', adductors: 'Glutes', hamstrings: 'Hamstrings', calves: 'Calves', traps: 'Traps', forearms: 'Forearms', abs: 'Abs', core: 'Abs', neck: 'Traps', serratus: 'Back', tibialis: 'Calves', shins: 'Calves' };
 root.CoachMG = ['Chest', 'Back', 'Triceps', 'Biceps', 'Shoulders', 'Quads', 'Glutes', 'Hamstrings', 'Calves', 'Traps', 'Forearms', 'Abs'];
-root.CoachEQ = ['Barbell', 'Bodyweight loadable', 'Bodyweight', 'Cable', 'Dumbbell', 'Machine', 'Machine assistance', 'Smith machine'];
+root.CoachEQ = ['Barbell', 'Hex bar', 'Bodyweight loadable', 'Bodyweight', 'Cable', 'Dumbbell', 'Machine', 'Machine assistance', 'Smith machine', 'Band/other'];
 root.CoachMGColor = { Chest: '#e57373', Back: '#64b5f6', Triceps: '#ba68c8', Biceps: '#4db6ac', Shoulders: '#ffb74d', Quads: '#81c784', Glutes: '#f06292', Hamstrings: '#a1887f', Calves: '#90a4ae', Traps: '#7986cb', Forearms: '#dce775', Abs: '#ffd54f' };
 root.CoachGroupOf = c => { const r = String((c && c.rest_muscle) || '').toLowerCase().trim(); if (MG[r]) return MG[r]; const m = String((c && c.muscles) || '').toLowerCase().split(/[,(]/)[0].trim(); for (const k of Object.keys(MG).sort((a, b) => b.length - a.length)) if (m.includes(k)) return MG[k]; return ''; };
 // Every group a row works, from its muscles text (primary first). Used by the weekly sets body map.
@@ -212,9 +212,37 @@ root.CoachRegionsOf = c => { // [[region, weight]]: main 1, others 0.5
   if (/plank/.test(n)) add('Obliques', 0.5);
   extra.forEach(r => add(r, 0.5));
   return out; };
-root.CoachEquipOf = c => { const n = String((c && c.name) || '').toLowerCase(), e = String((c && c.equip) || '').toLowerCase();
-  if (/smith/.test(n) || e === 'smith') return 'Smith machine'; if (/assist/.test(n)) return 'Machine assistance';
-  if (e === 'bodyweight' || /bodyweight/.test(e)) return /dip|pull-?up|chin|push-?up|back extension|hyperextension/.test(n) ? 'Bodyweight loadable' : 'Bodyweight';
-  if (/hex|trap bar|barbell|ez/.test(e)) return 'Barbell'; if (/dumbbell|db/.test(e)) return 'Dumbbell'; if (/cable|rope/.test(e)) return 'Cable'; if (/machine|hammer|plate/.test(e)) return 'Machine';
-  if (/cable|rope/.test(n)) return 'Cable'; if (/dumbbell/.test(n)) return 'Dumbbell'; if (/barbell/.test(n)) return 'Barbell'; if (/machine|hammer strength|press machine/.test(n)) return 'Machine'; return ''; };
+// Equipment: ONE canonical type drives all equipment UI (plates, warm-ups, steps, e1RM factor, filters).
+// Explicit equip field first (refined by name only for subtypes), name fallback only when the field is missing.
+root.CoachEquipTypes = ['barbell', 'hexbar', 'ez', 'smith', 'dumbbell', 'cable', 'machine', 'machine_plate', 'machine_assisted', 'bodyweight', 'bodyweight_loadable', 'band', 'other'];
+const ET_LOADABLE = /\bdips?\b|pull-?up|chin-?up|push-?up|back extension|hyperextension/;
+const ET_PLATE = /hammer strength|plate[- ]?loaded|leg press|hack squat|pendulum|t-bar|belt squat/;
+function etField(e) {
+  e = String(e || '').toLowerCase().trim(); if (!e) return '';
+  if (/^(bodyweight[_ ]loadable|loadable|weighted bodyweight)$/.test(e)) return 'bodyweight_loadable';
+  if (/assist/.test(e)) return 'machine_assisted'; if (/^(machine[_ ]plate|plate[- ]?loaded|plate)$/.test(e)) return 'machine_plate';
+  if (/hex|trap/.test(e)) return 'hexbar'; if (/^ez/.test(e)) return 'ez'; if (/smith/.test(e)) return 'smith';
+  if (/barbell|^bb$/.test(e)) return 'barbell'; if (/dumbbell|^db$/.test(e)) return 'dumbbell'; if (/cable|rope|pulley/.test(e)) return 'cable';
+  if (/band/.test(e)) return 'band'; if (/bodyweight|^bw$/.test(e)) return 'bodyweight'; if (/machine|selectorized|stack|pin/.test(e)) return 'machine';
+  return root.CoachEquipTypes.includes(e) ? e : 'other';
+}
+function etName(n, bw) {
+  if (/hex bar|trap bar|\bhex\b/.test(n)) return 'hexbar'; if (/smith/.test(n)) return 'smith'; if (/\bez[- ]?bar\b|\bez\b/.test(n)) return 'ez';
+  if (/barbell|\bbb\b/.test(n)) return 'barbell'; if (/dumbbell|\bdb\b/.test(n)) return 'dumbbell'; if (/\bband/.test(n)) return 'band';
+  if (/assist/.test(n)) return 'machine_assisted'; if (/cable|rope|pulldown|pushdown|face pull/.test(n)) return 'cable';
+  if (ET_PLATE.test(n)) return 'machine_plate'; if (/machine|pec deck|selectorized|leg extension|leg curl/.test(n)) return 'machine';
+  if (bw || /\bdips?\b|pull-?up|chin-?up|push-?up|bodyweight|plank|crunch|leg raise|dragon flag|back extension/.test(n)) return ET_LOADABLE.test(n) ? 'bodyweight_loadable' : 'bodyweight';
+  return 'other';
+}
+root.CoachEquipType = c => {
+  const n = String((c && (c.name || c.canonical)) || '').toLowerCase(), t = etField(c && c.equip);
+  if (!t) return etName(n, c && c.bodyweight);
+  if (t === 'barbell') return /smith/.test(n) ? 'smith' : /\bez\b|ez[- ]bar/.test(n) ? 'ez' : /hex bar|trap bar/.test(n) ? 'hexbar' : 'barbell';
+  if (t === 'machine') return /smith/.test(n) ? 'smith' : /assist/.test(n) ? 'machine_assisted' : ET_PLATE.test(n) ? 'machine_plate' : 'machine';
+  if (t === 'bodyweight') return ET_LOADABLE.test(n) ? 'bodyweight_loadable' : 'bodyweight';
+  return t; };
+const ET_LABEL = { barbell: 'Barbell', ez: 'Barbell', hexbar: 'Hex bar', smith: 'Smith machine', dumbbell: 'Dumbbell', cable: 'Cable', machine: 'Machine', machine_plate: 'Machine',
+  machine_assisted: 'Machine assistance', bodyweight: 'Bodyweight', bodyweight_loadable: 'Bodyweight loadable', band: 'Band/other', other: 'Band/other' };
+root.CoachEquipLabel = t => ET_LABEL[t] || 'Band/other';
+root.CoachEquipOf = c => root.CoachEquipLabel(root.CoachEquipType(c)); // filter label, derived from the one type
 })(this);
