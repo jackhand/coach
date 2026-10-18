@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 74;
+const APP_VERSION = 75;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -218,16 +218,18 @@ function warmHTML(ex, i, list) {
 }
 // Coach warm-ups ('Warm-ups: bar x 10, 135 x 5' in the program): listed before the working sets, logged with failure type 'warm-up'.
 function coachWarm(ex) { const b = ex && ex.note && ex.note.warmups; if (!b || !b.length || isStretch(ex)) return []; const bar = barWeight(ex); return b.map(x => ({ w: x.w === 'bar' ? bar : x.w, n: x.n })); }
+// All warm-ups for the exercise sit in one gold 'Warm-up' group above the numbered working sets.
 function warmRowsHTML(ex, worked) {
   const done = warmRowsToday(ex), plan = coachWarm(ex), name = esc(ex.canonical);
-  let h = done.map(r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">W</span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">Warm-up' + (r.pending ? ' · pending sync' : '') + (noteTxt(r) ? ' · ' + esc(noteTxt(r)) : '') + '</div></li>').join('');
+  const pl = w => plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '';
+  let h = done.map(r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn"></span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span><span></span><span class="lg on">&#10003;</span></div>' + pl(r.load) +
+    (r.pending || noteTxt(r) ? '<div class="s2">' + [r.pending ? 'pending sync' : '', esc(noteTxt(r))].filter(Boolean).join(' · ') + '</div>' : '') + '</li>').join('');
   if (!worked) for (let k = done.length; k < plan.length; k++) {
     const w = plan[k];
-    h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.n) + '</span><span></span>' +
-      '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log this warm-up"' + ((k === done.length || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' +
-      (plateLine(ex, w.w) ? '<div class="s2 plt">' + esc(plateLine(ex, w.w)) + '</div>' : '') + '<div class="s2">Warm-up ' + (k + 1) + ' of ' + plan.length + ' (Coach plan). Not counted in suggestions or weekly sets.</div></li>';
+    h += '<li class="plan wrm"><div class="srow"><span class="sn"></span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.n) + '</span><span></span>' +
+      '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log warm-up ' + (k + 1) + ' of ' + plan.length + '"' + ((k === done.length || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' + pl(w.w) + '</li>';
   }
-  return h;
+  return h ? '<li class="wgrp"><div class="wgh"><b>WARM-UP</b> <span>Coach plan. Not counted in suggestions or weekly sets.</span></div><ul class="wl">' + h + '</ul></li>' : '';
 }
 function setsHTML(ex) {
   const rs = rowsFor(ex, true), n = Math.max(plannedCount(ex), rs.length);
