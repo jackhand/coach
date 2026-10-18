@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 73;
+const APP_VERSION = 74;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -290,10 +290,16 @@ function techFor(ex) {
   let keys = Object.keys(TECH).filter(k => k !== 'match' && TECH[k].re.test(t));
   if (methodOf(ex) === 'match') { keys = ['match']; /* MRM excludes drop sets and standard myo-reps */ return { keys, all: !/\blast set\b/i.test(t), mrm: true }; }
   if (!keys.length) return null;
-  return { keys, all: !/\blast set\b/i.test(t) };
+  // Rule: a set carries a drop set OR myo-reps, never both. 'drop or myo-reps' picks drop; myo wins only when the text says 'last set: myo-reps' with no drop tied to the last set.
+  const prefer = keys.includes('drop') && keys.includes('myo') && /\blast set\b[^.;]*\bmyo[- ]?reps?\b/i.test(t) && !/\blast set\b[^.;]*\b(?:drop|run(?:ning)? the rack)\b/i.test(t) && !/\b(?:drop|rack)\b[^.;]*\bor\b[^.;]*\bmyo|\bmyo[^.;]*\bor\b[^.;]*\b(?:drop|rack)\b/i.test(t) ? 'myo' : 'drop';
+  return { keys, all: !/\blast set\b/i.test(t), prefer };
 }
 // One set method at a time: MRM on every set after the opener; MR only on the last set (like a finisher); DROP per program text.
-function tqShow(tq, i, n) { return tq.keys.filter(k => k === 'match' ? i >= 1 : k === 'myo' ? i === n - 1 : (tq.all || i === n - 1)); }
+function tqShow(tq, i, n) {
+  let ks = tq.keys.filter(k => k === 'match' ? i >= 1 : k === 'myo' ? i === n - 1 : (tq.all || i === n - 1));
+  if (ks.includes('drop') && ks.includes('myo')) ks = ks.filter(k => k !== (tq.prefer === 'myo' ? 'drop' : 'myo')); // never DROP + MR on one set
+  return ks;
+}
 function openTech(keys) {
   const ks = keys.split(',').filter(k => TECH[k]);
   $('tqh').textContent = ks.length > 1 ? ks.map(k => TECH[k].name).join(' or ') + ' (pick one)' : TECH[ks[0]].name;
@@ -491,7 +497,7 @@ function stepFor(ex) {
 }
 const num = v => { const x = parseFloat(v); return isFinite(x) ? x : null; };
 // Test-mode only hook for the headless equipment tests (no data, no writes).
-if (testOn()) window.__coachT = { get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor };
+if (testOn()) window.__coachT = { get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow };
 // Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
 const sideReps = r => { const L = parseInt(r.left_reps, 10), Rr = parseInt(r.right_reps, 10); return { L: isFinite(L) ? L : null, R: isFinite(Rr) ? Rr : null }; };
 function repN(r) { const s = sideReps(r), v = [s.L, s.R].filter(x => x != null); return v.length ? Math.min.apply(null, v) : (parseInt(r.reps, 10) || 0); }
