@@ -50,6 +50,10 @@ main{padding:12px 12px 120px}
 .card.dragging{opacity:.85;box-shadow:0 0 0 3px var(--acc);transform:scale(1.02)}
 .sets li.plan{background:transparent;border:1px dashed var(--line);color:var(--mut)}
 .sets li.plan .pin{color:var(--txt)}
+.sets li.wrm .sn{color:#e0a030}
+.sets li.wrm{border-left:3px solid #e0a030}
+.wkbox{background:#3a2e10;border:1px solid #e0a030;border-left:5px solid #e0a030;border-radius:10px;padding:8px 10px;margin:6px 0;font-size:15px}.wkbox b{color:#f2c14e}.wkbox ul{margin:4px 0 0 18px;padding:0}.wkday{margin:0 0 10px}
+.cplan{color:#f2c14e;font-weight:700}
 .rm{width:36px;height:44px;border:0;border-radius:10px;background:none;color:var(--mut);font-size:16px;padding:0}
 .srow{display:grid;grid-template-columns:46px 1fr 1fr 36px 48px;gap:6px;align-items:center}
 .sets li.shead{background:none;padding:0 10px;margin:0;display:grid;grid-template-columns:46px 1fr 1fr 36px 48px;gap:6px;font-size:12px;font-weight:700;color:var(--mut);letter-spacing:.5px}
@@ -324,8 +328,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=72"></script>
-<script src="exlist.js?v=72"></script>
-<script src="app.js?v=72"></script>
+<script src="parse.js?v=73"></script>
+<script src="exlist.js?v=73"></script>
+<script src="app.js?v=73"></script>
 </body>
 </html>

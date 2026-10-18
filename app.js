@@ -4,12 +4,12 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 72;
+const APP_VERSION = 73;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-const FT = ['technical','true','drop set','myo-reps','not to failure'];
-const FT_LABEL = {'technical':'Technical failure','true':'True failure','drop set':'Drop set','myo-reps':'Myo-reps','not to failure':'Not to failure'};
+const FT = ['technical','true','drop set','myo-reps','not to failure','warm-up'];
+const FT_LABEL = {'technical':'Technical failure','true':'True failure','drop set':'Drop set','myo-reps':'Myo-reps','not to failure':'Not to failure','warm-up':'Warm-up'};
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = sec => { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
 const parseHold = v => { // '5:00' or '300' -> seconds; null if empty/invalid
@@ -135,7 +135,9 @@ window.addEventListener('online', flush);
 
 // ---------- Rows view (server rows + pending) ----------
 const tsOf = r => Date.parse(r.logged_at) || 0;
-function viewRows() {
+// Warm-up sets (failure type 'warm-up') are logged but left out of suggestions, settled weight, e1RM, trends and weekly sets. viewRows(true) includes them.
+const isWarm = r => !!r && r.failure_type === 'warm-up';
+function viewRows(all) {
   if (!S) return [];
   const q = (testOn() ? getRQ().concat(getQ()) : getQ()).filter(x => x.profile === P);
   const undone = new Set(q.filter(x => x.action === 'undo').map(x => x.set_id));
@@ -145,7 +147,7 @@ function viewRows() {
   q.filter(x => x.action === 'edit').forEach(x => { edits[x.set_id] = Object.assign(edits[x.set_id] || {}, x.fields); });
   return S.rows.concat(pend).filter(r => !undone.has(r.set_id))
     .map(r => edits[r.set_id] ? Object.assign({}, r, edits[r.set_id], { pending: true }) : r)
-    .sort((a, b) => tsOf(a) - tsOf(b));
+    .sort((a, b) => tsOf(a) - tsOf(b)).filter(r => all || !isWarm(r));
 }
 function keysOf(ex) { return new Set(ex.match_keys.concat([P_.norm(ex.canonical), P_.norm(ex.name)])); }
 function exFor(name) { const n = P_.norm(name); for (const ex of cardsFor()) if (keysOf(ex).has(n)) return ex; for (const ex of (days[dayKey] ? days[dayKey].exercises : [])) if (keysOf(ex).has(n)) return ex; for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
@@ -154,6 +156,7 @@ function rowsFor(ex, today) {
   return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? widOf(r) === viewId : wIndex(widOf(r)) < wIndex(viewId)));
 }
 const loadOf = r => r.total_load || r.load;
+function warmRowsToday(ex) { const keys = keysOf(ex); return viewRows(true).filter(r => isWarm(r) && keys.has(P_.norm(r.exercise)) && widOf(r) === viewId); }
 function sideE(r) { const s = sideReps(r); if (s.L == null || s.R == null || s.L === s.R) return ''; const a = P_.e1rm(loadOf(r), s.L), b = P_.e1rm(loadOf(r), s.R); return a && b ? 'e1RM L ' + a.ep + ' / R ' + b.ep + ' Epley' : ''; }
 function setTxt(r) {
   const ex = r && r.exercise ? exFor(r.exercise) : null;
@@ -193,7 +196,7 @@ const plateLine = (ex, w) => plateT(ex) && +w > 0 ? platesShort(w, barWeight(ex)
 // Warm-up kind: 'plate' (bar types), 'dumbbell', or '' (no ramp).
 const eqKind = ex => plateT(ex) ? 'plate' : equipType(ex) === 'dumbbell' ? 'dumbbell' : '';
 function warmFor(ex, list) {
-  if (isStretch(ex) || ex.bodyweight) return null;
+  if (isStretch(ex) || ex.bodyweight || coachWarm(ex).length) return null;
   const k = eqKind(ex); if (!k) return null;
   const firstFree = list.find(x => !isStretch(x) && !x.bodyweight && eqKind(x));
   if (k !== 'plate' && firstFree !== ex) return null;
@@ -213,6 +216,19 @@ function warmHTML(ex, i, list) {
   return '<details class="wu"><summary>Warm-up (not logged)</summary><ul>' + wu.steps.map(s => row(s.w, s.n)).join('') + row(wu.w, 'sets', true) + '</ul>' +
     '<div class="s2">' + (pl ? 'Tap a weight to see plates (' + wu.bar + ' lb ' + wu.bn + '). ' : '') + 'Rest about 1 min between ramp sets.</div></details>';
 }
+// Coach warm-ups ('Warm-ups: bar x 10, 135 x 5' in the program): listed before the working sets, logged with failure type 'warm-up'.
+function coachWarm(ex) { const b = ex && ex.note && ex.note.warmups; if (!b || !b.length || isStretch(ex)) return []; const bar = barWeight(ex); return b.map(x => ({ w: x.w === 'bar' ? bar : x.w, n: x.n })); }
+function warmRowsHTML(ex, worked) {
+  const done = warmRowsToday(ex), plan = coachWarm(ex), name = esc(ex.canonical);
+  let h = done.map(r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">W</span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span><span></span><span class="lg on">&#10003;</span></div><div class="s2">Warm-up' + (r.pending ? ' · pending sync' : '') + (noteTxt(r) ? ' · ' + esc(noteTxt(r)) : '') + '</div></li>').join('');
+  if (!worked) for (let k = done.length; k < plan.length; k++) {
+    const w = plan[k];
+    h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.n) + '</span><span></span>' +
+      '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log this warm-up"' + ((k === done.length || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' +
+      (plateLine(ex, w.w) ? '<div class="s2 plt">' + esc(plateLine(ex, w.w)) + '</div>' : '') + '<div class="s2">Warm-up ' + (k + 1) + ' of ' + plan.length + ' (Coach plan). Not counted in suggestions or weekly sets.</div></li>';
+  }
+  return h;
+}
 function setsHTML(ex) {
   const rs = rowsFor(ex, true), n = Math.max(plannedCount(ex), rs.length);
   if (!n) return '<li class="s2 none">Skipped today.</li>';
@@ -220,6 +236,7 @@ function setsHTML(ex) {
   const half = ex.single && t && t.firstSide && P_.norm(t.exercise) === P_.norm(ex.canonical);
   const st = isStretch(ex);
   let h = '<li class="shead' + (st ? ' stretch' : '') + '"><span>SET</span><span>' + (st ? 'ANGLE' : 'WEIGHT') + '</span><span>' + (st ? 'HOLD' : 'REPS') + '</span><span></span><span>LOG</span></li>';
+  h += warmRowsHTML(ex, rs.length);
   h += rs.map((r, i) => {
     const e = st ? null : P_.e1rm(loadOf(r), repN(r));
     const bits = [st ? '' : (FT_LABEL[r.failure_type] || r.failure_type), +r.drops ? (r.drops + (+r.drops === 1 ? ' drop' : ' drops')) : '', miniOf(r) ? '+' + miniOf(r) + ' mini' : '',
@@ -244,7 +261,7 @@ function setsHTML(ex) {
       '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +
       '<button class="lg' + (half && isNext ? ' half' : '') + '" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '>' + (half && isNext ? '&#189;' : '') + '</button></div>' +
       (plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '') +
-      (sg ? '<div class="s2">' + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.why) + (ex.single ? (st ? ' · per side' : ' · reps per side') : '') + '</div>' : '') + '</li>';
+      (sg ? '<div class="s2">' + (sg.coach ? '<b class="cplan">Coach plan</b> ' : '') + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.coach ? sg.why.replace(/^Coach plan: /, '') : sg.why) + (ex.single ? (st ? ' · per side' : ' · reps per side') : '') + '</div>' : '') + '</li>';
   }
   return h;
 }
@@ -269,7 +286,8 @@ function methodOf(ex) {
 }
 const methodable = ex => !isStretch(ex) && (/\bmyo[- ]?reps?\b/i.test(String(ex.details || '')) || (ex.types || []).includes('isolation'));
 function techFor(ex) {
-  const t = String(ex.details || ''); let keys = Object.keys(TECH).filter(k => k !== 'match' && TECH[k].re.test(t));
+  const t = String(ex.details || '').replace(/\bno\s+(?:bench\s+)?(?:drop(?:\s*-?\s*sets?)?|myo[- ]?reps?|run(?:ning)? the rack)\b[^.;]*/gi, '').replace(/\bdrop\s+\d+(?:\.\d+)?\s*(?:lbs?|pounds?)\b/gi, ''); // 'no drop set' and 'drop 10 lb' are not drop sets
+  let keys = Object.keys(TECH).filter(k => k !== 'match' && TECH[k].re.test(t));
   if (methodOf(ex) === 'match') { keys = ['match']; /* MRM excludes drop sets and standard myo-reps */ return { keys, all: !/\blast set\b/i.test(t), mrm: true }; }
   if (!keys.length) return null;
   return { keys, all: !/\blast set\b/i.test(t) };
@@ -450,7 +468,7 @@ function cardsFor() {
 const dayVal = (ex, k) => getSetting(ex.canonical, k + ':' + viewId);
 function setDayVal(ex, k, v) { putSetting(ex.canonical, k + ':' + viewId, v); sig = ''; applyState(S, false); }
 function plannedCount(ex) { const b = ex.planned_sets || 3; return Math.max(0, (isDeload(viewWeek()) ? Math.ceil(b / 2) : b) + (+dayVal(ex, 'extra') || 0) - (+dayVal(ex, 'skip') || 0)); }
-function repRange(ex) { const m = (ex.note.sets || '').match(/x\s*(\d+)(?:\s*-\s*(\d+))?/i); return m ? [+m[1], +(m[2] || m[1])] : [8, 12]; }
+function repRange(ex) { const m = (ex.note.sets || '').match(/x\s*(\d+)(?:\s*-\s*(\d+))?/i); if (m) return [+m[1], +(m[2] || m[1])]; const p1 = ex.note.plan && ex.note.plan[1]; return p1 && p1.lo ? [p1.lo, p1.hi] : [8, 12]; }
 const LOWER = /quad|hamstring|glute|leg|calf|calves|adductor|abductor/i;
 const FAIL = ['technical', 'true', 'drop set', 'myo-reps'];
 function lastSession(ex) {
@@ -486,7 +504,41 @@ function settled(rows) {
 }
 // program.md "Keep the settled weight": no auto weight increase next week (settled weight on every set, aim +1 rep).
 const holdW = ex => /keep the settled weight/i.test((ex.details || '') + ' ' + (ex.full_name || ''));
+// Coach plan per working set (program.md 'Top set: 245 x 3-5', 'Back-offs: 2 x 6-8 at 88% of the top set', 'Set 2: ...').
+// A set with a coach weight gets that weight (relative ones from the ACTUAL logged reference set), never 'follow your last set'.
+// Week-specific notes ('## Week N notes' in program.md) for this card in the open week: [{text, plan}]. Day-level ones have no exercise name.
+function weekNotesFor(ex) {
+  const all = (RAWDAYS && RAWDAYS._weekNotes) || [], w = viewWeek(); if (!ex) return all.filter(n => n.w === w && !n.name && (!n.day || n.day === dayKey));
+  const keys = keysOf(ex); if (ex.base) keysOf(ex.base).forEach(k => keys.add(k));
+  return all.filter(n => n.w === w && n.name && (!n.day || n.day === dayKey) && (keys.has(n.key) || keys.has(n.key2)));
+}
+// The coach's per-set plan for this week: program plan, with week-note plans ('Start at 160') filling or overriding sets.
+function planFor(ex) {
+  let plan = ex.note && ex.note.plan ? Object.assign({}, ex.note.plan) : null;
+  weekNotesFor(ex).forEach(n => { if (n.plan) plan = Object.assign(plan || {}, n.plan); });
+  return plan;
+}
+function coachPlan(ex, idx) {
+  if (isStretch(ex) || isDeload(viewWeek())) return null;
+  const plan = planFor(ex), p = plan && plan[idx + 1]; if (!p) return null;
+  const today = rowsFor(ex, true), rr = p.lo && p.hi && p.lo !== p.hi ? p.lo + '-' + p.hi : p.hi ? String(p.hi) : '';
+  let reps = p.hi ? String(p.hi) : '';
+  if (p.load != null) {
+    if (!reps) { const b = suggestNext(ex, idx); reps = b && num(b.load) === p.load && b.reps ? String(b.reps) : String(repRange(ex)[0]); }
+    const what = p.label === 'start' ? 'start at ' + p.load + ' this week' : p.label + ' ' + p.load + (rr ? ' x ' + rr : '');
+    return { load: String(p.load), reps, coach: true, why: 'Coach plan: ' + what + (idx === 0 && !today.length && p.label === 'top set' ? ', an estimate. Change it if the warm-ups feel off' : '') };
+  }
+  if (p.pct) {
+    const unit = Math.max(2.5, stepFor(ex).unit || 5), rnd = v => Math.round(v / unit) * unit, ref = today[p.ref - 1], rp = plan[p.ref];
+    const refName = p.ref === 1 ? 'top set' : 'set ' + p.ref;
+    if (ref && num(ref.load) > 0) return { load: String(rnd(num(ref.load) * p.pct / 100)), reps, coach: true, why: 'Coach plan: ' + p.label + ' at ' + p.pct + '% of your ' + refName + ' (' + setTxt(ref) + ')' + (rr ? ', ' + rr + ' reps' : '') };
+    const base = rp && rp.load != null ? rp.load : null;
+    if (base) return { load: String(rnd(base * p.pct / 100)), reps, coach: true, est: true, why: 'Coach plan: ' + p.label + ' at ' + p.pct + '% of the ' + refName + ' (' + base + ' planned). Updates from the weight you actually log' };
+  }
+  return null;
+}
 function suggest(ex, idx) {
+  const cp = coachPlan(ex, idx); if (cp) return cp;
   const today = rowsFor(ex, true);
   const base = suggestNext(ex, idx);
   if (idx >= today.length && today.length) { // follow the weight just logged this workout
@@ -943,8 +995,8 @@ function render() {
     return;
   }
   $('sub').textContent = subWeek() + ' - ' + titleCase(d.title);
-  main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + cardsFor().map((ex, i) => {
-    const n = ex.note, chips = [n.sets, n.failure, n.rest].filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
+  main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + weekBoxHTML(weekNotesFor(null), true) + cardsFor().map((ex, i) => {
+    const n = ex.note, chips = [n.sets].concat(n.plan_txt || []).concat([n.failure, n.rest]).filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
     return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span>' + (i + 1) + '. ' + esc(ex.canonical) + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
@@ -952,7 +1004,7 @@ function render() {
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
-      '<div class="note"><b>Coach:</b><div class="chips">' + chips + '</div>' + extra + '</div>' +
+      '<div class="note"><b>Coach (default):</b><div class="chips">' + chips + '</div>' + extra + '</div>' + weekBoxHTML(weekNotesFor(ex)) +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + ')' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
       warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
@@ -969,8 +1021,9 @@ function render() {
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
     if (e.target.closest('#wstartb')) { startWorkout(false); return; }
     if (e.target.closest('#wreset')) { openReset(); return; }
-    const tf = e.target.closest('li.plan [data-f]');
+    const tf = e.target.closest('li.plan:not(.wrm) [data-f]');
     if (tf) { const lb = tf.closest('li').querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, tf.dataset.f); return; }
+    const wb = e.target.closest('[data-wu]'); if (wb) { if (!wb.disabled) { warmNext = +wb.dataset.wu; logRow(wb.dataset.ex, 0, wb.closest('li')); } return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
   renderFinish(); markActive();
@@ -1035,7 +1088,7 @@ function durText() { // workout timer: first logged set -> Finish
 }
 function tickDur() { const d = $('wdur'); if (d && S) { const t = durText(); if (d.textContent !== t) d.textContent = t; } const e = $('wstt'); if (e && S) { const st = workoutStart(), t = st ? fmtHMS((Date.now() - st) / 1000) : ''; if (e.textContent !== t) e.textContent = t; } }
 setInterval(tickDur, 1000);
-function workoutRows() { return viewRows().filter(r => widOf(r) === viewId); }
+function workoutRows() { return viewRows(true).filter(r => widOf(r) === viewId); }
 function finishWorkout() {
   const rs = workoutRows();
   if (!confirm('Finish ' + wLabel(viewId) + '? ' + rs.length + ' sets logged.')) return;
@@ -1060,6 +1113,10 @@ function skipWorkout() {
   LS.removeItem(WSK()); const t = getT(); if (t && n) { t.hidden = true; setT(t); }
   setView(loggableId() || viewId); sig = ''; applyState(S, true); window.scrollTo(0, 0); toast('Workout skipped');
 }
+function weekBoxHTML(ns, day) {
+  if (!ns || !ns.length) return '';
+  return '<div class="wkbox' + (day ? ' wkday' : '') + '"><b>This week (Week ' + viewWeek() + ')' + (day ? ', every exercise' : '') + ':</b><ul>' + ns.map(n => '<li>' + esc(n.text) + '</li>').join('') + '</ul></div>';
+}
 function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
   const v = prompt('Equipment setup for ' + ex.canonical + (plateT(ex) ? ' (seat, pins, angle; bar weight like "45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + '" sets plate math, now ' + barWeight(ex) + ' lb):' : ' (seat, pins, bench angle):'), cur);
@@ -1073,7 +1130,7 @@ function applyState(st, initial) {
   if (S.settings) migrateKeys(S.settings);
   if (!viewId || !wParse(viewId)) setView(loggableId() || ('W1-' + (trainDays()[0] || S.weekday)));
   days = P_.resolveDays(RAWDAYS, viewWeek());
-  const nsig = P + '|' + viewId + '|' + JSON.stringify(wStatus()) + '|' + JSON.stringify(days[dayKey] || null) + '|' + JSON.stringify(S.settings || {});
+  const nsig = P + '|' + viewId + '|' + JSON.stringify(wStatus()) + '|' + JSON.stringify(days[dayKey] || null) + '|' + JSON.stringify(((RAWDAYS && RAWDAYS._weekNotes) || []).filter(n => n.w === viewWeek())) + '|' + JSON.stringify(S.settings || {});
   if (nsig !== sig) { if (!formEx || initial) { const y = window.scrollY; render(); sig = nsig; if (!firstRender) window.scrollTo(0, y); } }
   else update();
   syncTimer();
@@ -1339,7 +1396,7 @@ function nextTarget(name) {
 }
 const TIMER_MAX = 3600 * 1000; // older than 60 min: no rest timer
 function recentLast() {
-  const rs = viewRows().filter(r => r.logged_at && Date.now() - tsOf(r) < TIMER_MAX);
+  const rs = viewRows(true).filter(r => r.logged_at && Date.now() - tsOf(r) < TIMER_MAX);
   return rs.length ? rs[rs.length - 1] : null;
 }
 function syncTimer() {
@@ -1392,7 +1449,7 @@ $('tundo').onclick = () => {
   deleteSet(today[today.length - 1].set_id, true);
 };
 function deleteSet(sid, ask) {
-  const r = viewRows().find(x => x.set_id === sid); if (!r) return;
+  const r = viewRows(true).find(x => x.set_id === sid); if (!r) return;
   if (ask && !confirm('Remove ' + r.exercise + ' ' + setTxt(r) + '?')) return;
   const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === sid);
   if (pi >= 0) { q.splice(pi, 1); setQ(q.filter(x => !(x.action === 'edit' && x.set_id === sid))); }
@@ -1425,7 +1482,7 @@ function setDrops(n, keep) { drops = n; document.querySelectorAll('#fd button').
 document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
 $('fmm').onclick = () => setMini(minis - 1); $('fmp').onclick = () => setMini(minis + 1);
 ffSel.addEventListener('change', miniUI);
-let rowPrefill = null;
+let rowPrefill = null, warmNext = null;
 // Tap a suggested weight/reps value: same as the LOG check, then focus that field (synchronously, so the phone keyboard opens).
 function tapValue(name, idx, f) {
   try {
@@ -1529,7 +1586,7 @@ function openForm(i, ts, row) {
   $('fl').value = row ? (row.load || '') : sg && sg.load ? sg.load : prev ? prev.load : (ex.bodyweight ? '0' : '');
   $('fr').value = row ? row.reps : (sg && !ex.single ? sg.reps : '');
   if (!row && ex.single && sg) { $('frl').placeholder = sg.repsL || sg.reps; $('frr').placeholder = sg.repsR || sg.reps; }
-  $('fsug').textContent = sg ? (sg.est ? 'Estimate: ' : 'Suggested: ') + (sg.load || '-') + ' x ' + sg.reps + ' (' + sg.why + '). Change it if you did something else.' : ''; $('fn').value = row ? noteTxt(row) : ''; $('ferr').textContent = '';
+  $('fsug').textContent = sg ? (sg.coach ? '' : sg.est ? 'Estimate: ' : 'Suggested: ') + (sg.load || '-') + ' x ' + sg.reps + ' (' + sg.why + '). Change it if you did something else.' : ''; $('fn').value = row ? noteTxt(row) : ''; $('ferr').textContent = '';
   $('frl').value = row ? (row.left_reps || '') : ''; $('frr').value = row ? (row.right_reps || '') : '';
   showSides(!!ex.single); setDrops(row ? (+row.drops || 0) : 0); setMini(row ? miniOf(row) : 0);
   formSetIdx = row ? Math.max(0, rowsFor(ex, true).findIndex(x => x.set_id === row.set_id)) : today.length;
@@ -1562,6 +1619,11 @@ function openForm(i, ts, row) {
     if (rowPrefill.reps) { if (ex.single) { $('frl').value = rowPrefill.reps; $('frr').value = rowPrefill.reps; } else $('fr').value = rowPrefill.reps; }
     bwLine();
   }
+  if (!row && warmNext != null) { // logging a coach warm-up set
+    const w = coachWarm(ex)[warmNext];
+    if (w) { $('fl').value = String(w.w); $('fr').value = String(w.n); ftOptions(); ffSel.value = 'warm-up'; $('fsug').textContent = 'Warm-up ' + (warmNext + 1) + ' of ' + coachWarm(ex).length + ': ' + w.w + ' x ' + w.n + ' (Coach plan). Logged as a warm-up, so it does not change the working set suggestions.'; setDrops(0); setMini(0); $('fmini').style.display = 'none'; bwLine(); plUpd(); }
+  }
+  warmNext = null;
   formKey = !row && rowPrefill ? rowPrefill.key : null; rowPrefill = null;
   setPain(row ? (dayVal(ex, 'pain') || 'none') : 'none');
   $('sheet').classList.add('open'); sheetTop(); pushLayer('sheet', () => closeForm(true)); tick();
@@ -1569,7 +1631,7 @@ function openForm(i, ts, row) {
 let formKey = null, formPain = 'none';
 function setPain(p) { formPain = p; document.querySelectorAll('#fp button').forEach(b => b.classList.toggle('on', b.dataset.p === p)); }
 document.querySelectorAll('#fp button').forEach(b => b.onclick = () => setPain(b.dataset.p));
-function openEdit(sid) { const r = viewRows().find(x => x.set_id === sid); if (r) openForm(-1, tsOf(r), r); }
+function openEdit(sid) { const r = viewRows(true).find(x => x.set_id === sid); if (r) openForm(-1, tsOf(r), r); }
 ['fr', 'frl', 'frr'].forEach(id => {
   const el = $(id);
   el.addEventListener('input', () => { if (!formEx || !isStretch(formEx)) return; const v = parseHold(el.value); $('hprev').textContent = el.value.trim() ? (v == null ? 'Use minutes (5, 5.5) or m:ss' : '= ' + fmt(v)) : ''; });
@@ -1670,6 +1732,7 @@ const JOKES = [
   'Hydrate. Your muscles are 75% water and 25% stubbornness.', 'Remember: the dumbbells were here before you, and they will be here after.',
   'Every rep is a deposit. Compound interest starts now.', 'Form check: excellent. Ego check: also passing.'];
 function feedback(ex, set, before, rest, target) {
+  if (isWarm(set)) return; // warm-ups: no PR or rep feedback
   const keys = keysOf(ex), prior = before.filter(r => keys.has(P_.norm(r.exercise)));
   const w = parseFloat(set.total_load || set.load), reps = repN(set);
   const msgs = [];

@@ -19,6 +19,7 @@
     for (let c of clauses) {
       if (!c) continue;
       c = c.replace(/^note:\s*/i, '');
+      if (coachClause(c, note)) continue;
       const rm = c.match(/\brest\s+([\d.]+)(?:\s*-\s*([\d.]+))?\s*(min|mins|minutes|s|sec|secs|seconds)\b/i);
       if (!note.sets && /^\d+\s*x\s*\S/i.test(c)) note.sets = c;
       else if (rm) {
@@ -32,10 +33,54 @@
     }
     return note;
   }
+  // Coach set plan in the program text (same plain clauses as the rest of the note):
+  //   'Warm-ups: bar x 10, 135 x 5, 185 x 3, 225 x 1'   -> note.warmups (shown and logged as warm-ups)
+  //   'Top set: 245 x 3-5, technical failure'           -> working set 1 at 245
+  //   'Back-offs: 2 x 6-8 at 88% of the top set'        -> working sets 2-3 at 88% of the logged top set
+  //   'Set 2: 225 x 6-8' / 'Sets 2-3: 88% of set 1 x 6-8' -> any set, absolute or relative
+  function coachClause(c, note) {
+    let m = c.match(/^warm-?ups?\s*:\s*(.+)$/i);
+    if (m) {
+      note.warmups = m[1].split(/,\s*/).map(x => x.match(/^(bar|empty bar|\d+(?:\.\d+)?)\s*(?:lbs?)?\s*x\s*(\d+)/i)).filter(Boolean).map(x => ({ w: /bar/i.test(x[1]) ? 'bar' : +x[1], n: +x[2] }));
+      note.plan_txt = (note.plan_txt || []).concat(['Warm-ups: ' + m[1]]); return true;
+    }
+    let from, to, body, label;
+    if ((m = c.match(/^top set\s*:\s*(.+)$/i))) { from = to = 1; body = m[1]; label = 'top set'; }
+    else if ((m = c.match(/^back-?offs?(?: sets?)?\s*:\s*(\d+)\s*x\s*(.+)$/i))) { from = 2; to = 1 + +m[1]; body = 'x ' + m[2]; label = 'back-off'; }
+    else if ((m = c.match(/^sets?\s+(\d+)(?:\s*-\s*(\d+))?\s*:\s*(.+)$/i))) { from = +m[1]; to = +(m[2] || m[1]); body = m[3]; label = 'set'; }
+    else return false;
+    const parts = body.split(/,\s*/), head = parts.shift().trim(), rest = parts.join(', ').trim();
+    const o = { lo: null, hi: null }; let k;
+    if ((k = head.match(/(\d+(?:\.\d+)?)\s*%\s*of\s+(?:the\s+)?(?:set\s*(\d+)|top set|first (?:working )?set)/i))) { o.pct = +k[1]; o.ref = k[2] ? +k[2] : 1; }
+    else if ((k = head.match(/^(?:at\s+)?(\d+(?:\.\d+)?)\s*(?:lbs?)?\s*x/i) || head.match(/\bat\s+(\d+(?:\.\d+)?)\s*(?:lbs?)?\s*$/i))) o.load = +k[1];
+    const r = head.match(/x\s*(\d+)(?:\s*-\s*(\d+))?/i); if (r) { o.lo = +r[1]; o.hi = +(r[2] || r[1]); }
+    note.plan = note.plan || {};
+    for (let i = from; i <= to; i++) note.plan[i] = Object.assign({ label: label === 'set' ? 'set ' + i : label }, o);
+    note.plan_txt = (note.plan_txt || []).concat([cap(label === 'back-off' ? (to - from + 1) + ' back-offs ' + head : label === 'top set' ? 'Top set ' + head : c.split(',')[0])]);
+    if (rest) { if (!note.failure && /\bfailure\b/i.test(rest)) note.failure = cap(rest); else note.extra.push(cap(rest)); }
+    return true;
+  }
+  // Week-specific notes: '## Week 2 notes ...' then '- Monday, Barbell bench press: text' or '- All days: text'.
+  // Kept apart from the default (program) notes; 'Start at 160' in a week note is a coach weight for that week's first working set.
+  const DAYN = /^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/i;
+  function weekNoteLine(line, w) {
+    const m = line.match(/^\s*[-*]\s+(.+)$/); if (!m) return null;
+    let body = m[1].trim(), day = '', name = '';
+    const dm = body.match(/^([A-Za-z]+)\s*,\s*(.+)$/);
+    if (dm && DAYN.test(dm[1])) { day = dm[1].toLowerCase(); body = dm[2]; }
+    const [a, b] = splitName(body); if (!b) return null;
+    if (/^all( days)?$|^every day$/i.test(a)) name = ''; else if (DAYN.test(a) && !day) day = a.toLowerCase(); else name = a;
+    const o = { w, day, name, key: name ? norm(stripParens(name)) : '', key2: name ? norm(name) : '', text: b };
+    const sm = b.match(/\bstarts?\s+at\s+(\d+(?:\.\d+)?)\s*(?:lbs?)?\b/i); if (sm) o.plan = { 1: { label: 'start', load: +sm[1], lo: null, hi: null } };
+    return o;
+  }
   function parseProgram(md) {
-    const days = {}; let week = '', wn = 1, cur = null;
+    const days = {}; let week = '', wn = 1, cur = null, notesW = 0; const wnotes = [];
+    Object.defineProperty(days, '_weekNotes', { value: wnotes, enumerable: false });
     for (const line of String(md || '').split(/\r?\n/)) {
-      if (line.startsWith('## ')) { week = line.slice(3).trim(); const wm = /week\s+(\d+)/i.exec(week); wn = wm ? +wm[1] : 1; continue; }
+      if (line.startsWith('## ')) { week = line.slice(3).trim(); const wm = /week\s+(\d+)/i.exec(week); wn = wm ? +wm[1] : 1;
+        const nm = /^week\s+(\d+)\s+notes\b/i.exec(week); notesW = nm ? +nm[1] : 0; if (notesW) cur = null; continue; }
+      if (notesW) { const o = weekNoteLine(line, notesW); if (o) wnotes.push(o); continue; }
       let m = line.match(/^###\s+([A-Za-z]+)\s*:\s*(.*)$/);
       if (m) { const key = m[1].toLowerCase(); cur = { day: cap(key), title: m[2].trim(), week, from: wn, exercises: [], footer: [] };
         // Same day under a later '## ... Week N' heading = that day's plan from week N on (earlier weeks keep the earlier plan).
@@ -88,7 +133,7 @@
       ex.rest_muscle = e ? e.rest_muscle : norm(ex.name); ex.types = e ? e.types : [];
       ex.single = !!(e && e.single) || /\b(single|one)[ -](arm|leg)\b|\bper (arm|leg|side)\b/i.test(ex.full_name + ' ' + ex.details);
       ex.bodyweight = !!(e && e.bodyweight); ex.stretch = !!(e && e.stretch) || /\bstretch\b|flexability/i.test(ex.full_name + ' ' + ex.details); ex.setup = e ? e.setup : ''; ex.cue = e ? e.cue : ''; ex.equip = (e && e.equip) || ''; // raw field; the app's equipType() is the one place that interprets it
-      let sm = (ex.note.sets || '').match(/^(\d+)\s*x/i); if (!sm) sm = (ex.details || '').match(/(\d+)\s*hold/i); ex.planned_sets = sm ? +sm[1] : (ex.stretch ? 1 : 3);
+      let sm = (ex.note.sets || '').match(/^(\d+)\s*x/i); if (!sm) sm = (ex.details || '').match(/(\d+)\s*hold/i); ex.planned_sets = sm ? +sm[1] : ex.note.plan ? Math.max.apply(null, Object.keys(ex.note.plan).map(Number)) : (ex.stretch ? 1 : 3);
     })));
     return days;
   }
