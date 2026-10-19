@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 77;
+const APP_VERSION = 78;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -94,7 +94,13 @@ const setQ = q => { jset(QK(), q); badge(); };
 const getRQ = () => jget('coach_queue', []);
 const setRQ = q => { jset('coach_queue', q); badge(); };
 function badge() { const n = getRQ().length, b = $('pending'); b.textContent = n + ' pending'; b.style.display = n ? 'inline-block' : 'none'; }
-function enqueue(item) { const t = testOn(), q = getQ(); q.push(Object.assign({ id: uid(), profile: P }, item, t ? { test: true } : {})); setQ(q); if (!t) flush(); }
+function enqueue(item) { if (item.action === 'log' && item.set && S) { if (tripView()) tripTag(item.set); else if (homeGym()) item.set.gym = homeGym(); } if (item.action === 'finish' && item.session && S) { const tc = tripView() && tripCfg(); const g = tc ? 'trip:' + tc.id + ' (' + tc.name + ')' : homeGym(); if (g) item.session.gym = g; } const t = testOn(), q = getQ(); q.push(Object.assign({ id: uid(), profile: P }, item, t ? { test: true } : {})); setQ(q); if (!t) flush(); }
+function tripTag(set) {
+  const c = tripCfg(); if (!c) return;
+  const ex = exFor(set.exercise), sub = ex ? tripSwapOf(ex) : '';
+  set.gym = 'trip:' + c.id + ' (' + c.name + ')'; set.sub = sub;
+  if (!(S.version >= 5)) set.notes = ((set.notes || '') + ' [trip ' + c.id + (sub ? ' did ' + sub : '') + ']').trim(); // old backend drops new columns
+}
 const NEW_ACTIONS = ['edit', 'finish', 'setting'];
 let flushing = false, warnedOld = false;
 function bodyFor(it) {
@@ -137,7 +143,7 @@ window.addEventListener('online', flush);
 const tsOf = r => Date.parse(r.logged_at) || 0;
 // Warm-up sets (failure type 'warm-up') are logged but left out of suggestions, settled weight, e1RM, trends and weekly sets. viewRows(true) includes them.
 const isWarm = r => !!r && r.failure_type === 'warm-up';
-function viewRows(all) {
+function viewRows(all, incTrip) {
   if (!S) return [];
   const q = (testOn() ? getRQ().concat(getQ()) : getQ()).filter(x => x.profile === P);
   const undone = new Set(q.filter(x => x.action === 'undo').map(x => x.set_id));
@@ -147,12 +153,13 @@ function viewRows(all) {
   q.filter(x => x.action === 'edit').forEach(x => { edits[x.set_id] = Object.assign(edits[x.set_id] || {}, x.fields); });
   return S.rows.concat(pend).filter(r => !undone.has(r.set_id))
     .map(r => edits[r.set_id] ? Object.assign({}, r, edits[r.set_id], { pending: true }) : r)
-    .sort((a, b) => tsOf(a) - tsOf(b)).filter(r => all || !isWarm(r));
+    .sort((a, b) => tsOf(a) - tsOf(b)).filter(r => (all || !isWarm(r)) && (!isTrip(r) || ((incTrip || r.workout === viewId) && !tripExpired(r))));
 }
 function keysOf(ex) { return new Set(ex.match_keys.concat([P_.norm(ex.canonical), P_.norm(ex.name)])); }
 function exFor(name) { const n = P_.norm(name); for (const ex of cardsFor()) if (keysOf(ex).has(n)) return ex; for (const ex of (days[dayKey] ? days[dayKey].exercises : [])) if (keysOf(ex).has(n)) return ex; for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
 function rowsFor(ex, today) {
-  const keys = keysOf(ex);
+  const keys = keysOf(ex), tsw = !today && tripSwapOf(ex);
+  if (tsw) { const g = tripCfg().id; return viewRows(false, true).filter(r => isTrip(r) && tripGymOf(r) === g && P_.norm(subOf(r)) === P_.norm(tsw) && wIndex(widOf(r)) < wIndex(viewId)); }
   return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? widOf(r) === viewId : wIndex(widOf(r)) < wIndex(viewId)));
 }
 const loadOf = r => r.total_load || r.load;
@@ -326,6 +333,103 @@ function getSetting(scope, key) {
 function putSetting(scope, key, value) {
   if (testOn()) { const l = localSet(); (l[scope] = l[scope] || {})[key] = value; jset(SK(), l); return; }
   enqueue({ action: 'setting', scope, key, value });
+}
+// ---------- Trip gym (v78) ----------
+// Settings profile.trip_gym = {"id","name","start","end"} ('none' = removed). profile.gym_day:<workout id, e.g. W3-monday> = the gym picked for that day ('home' or the trip gym id).
+// Sets logged on a trip day carry gym 'trip:<id> (<name>)' and sub (the movement actually done); exercise stays the planned one.
+// Trip sets stay out of home suggestions, settled weight, e1RM, arrows and history; they still count in Weekly sets.
+// Expiry: 2 years after a trip gym's last logged set its sets are hidden here and deleted by the backend (purgeTripRows_).
+const TRIP_DEFAULT = { jack: { id: 'hotel1', name: 'Hotel gym', start: '2026-10-26', end: '2026-10-30' } };
+// Home gym name: profile.home_gym, default Lifetime for Jack (existing rows were backfilled with it).
+const HOME_DEFAULT = { jack: 'Lifetime' };
+const homeGym = () => (S && getSetting('profile', 'home_gym')) || HOME_DEFAULT[P] || '';
+const TRIP_TTL = 2 * 365.25 * 86400000;
+function tripCfg() {
+  const v = getSetting('profile', 'trip_gym');
+  if (v === 'none') return null;
+  if (v) { try { const o = JSON.parse(v); if (o && o.id && o.start && o.end) return o; } catch (e) {} }
+  return TRIP_DEFAULT[P] || null;
+}
+// Per-day gym picker: profile.gym_day:<workout id, e.g. W3-monday> = 'home' or the trip gym id. Default: trip gym inside its dates, home gym otherwise.
+function gymPick() { const c = tripCfg(); if (!c || !S) return 'home'; const v = getSetting('profile', 'gym_day:' + todayWid()); if (v === 'home' || v === c.id) return v; return S.today >= c.start && S.today <= c.end ? c.id : 'home'; }
+function tripToday() { const c = tripCfg(); return !!(c && gymPick() === c.id); }
+const tripInRange = () => { const c = tripCfg(); return !!(c && S && S.today >= c.start && S.today <= c.end); };
+const TRIP_RE = /\[trip ([^\]\s]+)(?: did ([^\]]+))?\]/;
+const isTrip = r => !!r && (/^trip:/.test(r.gym || '') || TRIP_RE.test(r.notes || ''));
+const tripGymOf = r => { const m = String(r.gym || '').match(/^trip:(\S+)/) || String(r.notes || '').match(TRIP_RE); return m ? m[1] : ''; };
+const subOf = r => r.sub || ((String(r.notes || '').match(TRIP_RE) || [])[2] || '');
+let tripLast = null, tripLastSig = null;
+function tripExpired(r) {
+  if (!isTrip(r)) return false;
+  if (tripLastSig !== S.rows) { tripLastSig = S.rows; tripLast = {}; S.rows.forEach(x => { if (isTrip(x)) { const g = tripGymOf(x), t = tsOf(x); if (t > (tripLast[g] || 0)) tripLast[g] = t; } }); }
+  const last = tripLast[tripGymOf(r)] || tsOf(r);
+  return last && Date.now() - last > TRIP_TTL;
+}
+const todayWid = () => S ? 'W' + weekOf(S.today) + '-' + weekdayOf(S.today) : '';
+function tripView() { // the viewed workout is a trip gym session (today in trip range, or already logged at the trip gym)
+  if (!S) return false;
+  if (viewId === todayWid()) return tripToday();
+  return viewRows(true, true).some(r => isTrip(r) && r.workout === viewId);
+}
+function tripSwapOf(ex) { const c = tripCfg(); if (!c || !tripView()) return ''; return getSetting(ex.canonical, 'tswap:' + c.id) || ''; }
+// Sensible stand-ins by movement pattern (names match the built-in list so Weekly sets can map muscles).
+const TRIP_ALTS = [
+  [/incline.*(press|bench)|(press|bench).*incline/, ['Incline dumbbell press', 'Smith machine incline press', 'Push-up']],
+  [/fly|pec deck/, ['Dumbbell fly', 'Cable fly', 'Push-up']],
+  [/shoulder press|overhead press|military/, ['Seated dumbbell overhead press', 'Smith machine shoulder press', 'Machine shoulder press']],
+  [/bench|chest press|(machine|hammer).*press|decline/, ['Dumbbell bench press', 'Smith machine bench press', 'Machine chest press', 'Push-up']],
+  [/lateral/, ['Dumbbell lateral raise', 'Cable lateral raise']],
+  [/front raise/, ['Seated dumbbell front raise', 'Cable front raise']],
+  [/reverse fly|rear delt|face pull/, ['Bent-over dumbbell reverse fly', 'Rope face pull']],
+  [/shrug/, ['Dumbbell shrug', 'Cable shrug']],
+  [/pushdown|skull|triceps|tricep/, ['Rope triceps pushdown', 'Dumbbell overhead triceps extension', 'Close-grip bench press']],
+  [/dip/, ['Push-up', 'Close-grip bench press', 'Assisted dip machine']],
+  [/curl/, ['Dumbbell curl', 'Hammer curl', 'Cable curl']],
+  [/leg curl/, ['Dumbbell Romanian deadlift', 'Seated leg curl']],
+  [/pulldown|pull-up|pullup|chin/, ['Lat pulldown', 'Pull-up', 'Rope straight-arm pulldown']],
+  [/row/, ['Single-arm dumbbell row', 'Chest-supported dumbbell row', 'Seated cable row']],
+  [/deadlift|rdl/, ['Dumbbell Romanian deadlift', 'Goblet squat']],
+  [/squat|leg press|hack|pendulum/, ['Goblet squat', 'Dumbbell Romanian deadlift', 'Leg press', 'Smith machine squat']],
+  [/leg extension/, ['Leg extension', 'Goblet squat']],
+  [/hip thrust|glute/, ['Hip thrust', 'Dumbbell Romanian deadlift']],
+  [/calf/, ['Standing calf raise', 'Seated calf raise']],
+  [/crunch|ab |abs|leg raise|plank|dragon/, ['Plank', 'Hanging leg raise', 'Cable crunch']]
+];
+function tripAlts(ex) {
+  const n = String(ex.canonical || '').toLowerCase();
+  let out = [];
+  for (const [re, l] of TRIP_ALTS) if (re.test(n)) { out = l; break; }
+  if (/leg curl/.test(n)) out = TRIP_ALTS.find(x => String(x[0]) === String(/leg curl/))[1];
+  return out.filter(x => P_.norm(x) !== P_.norm(ex.canonical));
+}
+function tripBanner() {
+  const c = tripCfg(), h = homeGym() || 'Home gym';
+  if (!c) return h && homeGym() ? '<div class="gymb">Gym: ' + esc(h) + '</div>' : '';
+  if (viewId !== todayWid() && !tripView()) return '<div class="gymb">Gym: ' + esc(h) + '</div>';
+  const pk = gymPick(), on = pk === c.id;
+  return '<div class="tripb' + (on ? '' : ' home') + '"><div class="gl">' + (on ? 'Trip gym: <b>' + esc(c.name) + '</b> (' + esc(fmtD(c.start)) + ' to ' + esc(fmtD(c.end)) + ')' : 'Gym today: <b>' + esc(h) + '</b>') + '</div>' +
+    '<div class="seg gseg"><button type="button" data-gp="home" class="' + (on ? '' : 'on') + '">' + esc(h) + '</button><button type="button" data-gp="' + esc(c.id) + '" class="' + (on ? 'on' : '') + '">' + esc(c.name) + '</button></div></div>';
+}
+const fmtD = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+function tripCardHTML(ex, i) {
+  if (!tripView()) return '';
+  const c = tripCfg(), s = tripSwapOf(ex);
+  return '<div class="tswp" data-ts="' + i + '"><b>Trip swap' + (c ? ' (' + esc(c.name) + ')' : '') + ':</b> ' + (s ? esc(s) : '<span class="mut">same as planned, tap to pick the ' + esc(c ? c.name : 'trip gym') + ' version</span>') + ' <span class="ed">' + (s ? 'change' : 'pick') + '</span></div>';
+}
+let tsEx = null;
+function openTripSwap(ex) {
+  const c = tripCfg(); if (!c) return; tsEx = ex;
+  const cur = tripSwapOf(ex), alts = tripAlts(ex);
+  $('tsh').textContent = 'Trip swap: ' + ex.canonical;
+  $('tss').textContent = 'What will you do at ' + c.name + ' instead? Saved for ' + c.name + ', so this exercise picks it again next time. The program does not change.';
+  $('tsl').innerHTML = alts.map(a => '<button type="button" class="btn sec' + (P_.norm(a) === P_.norm(cur) ? ' on' : '') + '" data-tsv="' + esc(a) + '">' + esc(a) + '</button>').join('');
+  $('tsi').value = cur && !alts.some(a => P_.norm(a) === P_.norm(cur)) ? cur : '';
+  $('tswapw').classList.add('open'); pushLayer('tswap', () => $('tswapw').classList.remove('open'));
+}
+function setTripSwap(v) {
+  const c = tripCfg(), ex = tsEx; if (!c || !ex) return;
+  putSetting(ex.canonical, 'tswap:' + c.id, v); $('tswapw').classList.remove('open'); popLayer('tswap');
+  sig = ''; applyState(S, false); toast(v ? 'Trip swap: ' + v : 'Back to the planned exercise');
 }
 function bodyweight() { const v = parseFloat(getSetting('profile', 'bodyweight')); return v > 0 ? v : null; }
 // Where the body weight came from: profile bodyweight_src ('mfp' from the MyFitnessPal export sync on the Coach computer, 'manual') and bodyweight_date.
@@ -753,6 +857,7 @@ function openMenu(i) {
   const p = dayVal(menuEx, 'pain') || 'none';
   $('mskip').textContent = +dayVal(menuEx, 'skip') > 0 ? 'Undo skip sets' : 'Skip remaining sets';
   $('mrepl').style.display = canLog() || !wStatus()[viewId] ? 'block' : 'none';
+  $('mtrip').style.display = tripView() ? 'block' : 'none';
   $('mdel').disabled = !days[dayKey];
   const mm = methodable(menuEx); $('mmbox').style.display = mm ? 'block' : 'none';
   if (mm) { mmScope = 'workout'; setSeg('mmscope', 'ms', mmScope); setSeg('mmeth', 'mm', methodOf(menuEx)); } // done days too: applies to the remaining weeks (done workouts never change)
@@ -783,6 +888,12 @@ document.querySelectorAll('#mmeth button').forEach(b => b.onclick = () => {
   } catch (e) { toast('Could not set the method: ' + (e && e.message || e)); }
 });
 $('mdel').onclick = () => { const ex = menuEx; closeMenu(true); if (ex) delExercise(ex); };
+$('mtrip').onclick = () => { const ex = menuEx; closeMenu(); openTripSwap(ex); };
+function pickGym(id) { if (gymPick() === id) return; putSetting('profile', 'gym_day:' + todayWid(), id); sig = ''; applyState(S, false); const c = tripCfg(); toast('Gym today: ' + (id === 'home' ? (homeGym() || 'home gym') : c.name)); }
+$('tswapw').addEventListener('click', e => { if (e.target.id === 'tswapw') { $('tswapw').classList.remove('open'); popLayer('tswap'); return; } const b = e.target.closest('[data-tsv]'); if (b) setTripSwap(b.dataset.tsv); });
+$('tsok').onclick = () => { const v = $('tsi').value.trim(); if (!v) { $('tsi').focus(); return; } setTripSwap(v.slice(0, 80)); };
+$('tsclr').onclick = () => setTripSwap('');
+$('tsx').onclick = () => { $('tswapw').classList.remove('open'); popLayer('tswap'); };
 $('mrepl').onclick = () => { const ex = menuEx; closeMenu(true); openReplace(ex); };
 // ---------- Replace sheet ----------
 let rEx = null, rScope = 'workout', rReason = '', rMode = 'replace';
@@ -981,8 +1092,12 @@ function histLine(rs) { // RP style: '160 lbs x 12, 12, 7' or '190 x 11, 180 x 8
   if (same) return (ld(rs[0]) ? ld(rs[0]) + u + ' x ' : '') + rs.map(r => rp(r) + tag(r)).join(', ');
   let prev = null; return rs.map(r => { const w = ld(r), t = (w !== prev ? (w || 'BW') + ' x ' : '') + rp(r) + tag(r); prev = w; return t; }).join(', ');
 }
-function openHistory(ex, fromMenu) {
-  const rs = viewRows().filter(r => keysOf(ex).has(P_.norm(r.exercise))).sort((a, b) => tsOf(a) - tsOf(b));
+let histTrip = false, histEx = null;
+function openHistory(ex, fromMenu, keep) {
+  histEx = ex; if (!keep) histTrip = false;
+  const anyTrip = viewRows(false, true).some(r => isTrip(r) && keysOf(ex).has(P_.norm(r.exercise)));
+  $('htrip').style.display = anyTrip ? 'flex' : 'none'; $('htripc').checked = histTrip;
+  const rs = viewRows(false, histTrip).filter(r => histTrip || !isTrip(r)).filter(r => keysOf(ex).has(P_.norm(r.exercise))).sort((a, b) => tsOf(a) - tsOf(b));
   const by = {}; rs.forEach(r => { const k = widOf(r) || r.date; (by[k] = by[k] || []).push(r); });
   const ks = Object.keys(by).sort((a, b) => (tsOf(by[b][0]) - tsOf(by[a][0])) || (by[b][0].date || '').localeCompare(by[a][0].date || ''));
   const td = trainDays(); let lastB = null;
@@ -991,15 +1106,18 @@ function openHistory(ex, fromMenu) {
     const g = by[k], p = wParse(widOf(g[0])), w = p ? p.w : weekOf(g[0].date), dl = isDeload(w), bl = blockOf(w);
     const dn = p ? td.indexOf(p.day) + 1 : 0, dt = g[0].date ? new Date(g[0].date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
     const head = bl !== lastB ? '<div class="hm">Block ' + bl + '</div>' : ''; lastB = bl;
+    const tr = g.find(isTrip), trTxt = tr ? '<div class="s2 trip">Trip gym' + (subOf(tr) ? ': did ' + esc(subOf(tr)) : '') + '</div>' : '';
     const wid = widOf(g[0]), pain = getSetting(ex.canonical, 'pain:' + wid), note = getSetting(ex.canonical, 'note:' + wid);
-    return head + '<div class="hr' + (dl ? ' dl' : '') + '"><div class="hl">' + esc(histLine(g)) + (pain ? '<div class="s2">pain ' + esc(pain) + '</div>' : '') + (note ? '<div class="s2"><i>' + esc(note) + '</i></div>' : '') + '</div><div class="hx">' + (dl ? 'DELOAD' : 'WEEK ' + wib(w)) + (dn > 0 ? ' - DAY ' + dn : '') + '<br>' + esc(dt) + '</div></div>';
+    return head + '<div class="hr' + (dl ? ' dl' : '') + '"><div class="hl">' + esc(histLine(g)) + trTxt + (pain ? '<div class="s2">pain ' + esc(pain) + '</div>' : '') + (note ? '<div class="s2"><i>' + esc(note) + '</i></div>' : '') + '</div><div class="hx">' + (dl ? 'DELOAD' : 'WEEK ' + wib(w)) + (dn > 0 ? ' - DAY ' + dn : '') + '<br>' + esc(dt) + '</div></div>';
   }).join('') : '<div class="s2">No history yet.</div>';
+  if (keep) return;
   $('hist').classList.add('open');
   const close = () => $('hist').classList.remove('open');
   if (fromMenu) swapLayer('menu', 'hist', close); else pushLayer('hist', close);
 }
 const closeHist = () => { $('hist').classList.remove('open'); popLayer('hist'); };
 $('hclose').onclick = closeHist;
+$('htripc').onchange = e => { histTrip = e.target.checked; if (histEx) openHistory(histEx, false, true); };
 $('hist').addEventListener('click', e => { if (e.target.id === 'hist') closeHist(); });
 
 // ---------- Render ----------
@@ -1015,13 +1133,13 @@ function render() {
   if (!d) {
     $('sub').textContent = subWeek() + ' - Unplanned (' + dayKey[0].toUpperCase() + dayKey.slice(1) + ')';
     const ws = wStatus()[viewId];
-    main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div class="empty"><b>Unplanned</b><br>' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet. Ask Coach to write it.' : 'No program file found for this profile yet. Ask Coach to write one.') + '</div>' +
+    main.innerHTML = tripBanner() + '<div id="meso">' + mesoHTML() + '</div><div class="empty"><b>Unplanned</b><br>' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet. Ask Coach to write it.' : 'No program file found for this profile yet. Ask Coach to write one.') + '</div>' +
       (!ws && canLog() ? '<button class="btn sec" id="uskip">Skip this workout</button>' : '');
-    main.onclick = e => { if (e.target.closest('#uskip')) skipWorkout(); };
+    main.onclick = e => { const gp = e.target.closest('[data-gp]'); if (gp) return pickGym(gp.dataset.gp); if (e.target.closest('#uskip')) skipWorkout(); };
     return;
   }
   $('sub').textContent = subWeek() + ' - ' + titleCase(d.title);
-  main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + weekBoxHTML(weekNotesFor(null), true) + cardsFor().map((ex, i) => {
+  main.innerHTML = tripBanner() + '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + weekBoxHTML(weekNotesFor(null), true) + cardsFor().map((ex, i) => {
     const n = ex.note, chips = [n.sets].concat(n.plan_txt || []).concat([n.failure, n.rest]).filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
@@ -1032,7 +1150,7 @@ function render() {
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
       '<div class="note"><b>Coach (default):</b><div class="chips">' + chips + '</div>' + extra + '</div>' + weekBoxHTML(weekNotesFor(ex)) +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + ')' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
-      warmHTML(ex, i, cardsFor()) +
+      tripCardHTML(ex, i) + warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
       '</div></div>';
@@ -1044,6 +1162,8 @@ function render() {
   main.onclick = e => {
     const plb = e.target.closest('[data-pl]'); if (plb) { const d = plb.parentElement.querySelector('.wup'); if (d) d.hidden = !d.hidden; return; }
     if (e.target.closest('details.wu')) return;
+    const gp = e.target.closest('[data-gp]'); if (gp) { pickGym(gp.dataset.gp); return; }
+    const tsb = e.target.closest('[data-ts]'); if (tsb) { openTripSwap(cardsFor()[+tsb.dataset.ts]); return; }
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
     if (e.target.closest('#wstartb')) { startWorkout(false); return; }
     if (e.target.closest('#wreset')) { openReset(); return; }
@@ -1213,9 +1333,9 @@ function weekSets(off) {
   const m0 = new Date(mondayOf(S.today) + 'T12:00:00'); m0.setDate(m0.getDate() + 7 * (off || 0)); const mon = m0.toISOString().slice(0, 10);
   const end = new Date(mon + 'T12:00:00'); end.setDate(end.getDate() + 6); const sun = end.toISOString().slice(0, 10);
   const m = {}; (window.CoachMG || []).forEach(g => m[g] = { n: 0, ex: {} }); (window.CoachRegions || []).forEach(([k]) => m['r_' + k] = { n: 0, ex: {} });
-  viewRows().forEach(r => {
+  viewRows(false, true).forEach(r => {
     if (!r.date || r.date < mon || r.date > sun || r.failure_type === 'not to failure') return;
-    const ex = exFor(r.exercise), c = catFind(r.exercise) || (ex ? { name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle } : { name: r.exercise });
+    const ex = exFor(r.exercise), c = (subOf(r) && catFind(subOf(r))) || catFind(r.exercise) || (ex ? { name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle } : { name: r.exercise });
     if (!c || isStretch(ex) || (ex && /stretch/i.test(String(ex.types || '')))) return;
     const gs = window.CoachGroupsOf ? window.CoachGroupsOf(c) : [];
     const nm = c.name || r.exercise, bump = (k, v) => { if (!m[k]) return; m[k].n += v; m[k].ex[nm] = (m[k].ex[nm] || 0) + v; };
@@ -1377,6 +1497,9 @@ function showSettings(msg) {
   if (S) pushLayer('settings', () => hideSettings(true));
   $('app').style.display = 'none'; $('settings').style.display = 'block'; $('timer').style.display = 'none';
   $('su').value = U; $('sk').value = K; $('stest').checked = testOn(); $('smsg').textContent = msg || '';
+  const tc = S ? tripCfg() : null; $('stripbox').style.display = S ? 'block' : 'none'; $('shn').value = S ? homeGym() : '';
+  $('stn').value = tc ? tc.name : ''; $('sts').value = tc ? tc.start : ''; $('ste').value = tc ? tc.end : '';
+  $('stinfo').textContent = tc ? 'Inside these dates the workout day defaults to ' + tc.name + ' (pick the gym on the day to change it): sets are tagged to it, each exercise gets a Trip swap, and they stay out of home gym history. Trip sets are deleted 2 years after the last one logged here.' : 'No trip gym set.';
   $('sbw').value = S ? (bodyweight() || '') : ''; $('sbws').textContent = S ? bwSrcText() + '. A newer MyFitnessPal weigh-in replaces an edit only if it is dated after the edit.' : '';
 }
 $('gear').onclick = () => showSettings();
@@ -1393,15 +1516,20 @@ $('ssave').onclick = async () => {
   if (!/^https:\/\//.test(U) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(U)) { $('smsg').textContent = 'The URL should start with https://'; return; }
   LS.setItem('coach_u', U); LS.setItem('coach_k', K); $('smsg').textContent = 'Testing...';
   const bw = parseFloat($('sbw').value);
+  const tn = $('stn').value.trim().slice(0, 40), tsd = $('sts').value, ted = $('ste').value, tc0 = S ? tripCfg() : null;
+  if (S && tn && !(tsd && ted && tsd <= ted)) { $('smsg').textContent = 'Trip gym: pick a start date on or before the end date.'; return; }
   try {
     const st = await apiGet(); if (!st.ok) { $('smsg').textContent = 'Backend said: ' + st.error; return; }
     jset('coach_cache_' + P, st); sig = ''; S = null; firstRender = true; popLayer('settings'); applyState(st, true);
     if (bw > 0 && bw !== bodyweight()) { putSetting('profile', 'bodyweight', String(bw)); putSetting('profile', 'bodyweight_src', 'manual'); putSetting('profile', 'bodyweight_date', S.today || new Date().toISOString().slice(0, 10)); }
-    toast('Connected'); flush();
+    const hn = $('shn').value.trim().slice(0, 40); if (hn && hn !== homeGym()) putSetting('profile', 'home_gym', hn);
+    if (tn && (!tc0 || tc0.name !== tn || tc0.start !== tsd || tc0.end !== ted)) putSetting('profile', 'trip_gym', JSON.stringify({ id: tc0 ? tc0.id : 't' + Date.now().toString(36), name: tn, start: tsd, end: ted }));
+    sig = ''; applyState(S, false); toast('Connected'); flush();
   }
   catch (e) { $('smsg').textContent = 'Could not reach it: ' + e.message; }
 };
 $('scancel').onclick = () => hideSettings();
+$('strm').onclick = () => { if (!S || !confirm('Remove the trip gym? Sets already logged there stay saved.')) return; putSetting('profile', 'trip_gym', 'none'); $('stn').value = ''; $('sts').value = ''; $('ste').value = ''; $('stinfo').textContent = 'No trip gym set.'; sig = ''; toast('Trip gym removed'); };
 
 // ---------- Rest timer ----------
 // Target depends on what comes next: same muscle = that exercise's normal rest, different muscle = 75 s.
@@ -1813,6 +1941,7 @@ badge();
 if (!U || !K) showSettings(); else { load(true); flush(); }
 setInterval(() => { if (U && K && document.visibilityState === 'visible' && !flushing) load(); }, 20000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && U && K) { load(); flush(); tick(); } });
+if (testOn()) window.CoachT = { viewRows, rowsFor, cardsFor, tripView, tripToday, tripSwapOf, weekSets, openForm, tripAlts, openWorkout, get viewId() { return viewId; } }; // test mode only
 window.coachReady = true;
 } catch (err) { if (window.coachFatal) window.coachFatal((err && err.message) || err); throw err; }
 })();

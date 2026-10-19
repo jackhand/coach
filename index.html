@@ -89,9 +89,9 @@ header h1{min-width:0;overflow:hidden;white-space:nowrap}header select{min-width
 .meso{border-collapse:separate;border-spacing:4px;margin:4px auto 0;font-size:13px}
 .meso th{color:var(--mut);font-weight:600}.meso td{width:38px;height:26px;background:var(--card2);border-radius:6px;text-align:center}
 .meso td.ok{background:var(--acc);color:#06210f}.meso td.cur{outline:2px solid var(--blue)}.meso td.miss{background:#3a2a1d}
-#menu,#hist,#tech,#repl,#calw,#wmw,#delw{position:fixed;inset:0;z-index:22;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
-#menu.open,#hist.open,#tech.open,#repl.open,#calw.open,#wmw.open,#delw.open{display:flex}
-#menu .in,#hist .in,#tech .in,#repl .in,#calw .in,#wmw .in,#delw .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
+#menu,#hist,#tech,#repl,#calw,#wmw,#delw,#tswapw{position:fixed;inset:0;z-index:22;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
+#menu.open,#hist.open,#tech.open,#repl.open,#calw.open,#wmw.open,#delw.open,#tswapw.open{display:flex}
+#menu .in,#hist .in,#tech .in,#repl .in,#calw .in,#wmw .in,#delw .in,#tswapw .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
 .hd{background:var(--card2);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:15px}
 .cbody{max-height:3000px;overflow:hidden;transition:max-height .28s ease,opacity .2s ease}
 main.collapsed .cbody{max-height:0;opacity:0}
@@ -173,6 +173,12 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
 #holdbox .t{font-size:40px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--acc)}
 #holdbox .tb{display:flex;gap:8px;margin-top:6px}#holdbox .tb .btn{margin:0;min-height:44px}
 .sets li.shead.stretch{grid-template-columns:46px 1fr 1fr 36px 48px}
+.tripb{background:#10283a;border:1px solid #3d8fd1;border-left:5px solid #3d8fd1;border-radius:10px;padding:8px 10px;margin:0 0 10px;font-size:15px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}.tripb b{color:#8cc8f5}.tripb button{margin-left:auto;min-height:34px;border-radius:9px;border:1px solid #3d8fd1;background:#163a55;color:#e6f2fc;font-size:14px;padding:0 10px}
+.tswp{background:#10283a;border:1px solid #2d6a9a;border-radius:9px;padding:7px 9px;margin:6px 0;font-size:15px;cursor:pointer}.tswp b{color:#8cc8f5}.tswp .mut{color:var(--mut)}.tswp .ed{color:#8cc8f5;float:right}
+#tsl .btn{margin:0 0 6px}#tsl .btn.on{border-color:#3d8fd1;background:#163a55}
+.tripb .gl{flex:1 1 100%}.tripb.home{background:var(--card2);border-color:var(--line);border-left-color:#3d8fd1}.gseg{flex:1 1 100%}.gseg button.on{background:#163a55;border-color:#3d8fd1;color:#e6f2fc}.gymb{color:var(--mut);font-size:14px;margin:0 0 8px}
+.s2.trip{color:#8cc8f5}
+#stripbox{border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin:6px 0 10px}#stripbox .dr{display:flex;gap:8px}#stripbox .dr>div{flex:1;min-width:0}#stripbox .dr input{width:100%;min-width:0;box-sizing:border-box}
 </style>
 </head>
 <body>
@@ -186,6 +192,13 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
   <label for="sbw">Body weight (lb), for dips and other bodyweight moves</label>
   <input id="sbw" inputmode="decimal" autocomplete="off" placeholder="e.g. 180">
   <div id="sbws" class="sub" style="margin:-4px 0 8px"></div>
+  <div id="stripbox" style="display:none"><label for="shn">Home gym (default)</label>
+  <input id="shn" maxlength="40" autocomplete="off" placeholder="e.g. Lifetime">
+  <label for="stn">Trip gym (this profile)</label>
+  <input id="stn" maxlength="40" autocomplete="off" placeholder="e.g. Hotel gym">
+  <div class="dr"><div><label for="sts">Start</label><input id="sts" type="date"></div><div><label for="ste">End</label><input id="ste" type="date"></div></div>
+  <div id="stinfo" class="sub"></div>
+  <button class="btn sec" id="strm" type="button">Remove trip gym</button></div>
   <label class="tgl"><input type="checkbox" id="stest"> Test mode (practice logging on any day; nothing is saved)</label>
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
@@ -279,6 +292,7 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
   <button class="btn sec" id="mnote">Note for today</button>
   <button class="btn sec" id="mhist">History</button>
   <button class="btn sec" id="mrepl">Replace exercise</button>
+  <button class="btn sec" id="mtrip" style="display:none">Trip swap</button>
   <label>Joint pain today</label>
   <div class="seg" id="mpain"><button type="button" data-p="none">None</button><button type="button" data-p="mild">Mild</button><button type="button" data-p="moderate">Moderate</button><button type="button" data-p="severe">Severe</button></div>
   <div id="mmbox"><label>Set method</label>
@@ -313,7 +327,10 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
   <div class="rfb2"><button type="button" class="btn sec" id="rfc">Cancel</button><button type="button" class="btn" id="rfa">Apply</button></div>
 </div></div>
 <div id="prog"><div class="in"><h3 id="pgh"></h3><div id="pgb"></div><button class="btn sec" id="pgclose">Close</button></div></div>
-<div id="hist"><div class="in"><h3 id="hh"></h3><div id="hb"></div><button class="btn sec" id="hclose">Close</button></div></div>
+<div id="hist"><div class="in"><h3 id="hh"></h3><label class="tgl" id="htrip" style="display:none"><input type="checkbox" id="htripc"> Show trip gym sets</label><div id="hb"></div><button class="btn sec" id="hclose">Close</button></div></div>
+<div id="tswapw" role="dialog" aria-modal="true"><div class="in"><h3 id="tsh"></h3><div id="tss" class="sub" style="margin-bottom:8px"></div><div id="tsl"></div>
+<label for="tsi">Or type what they have</label><input id="tsi" maxlength="80" autocomplete="off" placeholder="e.g. Cybex chest press">
+<button type="button" class="btn" id="tsok">Use this</button><button type="button" class="btn sec" id="tsclr">Do the planned exercise</button><button type="button" class="btn sec" id="tsx">Close</button></div></div>
 <div class="toast" id="toast"></div>
 
 <div id="fatal" style="display:none;position:fixed;inset:0;z-index:99;background:#11141a;color:#eef1f5;padding:24px;font:17px system-ui,sans-serif"><h2 style="margin-top:40px">Coach hit a startup error</h2><p id="fatalmsg" style="color:#ffb3b5;word-break:break-word"></p><p style="color:#9aa4b2">Your logged sets are safe. Tap Reload to fetch a fresh copy of the app.</p><button id="fatalbtn" style="font:inherit;font-weight:700;min-height:56px;width:100%;border:0;border-radius:12px;background:#2ecc71;color:#06210f">Reload app</button></div>
@@ -335,8 +352,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=77"></script>
-<script src="exlist.js?v=77"></script>
-<script src="app.js?v=77"></script>
+<script src="parse.js?v=78"></script>
+<script src="exlist.js?v=78"></script>
+<script src="app.js?v=78"></script>
 </body>
 </html>

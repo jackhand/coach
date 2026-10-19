@@ -10,12 +10,12 @@ const HEALTH_FOLDER_ID = '11ZqEDGtCu4jD-zLe8nIA5ZBN-NwJIPU0'; // Drive > Health
 const COACH_FOLDER_ID = '1D-r9zyMclFmyt9OgthgF-1zKnyUSVjSG';  // Drive > Health > Coach
 const SHEET_NAME = 'Coach Log';
 const PROFILES = ['jack', 'jacky'];
-const VERSION = 4;
+const VERSION = 5;
 const COLS = ['date', 'exercise', 'load', 'reps', 'failure_type', 'rest_time', 'notes', 'set_id', 'logged_at',
-  'drops', 'added_load', 'bodyweight', 'total_load', 'left_reps', 'right_reps', 'edited_at', 'workout'];
-const SESSION_COLS = ['date', 'finished_at', 'day', 'sets', 'exercises', 'notes', 'session_id'];
+  'drops', 'added_load', 'bodyweight', 'total_load', 'left_reps', 'right_reps', 'edited_at', 'workout', 'gym', 'sub'];
+const SESSION_COLS = ['date', 'finished_at', 'day', 'sets', 'exercises', 'notes', 'session_id', 'gym'];
 const SETTING_COLS = ['scope', 'key', 'value', 'updated_at'];
-const EDITABLE = ['exercise', 'load', 'reps', 'failure_type', 'notes', 'drops', 'added_load', 'bodyweight', 'total_load', 'left_reps', 'right_reps', 'workout'];
+const EDITABLE = ['exercise', 'load', 'reps', 'failure_type', 'notes', 'drops', 'added_load', 'bodyweight', 'total_load', 'left_reps', 'right_reps', 'workout', 'gym', 'sub'];
 const FILE_RE = /^(jack|jacky)-(program|exercise-library)\.md$/;
 const MAX_ROWS_RETURNED = 400;
 
@@ -34,6 +34,7 @@ function doGet(e) {
   if (PROFILES.indexOf(profile) < 0) return json_({ ok: false, error: 'unknown profile' });
   try {
     const now = new Date();
+    maybePurgeTrip_(now);
     return json_({
       ok: true,
       profile: profile,
@@ -251,7 +252,7 @@ function finish_(profile, s) {
   const when = new Date(ts);
   const row = {
     date: Utilities.formatDate(when, TZ, 'yyyy-MM-dd'), finished_at: when.toISOString(), day: clean_(s.day, 20),
-    sets: clean_(s.sets, 10), exercises: clean_(s.exercises, 10), notes: clean_(s.notes, 500), session_id: sid
+    sets: clean_(s.sets, 10), exercises: clean_(s.exercises, 10), notes: clean_(s.notes, 500), session_id: sid, gym: clean_(s.gym, 80)
   };
   sh.getRange(sh.getLastRow() + 1, 1, 1, SESSION_COLS.length).setNumberFormat('@').setValues([SESSION_COLS.map(function (c) { return row[c]; })]);
   return { ok: true, row: row };
@@ -302,7 +303,7 @@ function logSet_(profile, s) {
     failure_type: clean_(s.failure_type, 30), rest_time: rest, notes: clean_(s.notes, 500),
     set_id: setId, logged_at: when.toISOString(),
     drops: clean_(s.drops, 5), added_load: clean_(s.added_load, 30), bodyweight: clean_(s.bodyweight, 30),
-    total_load: clean_(s.total_load, 30), left_reps: clean_(s.left_reps, 30), right_reps: clean_(s.right_reps, 30), edited_at: '', workout: clean_(s.workout, 20)
+    total_load: clean_(s.total_load, 30), left_reps: clean_(s.left_reps, 30), right_reps: clean_(s.right_reps, 30), edited_at: '', workout: clean_(s.workout, 20), gym: clean_(s.gym, 80), sub: clean_(s.sub, 80)
   };
   const r = sh.getLastRow() + 1;
   sh.getRange(r, 1, 1, COLS.length).setNumberFormat('@').setValues([COLS.map(function (c) { return row[c]; })]);
@@ -330,4 +331,43 @@ function putFile_(name, content) {
   if (it.hasNext()) { const f = it.next(); f.setContent(content); return { ok: true, id: f.getId(), updated: true }; }
   const f = folder.createFile(name, content, 'text/markdown');
   return { ok: true, id: f.getId(), created: true };
+}
+
+/**
+ * Trip gym expiry (v5). Sets tagged gym "trip:<id> ..." (or notes "[trip <id> ...]" from before v5)
+ * are deleted 2 years after that trip gym's last logged set. Runs at most once a day from doGet,
+ * or from a daily time trigger if you run installTripTrigger once. Home gym rows are never touched.
+ */
+const TRIP_TTL_MS = 2 * 365.25 * 86400000;
+function maybePurgeTrip_(now) {
+  const props = PropertiesService.getScriptProperties();
+  const day = Utilities.formatDate(now, TZ, 'yyyy-MM-dd');
+  if (props.getProperty('TRIP_PURGE_DAY') === day) return;
+  props.setProperty('TRIP_PURGE_DAY', day);
+  try { purgeTripRows(); } catch (e) { Logger.log('trip purge: ' + e); }
+}
+function purgeTripRows() {
+  const ss = getSheet_(), now = Date.now(), out = {};
+  PROFILES.forEach(function (p) {
+    const sh = getTab_(ss, p), last = sh.getLastRow();
+    if (last < 2) return;
+    const vals = sh.getRange(2, 1, last - 1, COLS.length).getDisplayValues();
+    const gi = COLS.indexOf('gym'), ni = COLS.indexOf('notes'), li = COLS.indexOf('logged_at');
+    const gymOf = function (r) { const m = String(r[gi] || '').match(/^trip:(\S+)/) || String(r[ni] || '').match(/\[trip ([^\]\s]+)/); return m ? m[1] : ''; };
+    const lastTs = {};
+    vals.forEach(function (r) { const g = gymOf(r); if (!g) return; const t = Date.parse(r[li]) || 0; if (t > (lastTs[g] || 0)) lastTs[g] = t; });
+    let n = 0;
+    for (let i = vals.length - 1; i >= 0; i--) {
+      const g = gymOf(vals[i]);
+      if (g && lastTs[g] && now - lastTs[g] > TRIP_TTL_MS) { sh.deleteRow(i + 2); n++; }
+    }
+    out[p] = n;
+  });
+  Logger.log('Trip rows deleted: ' + JSON.stringify(out));
+  return out;
+}
+/** Optional: run once from the editor for a daily cleanup even on days the app is not opened. */
+function installTripTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'purgeTripRows') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('purgeTripRows').timeBased().everyDays(1).atHour(3).create();
 }
