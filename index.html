@@ -63,6 +63,8 @@ main{padding:12px 12px 120px}
 .sets li.shead{background:none;padding:0 10px;margin:0;display:grid;grid-template-columns:46px 1fr 1fr 36px 48px;gap:6px;font-size:12px;font-weight:700;color:var(--mut);letter-spacing:.5px}
 .sets li.shead span:last-child{text-align:center}
 .sn{color:var(--mut);font-weight:700;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px}
+.srow>.sn{position:relative;align-self:stretch;justify-content:center;min-height:44px}.sn .tqs{position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);display:flex;gap:2px;z-index:1}.sn .tqs .tq{min-height:0;font-size:9px;padding:1px 3px;line-height:1.2}
+.pgnav{display:flex;align-items:center;justify-content:space-between;gap:8px}.pgnav button{border:1px solid var(--line);background:var(--card2);color:inherit;border-radius:10px;width:44px;height:40px;font-size:24px;line-height:1;flex:none}.pgnav button:disabled{opacity:.35}.pgnav span{flex:1;text-align:center}
 .tq{border:0;border-radius:6px;background:#7a4dff;color:#fff;font-size:10px;font-weight:800;padding:3px 4px;line-height:1.1;min-height:22px;letter-spacing:.3px}
 .val{font-weight:700}.val small{color:var(--mut)}
 .pin{min-height:44px;padding:6px 8px;font-size:17px;text-align:center}
@@ -183,6 +185,7 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
   <input id="sk" placeholder="Key" autocomplete="off" autocapitalize="off" spellcheck="false">
   <label for="sbw">Body weight (lb), for dips and other bodyweight moves</label>
   <input id="sbw" inputmode="decimal" autocomplete="off" placeholder="e.g. 180">
+  <div id="sbws" class="sub" style="margin:-4px 0 8px"></div>
   <label class="tgl"><input type="checkbox" id="stest"> Test mode (practice logging on any day; nothing is saved)</label>
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
@@ -332,8 +335,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=75"></script>
-<script src="exlist.js?v=75"></script>
-<script src="app.js?v=75"></script>
+<script src="parse.js?v=76"></script>
+<script src="exlist.js?v=76"></script>
+<script src="app.js?v=76"></script>
 </body>
 </html>
