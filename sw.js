@@ -1,6 +1,6 @@
 // Coach service worker: caches the app shell only. Backend data is never cached here.
-const CACHE = 'coach-shell-v78';
-const SHELL = ['./', 'index.html', 'app.js?v=78', 'parse.js?v=78', 'exlist.js?v=78', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const CACHE = 'coach-shell-v79';
+const SHELL = ['./', 'index.html', 'app.js?v=79', 'parse.js?v=79', 'exlist.js?v=79', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });

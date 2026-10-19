@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 78;
+const APP_VERSION = 79;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -94,12 +94,20 @@ const setQ = q => { jset(QK(), q); badge(); };
 const getRQ = () => jget('coach_queue', []);
 const setRQ = q => { jset('coach_queue', q); badge(); };
 function badge() { const n = getRQ().length, b = $('pending'); b.textContent = n + ' pending'; b.style.display = n ? 'inline-block' : 'none'; }
-function enqueue(item) { if (item.action === 'log' && item.set && S) { if (tripView()) tripTag(item.set); else if (homeGym()) item.set.gym = homeGym(); } if (item.action === 'finish' && item.session && S) { const tc = tripView() && tripCfg(); const g = tc ? 'trip:' + tc.id + ' (' + tc.name + ')' : homeGym(); if (g) item.session.gym = g; } const t = testOn(), q = getQ(); q.push(Object.assign({ id: uid(), profile: P }, item, t ? { test: true } : {})); setQ(q); if (!t) flush(); }
-function tripTag(set) {
-  const c = tripCfg(); if (!c) return;
-  const ex = exFor(set.exercise), sub = ex ? tripSwapOf(ex) : '';
-  set.gym = 'trip:' + c.id + ' (' + c.name + ')'; set.sub = sub;
-  if (!(S.version >= 5)) set.notes = ((set.notes || '') + ' [trip ' + c.id + (sub ? ' did ' + sub : '') + ']').trim(); // old backend drops new columns
+function enqueue(item) { if (item.action === 'log' && item.set && S) gymTag(item.set); if (item.action === 'edit' && item.fields && S) keepTag(item.set_id, item.fields); if (item.action === 'finish' && item.session && S) { const tc = tripView() && tripCfg(); const g = tc ? 'trip:' + tc.id + ' (' + tc.name + ')' : homeGym(); if (g) item.session.gym = g; } const t = testOn(), q = getQ(); q.push(Object.assign({ id: uid(), profile: P }, item, t ? { test: true } : {})); setQ(q); if (!t) flush(); }
+// v79: every logged set carries its gym's display name in notes, e.g. '[gym Hotel gym | trip:hotel1 | did Dumbbell bench press]'
+// or '[gym Lifetime | home]'. The deployed backend keeps notes, so no backend change is needed. The app strips the tag for display.
+function gymTag(set) {
+  const c = tripView() && tripCfg(), ex = exFor(set.exercise), sub = c && ex ? tripSwapOf(ex) : '';
+  const name = c ? c.name : homeGym(); if (!name) return;
+  set.gym = c ? 'trip:' + c.id + ' (' + c.name + ')' : name; set.sub = sub;
+  set.notes = ((set.notes || '') + ' ' + gymTagTxt(name, c ? 'trip:' + c.id : 'home', sub)).trim();
+}
+const gymTagTxt = (name, id, sub) => '[gym ' + String(name).replace(/[\[\]|]/g, '') + ' | ' + id + (sub ? ' | did ' + String(sub).replace(/[\[\]|]/g, '') : '') + ']';
+function keepTag(sid, f) { // an edit rewrites notes: put the set's gym tag back
+  if (!Object.prototype.hasOwnProperty.call(f, 'notes')) return;
+  const r = viewRows(true, true).find(x => x.set_id === sid);
+  if (r && r._gtag && !String(f.notes || '').includes(r._gtag)) f.notes = ((f.notes || '') + ' ' + r._gtag).trim();
 }
 const NEW_ACTIONS = ['edit', 'finish', 'setting'];
 let flushing = false, warnedOld = false;
@@ -152,8 +160,8 @@ function viewRows(all, incTrip) {
   const edits = {};
   q.filter(x => x.action === 'edit').forEach(x => { edits[x.set_id] = Object.assign(edits[x.set_id] || {}, x.fields); });
   return S.rows.concat(pend).filter(r => !undone.has(r.set_id))
-    .map(r => edits[r.set_id] ? Object.assign({}, r, edits[r.set_id], { pending: true }) : r)
-    .sort((a, b) => tsOf(a) - tsOf(b)).filter(r => (all || !isWarm(r)) && (!isTrip(r) || ((incTrip || r.workout === viewId) && !tripExpired(r))));
+    .map(r => edits[r.set_id] ? Object.assign({}, r, edits[r.set_id], { pending: true }) : r).map(gymParse)
+    .sort((a, b) => tsOf(a) - tsOf(b)).filter(r => (all || !isWarm(r)) && (!isTrip(r) || incTrip || r.workout === viewId));
 }
 function keysOf(ex) { return new Set(ex.match_keys.concat([P_.norm(ex.canonical), P_.norm(ex.name)])); }
 function exFor(name) { const n = P_.norm(name); for (const ex of cardsFor()) if (keysOf(ex).has(n)) return ex; for (const ex of (days[dayKey] ? days[dayKey].exercises : [])) if (keysOf(ex).has(n)) return ex; for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
@@ -338,12 +346,11 @@ function putSetting(scope, key, value) {
 // Settings profile.trip_gym = {"id","name","start","end"} ('none' = removed). profile.gym_day:<workout id, e.g. W3-monday> = the gym picked for that day ('home' or the trip gym id).
 // Sets logged on a trip day carry gym 'trip:<id> (<name>)' and sub (the movement actually done); exercise stays the planned one.
 // Trip sets stay out of home suggestions, settled weight, e1RM, arrows and history; they still count in Weekly sets.
-// Expiry: 2 years after a trip gym's last logged set its sets are hidden here and deleted by the backend (purgeTripRows_).
+// No auto-expiry (removed in v79). Delete gym in Settings removes a gym from the list only; logged sets are never deleted.
 const TRIP_DEFAULT = { jack: { id: 'hotel1', name: 'Hotel gym', start: '2026-10-26', end: '2026-10-30' } };
 // Home gym name: profile.home_gym, default Lifetime for Jack (existing rows were backfilled with it).
 const HOME_DEFAULT = { jack: 'Lifetime' };
 const homeGym = () => (S && getSetting('profile', 'home_gym')) || HOME_DEFAULT[P] || '';
-const TRIP_TTL = 2 * 365.25 * 86400000;
 function tripCfg() {
   const v = getSetting('profile', 'trip_gym');
   if (v === 'none') return null;
@@ -354,17 +361,21 @@ function tripCfg() {
 function gymPick() { const c = tripCfg(); if (!c || !S) return 'home'; const v = getSetting('profile', 'gym_day:' + todayWid()); if (v === 'home' || v === c.id) return v; return S.today >= c.start && S.today <= c.end ? c.id : 'home'; }
 function tripToday() { const c = tripCfg(); return !!(c && gymPick() === c.id); }
 const tripInRange = () => { const c = tripCfg(); return !!(c && S && S.today >= c.start && S.today <= c.end); };
-const TRIP_RE = /\[trip ([^\]\s]+)(?: did ([^\]]+))?\]/;
-const isTrip = r => !!r && (/^trip:/.test(r.gym || '') || TRIP_RE.test(r.notes || ''));
-const tripGymOf = r => { const m = String(r.gym || '').match(/^trip:(\S+)/) || String(r.notes || '').match(TRIP_RE); return m ? m[1] : ''; };
-const subOf = r => r.sub || ((String(r.notes || '').match(TRIP_RE) || [])[2] || '');
-let tripLast = null, tripLastSig = null;
-function tripExpired(r) {
-  if (!isTrip(r)) return false;
-  if (tripLastSig !== S.rows) { tripLastSig = S.rows; tripLast = {}; S.rows.forEach(x => { if (isTrip(x)) { const g = tripGymOf(x), t = tsOf(x); if (t > (tripLast[g] || 0)) tripLast[g] = t; } }); }
-  const last = tripLast[tripGymOf(r)] || tsOf(r);
-  return last && Date.now() - last > TRIP_TTL;
+const TRIP_RE = /\s*\[trip ([^\]\s]+)(?: did ([^\]]+))?\]/; // v78 tag (id only)
+const GYM_RE = /\s*\[gym ([^|\]]+?) \| (home|trip:[^|\]\s]+)(?: \| did ([^\]]+))?\]/;
+// Gym names by id, kept even after a gym is deleted (profile.gym_names), so old tags still resolve to a name.
+function gymNames() { let m = {}; try { m = JSON.parse(getSetting('profile', 'gym_names') || '{}') || {}; } catch (e) {} const c = tripCfg(); if (c) m[c.id] = c.name; const d = TRIP_DEFAULT[P]; if (d && !m[d.id]) m[d.id] = d.name; return m; }
+function gymParse(r) { // adds gym_id ('home' or trip id), gym_name, sub, _gtag; strips the tag from notes for display
+  if (!r || r._gp) return r;
+  const n = String(r.notes || ''); let m = n.match(GYM_RE), o = null;
+  if (m) o = { gym_name: m[1].trim(), gym_id: m[2] === 'home' ? 'home' : m[2].slice(5), sub: r.sub || (m[3] || '').trim() };
+  else if ((m = n.match(TRIP_RE))) o = { gym_id: m[1], gym_name: gymNames()[m[1]] || 'Trip gym', sub: r.sub || (m[2] || '').trim() };
+  else { const g = String(r.gym || ''), t = g.match(/^trip:(\S+)(?: \((.+)\))?/); o = t ? { gym_id: t[1], gym_name: t[2] || gymNames()[t[1]] || 'Trip gym', sub: r.sub || '' } : { gym_id: 'home', gym_name: g || homeGym() || 'Home gym', sub: r.sub || '' }; }
+  return Object.assign({}, r, o, { _gp: 1, _gtag: m ? m[0].trim() : '', notes: m ? n.replace(m[0], '').trim() : n });
 }
+const isTrip = r => !!r && gymParse(r).gym_id !== 'home';
+const tripGymOf = r => gymParse(r).gym_id;
+const subOf = r => gymParse(r).sub || '';
 const todayWid = () => S ? 'W' + weekOf(S.today) + '-' + weekdayOf(S.today) : '';
 function tripView() { // the viewed workout is a trip gym session (today in trip range, or already logged at the trip gym)
   if (!S) return false;
@@ -1092,13 +1103,17 @@ function histLine(rs) { // RP style: '160 lbs x 12, 12, 7' or '190 x 11, 180 x 8
   if (same) return (ld(rs[0]) ? ld(rs[0]) + u + ' x ' : '') + rs.map(r => rp(r) + tag(r)).join(', ');
   let prev = null; return rs.map(r => { const w = ld(r), t = (w !== prev ? (w || 'BW') + ' x ' : '') + rp(r) + tag(r); prev = w; return t; }).join(', ');
 }
-let histTrip = false, histEx = null;
+let histEx = null, histMonths = 2;
+const HIST_CHUNK = 2; // months per load; the first load stops 2 months back, Load older goes further
 function openHistory(ex, fromMenu, keep) {
-  histEx = ex; if (!keep) histTrip = false;
-  const anyTrip = viewRows(false, true).some(r => isTrip(r) && keysOf(ex).has(P_.norm(r.exercise)));
-  $('htrip').style.display = anyTrip ? 'flex' : 'none'; $('htripc').checked = histTrip;
-  const rs = viewRows(false, histTrip).filter(r => histTrip || !isTrip(r)).filter(r => keysOf(ex).has(P_.norm(r.exercise))).sort((a, b) => tsOf(a) - tsOf(b));
-  const by = {}; rs.forEach(r => { const k = widOf(r) || r.date; (by[k] = by[k] || []).push(r); });
+  if (!keep) histMonths = HIST_CHUNK; histEx = ex;
+  const c = tripCfg(), gid = tripView() && c ? c.id : 'home', gname = gid === 'home' ? (homeGym() || 'Home gym') : c.name;
+  const all = viewRows(false, true).filter(r => tripGymOf(r) === gid && keysOf(ex).has(P_.norm(r.exercise))).sort((a, b) => tsOf(a) - tsOf(b));
+  const cut = new Date(S.today + 'T12:00:00'); cut.setMonth(cut.getMonth() - histMonths); const cutIso = cut.toISOString().slice(0, 10);
+  const rs = all.filter(r => (r.date || '') >= cutIso), older = all.length - rs.length;
+  $('hgym').textContent = 'Gym: ' + gname + ' · newest first · ' + (older ? 'since ' + cut.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'all sets');
+  $('hmore').style.display = older ? 'block' : 'none'; $('hmore').textContent = 'Load older (' + older + (older === 1 ? ' set' : ' sets') + ')';
+  const by = {}; rs.forEach(r => { const k = (r.workout && wParse(r.workout) ? r.workout : r.date) || widOf(r); (by[k] = by[k] || []).push(r); });
   const ks = Object.keys(by).sort((a, b) => (tsOf(by[b][0]) - tsOf(by[a][0])) || (by[b][0].date || '').localeCompare(by[a][0].date || ''));
   const td = trainDays(); let lastB = null;
   $('hh').textContent = ex.canonical;
@@ -1106,10 +1121,10 @@ function openHistory(ex, fromMenu, keep) {
     const g = by[k], p = wParse(widOf(g[0])), w = p ? p.w : weekOf(g[0].date), dl = isDeload(w), bl = blockOf(w);
     const dn = p ? td.indexOf(p.day) + 1 : 0, dt = g[0].date ? new Date(g[0].date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
     const head = bl !== lastB ? '<div class="hm">Block ' + bl + '</div>' : ''; lastB = bl;
-    const tr = g.find(isTrip), trTxt = tr ? '<div class="s2 trip">Trip gym' + (subOf(tr) ? ': did ' + esc(subOf(tr)) : '') + '</div>' : '';
+    const tr = g.find(isTrip), trTxt = tr ? '<div class="s2 trip">' + esc(tr.gym_name) + (subOf(tr) ? ': did ' + esc(subOf(tr)) : '') + '</div>' : '';
     const wid = widOf(g[0]), pain = getSetting(ex.canonical, 'pain:' + wid), note = getSetting(ex.canonical, 'note:' + wid);
     return head + '<div class="hr' + (dl ? ' dl' : '') + '"><div class="hl">' + esc(histLine(g)) + trTxt + (pain ? '<div class="s2">pain ' + esc(pain) + '</div>' : '') + (note ? '<div class="s2"><i>' + esc(note) + '</i></div>' : '') + '</div><div class="hx">' + (dl ? 'DELOAD' : 'WEEK ' + wib(w)) + (dn > 0 ? ' - DAY ' + dn : '') + '<br>' + esc(dt) + '</div></div>';
-  }).join('') : '<div class="s2">No history yet.</div>';
+  }).join('') : '<div class="s2">' + (older ? 'Nothing in the last ' + histMonths + ' months. Tap Load older.' : 'No history at ' + esc(gname) + ' yet.') + '</div>';
   if (keep) return;
   $('hist').classList.add('open');
   const close = () => $('hist').classList.remove('open');
@@ -1117,7 +1132,7 @@ function openHistory(ex, fromMenu, keep) {
 }
 const closeHist = () => { $('hist').classList.remove('open'); popLayer('hist'); };
 $('hclose').onclick = closeHist;
-$('htripc').onchange = e => { histTrip = e.target.checked; if (histEx) openHistory(histEx, false, true); };
+$('hmore').onclick = () => { histMonths += HIST_CHUNK; if (histEx) openHistory(histEx, false, true); };
 $('hist').addEventListener('click', e => { if (e.target.id === 'hist') closeHist(); });
 
 // ---------- Render ----------
@@ -1498,8 +1513,8 @@ function showSettings(msg) {
   $('app').style.display = 'none'; $('settings').style.display = 'block'; $('timer').style.display = 'none';
   $('su').value = U; $('sk').value = K; $('stest').checked = testOn(); $('smsg').textContent = msg || '';
   const tc = S ? tripCfg() : null; $('stripbox').style.display = S ? 'block' : 'none'; $('shn').value = S ? homeGym() : '';
-  $('stn').value = tc ? tc.name : ''; $('sts').value = tc ? tc.start : ''; $('ste').value = tc ? tc.end : '';
-  $('stinfo').textContent = tc ? 'Inside these dates the workout day defaults to ' + tc.name + ' (pick the gym on the day to change it): sets are tagged to it, each exercise gets a Trip swap, and they stay out of home gym history. Trip sets are deleted 2 years after the last one logged here.' : 'No trip gym set.';
+  $('strm').style.display = tc ? 'block' : 'none'; $('stn').value = tc ? tc.name : ''; $('sts').value = tc ? tc.start : ''; $('ste').value = tc ? tc.end : '';
+  $('stinfo').textContent = tc ? 'Inside these dates the workout day defaults to ' + tc.name + ' (pick the gym on the day to change it): sets are tagged to it, each exercise gets a Trip swap, and they stay out of home gym history. Deleting a gym only removes it from this list; its logged sets are kept and still show its name.' : 'No trip gym set.';
   $('sbw').value = S ? (bodyweight() || '') : ''; $('sbws').textContent = S ? bwSrcText() + '. A newer MyFitnessPal weigh-in replaces an edit only if it is dated after the edit.' : '';
 }
 $('gear').onclick = () => showSettings();
@@ -1529,7 +1544,10 @@ $('ssave').onclick = async () => {
   catch (e) { $('smsg').textContent = 'Could not reach it: ' + e.message; }
 };
 $('scancel').onclick = () => hideSettings();
-$('strm').onclick = () => { if (!S || !confirm('Remove the trip gym? Sets already logged there stay saved.')) return; putSetting('profile', 'trip_gym', 'none'); $('stn').value = ''; $('sts').value = ''; $('ste').value = ''; $('stinfo').textContent = 'No trip gym set.'; sig = ''; toast('Trip gym removed'); };
+$('strm').onclick = () => { const c = S && tripCfg(); if (!c) return; $('gdelh').textContent = 'Delete ' + c.name + '?'; $('gdelw').classList.add('open'); pushLayer('gdel', () => $('gdelw').classList.remove('open')); };
+const gdelClose = () => { $('gdelw').classList.remove('open'); popLayer('gdel'); };
+$('gdeln').onclick = gdelClose; $('gdelx').onclick = gdelClose;
+$('gdely').onclick = () => { const c = tripCfg(); gdelClose(); if (!c) return; const nm = gymNames(); nm[c.id] = c.name; putSetting('profile', 'gym_names', JSON.stringify(nm)); putSetting('profile', 'trip_gym', 'none'); $('stn').value = ''; $('sts').value = ''; $('ste').value = ''; $('stinfo').textContent = 'No trip gym set.'; sig = ''; toast(c.name + ' deleted. Its logged sets are kept.'); };
 
 // ---------- Rest timer ----------
 // Target depends on what comes next: same muscle = that exercise's normal rest, different muscle = 75 s.
@@ -1846,7 +1864,7 @@ $('fsave').onclick = () => {
   }
   if (editId) {
     const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === editId);
-    if (pi >= 0) { Object.assign(q[pi].set, fields); setQ(q); if (!testOn()) flush(); }
+    if (pi >= 0) { const tg = (String(q[pi].set.notes || '').match(GYM_RE) || [])[0]; Object.assign(q[pi].set, fields); if (tg && !String(q[pi].set.notes).includes(tg.trim())) q[pi].set.notes = ((q[pi].set.notes || '') + ' ' + tg.trim()).trim(); setQ(q); if (!testOn()) flush(); }
     else enqueue({ action: 'edit', set_id: editId, fields });
     closeForm(); toast('Set updated'); return;
   }
@@ -1881,7 +1899,7 @@ function saveStretch(ex) {
   const fields = { load: ang, reps, failure_type: 'not to failure', notes: $('fn').value.trim(), drops: '', left_reps: L, right_reps: Rr, added_load: '', bodyweight: '', total_load: '' };
   if (editId) {
     const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === editId);
-    if (pi >= 0) { Object.assign(q[pi].set, fields); setQ(q); if (!testOn()) flush(); }
+    if (pi >= 0) { const tg = (String(q[pi].set.notes || '').match(GYM_RE) || [])[0]; Object.assign(q[pi].set, fields); if (tg && !String(q[pi].set.notes).includes(tg.trim())) q[pi].set.notes = ((q[pi].set.notes || '') + ' ' + tg.trim()).trim(); setQ(q); if (!testOn()) flush(); }
     else enqueue({ action: 'edit', set_id: editId, fields });
     closeForm(); toast('Hold updated'); return;
   }

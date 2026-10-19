@@ -89,9 +89,9 @@ header h1{min-width:0;overflow:hidden;white-space:nowrap}header select{min-width
 .meso{border-collapse:separate;border-spacing:4px;margin:4px auto 0;font-size:13px}
 .meso th{color:var(--mut);font-weight:600}.meso td{width:38px;height:26px;background:var(--card2);border-radius:6px;text-align:center}
 .meso td.ok{background:var(--acc);color:#06210f}.meso td.cur{outline:2px solid var(--blue)}.meso td.miss{background:#3a2a1d}
-#menu,#hist,#tech,#repl,#calw,#wmw,#delw,#tswapw{position:fixed;inset:0;z-index:22;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
-#menu.open,#hist.open,#tech.open,#repl.open,#calw.open,#wmw.open,#delw.open,#tswapw.open{display:flex}
-#menu .in,#hist .in,#tech .in,#repl .in,#calw .in,#wmw .in,#delw .in,#tswapw .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
+#menu,#hist,#tech,#repl,#calw,#wmw,#delw,#tswapw,#gdelw{position:fixed;inset:0;z-index:22;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
+#menu.open,#hist.open,#tech.open,#repl.open,#calw.open,#wmw.open,#delw.open,#tswapw.open,#gdelw.open.open{display:flex}
+#menu .in,#hist .in,#tech .in,#repl .in,#calw .in,#wmw .in,#delw .in,#tswapw .in,#gdelw .in .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
 .hd{background:var(--card2);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:15px}
 .cbody{max-height:3000px;overflow:hidden;transition:max-height .28s ease,opacity .2s ease}
 main.collapsed .cbody{max-height:0;opacity:0}
@@ -167,7 +167,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
 .pdet{background:var(--card2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px}.plist{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;align-items:start}.pgrp{display:flex;flex-direction:column;gap:4px}.psub{font-size:12px;padding:5px 10px 5px 18px;color:var(--mut)}.prow{display:flex;justify-content:space-between;border:1px solid var(--line);background:var(--card2);color:inherit;border-radius:10px;padding:8px 10px;font-size:14px}.prow.psel{border-color:var(--acc)}
 details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:14px}details.wu summary{cursor:pointer;font-weight:600}details.wu ul{list-style:none;padding:0;margin:6px 0}details.wu li{padding:3px 0}.wuw{border:1px solid var(--line);background:var(--card);color:inherit;border-radius:8px;padding:3px 8px;font-size:14px}
 #pbt{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0 4px;border:1.5px solid var(--acc);color:var(--acc);font-weight:700}#pbt.on{background:var(--acc);color:#06210f}#pbx{background:var(--card2);border-radius:10px;padding:8px;margin:6px 0}.pbp{display:flex;gap:6px;flex-wrap:wrap}.pbp .wuw{min-width:44px;min-height:40px}.pbc{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.pchip{border:1px solid var(--acc);background:none;color:inherit;border-radius:14px;padding:4px 10px;font-size:14px}.pbrow{display:flex;gap:8px;align-items:center}.pbrow b{flex:1}
-#delw{z-index:40}#delw .in{position:relative}#delx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px}#delt{margin:8px 34px 14px 0;font-size:16px}#dely{background:#c62828;color:#fff;margin-bottom:8px}
+#delw,#gdelw{z-index:40}#delw .in,#gdelw .in{position:relative}#delx,#gdelx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px}#delt{margin:8px 34px 14px 0;font-size:16px}#dely{background:#c62828;color:#fff;margin-bottom:8px}
 #wmenu{font-size:26px;font-weight:800;min-width:36px}.wmi small{display:block;font-size:13px;font-weight:600;color:var(--mut)}
 #holdbox .holdt{background:var(--card2);border-radius:12px;padding:10px;margin-top:8px;text-align:center}
 #holdbox .t{font-size:40px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--acc)}
@@ -198,7 +198,7 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
   <input id="stn" maxlength="40" autocomplete="off" placeholder="e.g. Hotel gym">
   <div class="dr"><div><label for="sts">Start</label><input id="sts" type="date"></div><div><label for="ste">End</label><input id="ste" type="date"></div></div>
   <div id="stinfo" class="sub"></div>
-  <button class="btn sec" id="strm" type="button">Remove trip gym</button></div>
+  <button class="btn sec" id="strm" type="button" style="color:#e57373">Delete gym</button></div>
   <label class="tgl"><input type="checkbox" id="stest"> Test mode (practice logging on any day; nothing is saved)</label>
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
@@ -327,10 +327,11 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
   <div class="rfb2"><button type="button" class="btn sec" id="rfc">Cancel</button><button type="button" class="btn" id="rfa">Apply</button></div>
 </div></div>
 <div id="prog"><div class="in"><h3 id="pgh"></h3><div id="pgb"></div><button class="btn sec" id="pgclose">Close</button></div></div>
-<div id="hist"><div class="in"><h3 id="hh"></h3><label class="tgl" id="htrip" style="display:none"><input type="checkbox" id="htripc"> Show trip gym sets</label><div id="hb"></div><button class="btn sec" id="hclose">Close</button></div></div>
+<div id="hist"><div class="in"><h3 id="hh"></h3><div id="hgym" class="sub" style="margin:-4px 0 8px"></div><div id="hb"></div><button class="btn sec" id="hmore" style="display:none">Load older</button><button class="btn sec" id="hclose">Close</button></div></div>
 <div id="tswapw" role="dialog" aria-modal="true"><div class="in"><h3 id="tsh"></h3><div id="tss" class="sub" style="margin-bottom:8px"></div><div id="tsl"></div>
 <label for="tsi">Or type what they have</label><input id="tsi" maxlength="80" autocomplete="off" placeholder="e.g. Cybex chest press">
 <button type="button" class="btn" id="tsok">Use this</button><button type="button" class="btn sec" id="tsclr">Do the planned exercise</button><button type="button" class="btn sec" id="tsx">Close</button></div></div>
+<div id="gdelw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="gdelx" aria-label="Close">&times;</button><h3 id="gdelh">Delete gym?</h3><p>Are you sure? This removes the gym from your list. Sets you logged there are kept and still show the gym name in past workouts.</p><button type="button" class="btn" id="gdely" style="background:#e57373;color:#2a0b0b">Delete gym</button><button type="button" class="btn sec" id="gdeln">Cancel</button></div></div>
 <div class="toast" id="toast"></div>
 
 <div id="fatal" style="display:none;position:fixed;inset:0;z-index:99;background:#11141a;color:#eef1f5;padding:24px;font:17px system-ui,sans-serif"><h2 style="margin-top:40px">Coach hit a startup error</h2><p id="fatalmsg" style="color:#ffb3b5;word-break:break-word"></p><p style="color:#9aa4b2">Your logged sets are safe. Tap Reload to fetch a fresh copy of the app.</p><button id="fatalbtn" style="font:inherit;font-weight:700;min-height:56px;width:100%;border:0;border-radius:12px;background:#2ecc71;color:#06210f">Reload app</button></div>
@@ -352,8 +353,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=78"></script>
-<script src="exlist.js?v=78"></script>
-<script src="app.js?v=78"></script>
+<script src="parse.js?v=79"></script>
+<script src="exlist.js?v=79"></script>
+<script src="app.js?v=79"></script>
 </body>
 </html>
