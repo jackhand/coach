@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 84;
+const APP_VERSION = 85;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -201,11 +201,11 @@ function equipType(ex) {
   const nm = ex.canonical || ex.name || '', c = ex.equip ? null : catFind(nm);
   return window.CoachEquipType({ name: nm, equip: ex.equip || (c && c.equip) || '', bodyweight: ex.bodyweight });
 }
-const PLATE_T = { barbell: 1, hexbar: 1, ez: 1 }, BAR_DEF = { barbell: 45, hexbar: 45, ez: 45 }; // Smith bars vary and are often counterbalanced: no plate math
-const BAR_NAME = { barbell: 'bar', hexbar: 'hex bar', ez: 'EZ bar' };
+const PLATE_T = { barbell: 1, hexbar: 1, ez: 1, smith: 1 }, BAR_DEF = { barbell: 45, hexbar: 45, ez: 45, smith: 45 }; // v85: Smith gets plate math too; set its real bar weight per exercise
+const BAR_NAME = { barbell: 'bar', hexbar: 'hex bar', ez: 'EZ bar', smith: 'Smith bar' };
 const plateT = ex => !!ex && !isStretch(ex) && (!!PLATE_T[equipType(ex)] || barSaved(ex) > 0); // a saved or seeded bar weight turns on plate math (e.g. Smith shrug 10 lb)
 // Bar weight: per-exercise equipment setup can say e.g. "55 lb bar" or "bar weight 55"; else the type default.
-// Rule (Jack, Oct 20, 2026): every bar exercise has its own editable bar weight. Default 45; once changed it is saved per exercise
+// Rule (Jack, Oct 20, 2026; v85): every bar exercise has its own bar weight, edited only in the plate builder (not on the card). Default 45; once changed it is saved per exercise
 // in settings (scope = exercise, key 'bar') so it syncs. Hex bar shrug uses Jack's open hex bar, 55 lb, until a saved value says otherwise.
 const BAR_SEED = { 'hex bar shrug': 55, 'smith machine shrug': 10 }; // Smith bar per Jack (Oct 20, 2026)
 function barSaved(ex) { if (!ex) return NaN; const v = parseFloat(getSetting(ex.canonical, 'bar')); return v > 0 && v < 200 ? v : (BAR_SEED[String(ex.canonical || '').toLowerCase()] || NaN); }
@@ -846,7 +846,7 @@ function startDrag(main, card, y, pointerId, h) {
   if (drag) return;
   // Rule (Jack, Oct 20, 2026): on hold everything collapses, then the page scrolls so the held card's collapsed row sits under the finger.
   // The card keeps its slot (hold #4 without moving = stays #4). Nothing reorders or auto-scrolls until the finger has moved on purpose.
-  drag = { main, card, lastY: y, y0: y, moved: false, auto: null };
+  drag = { main, card, lastY: y, y0: y, moved: false, auto: null, order0: [...main.querySelectorAll('.card')].map(c => c.dataset.name).join('|') };
   card.classList.add('dragging'); document.body.classList.add('dragmode');
   if (h && pointerId != null) { try { h.setPointerCapture(pointerId); } catch (x) {} }
   if (navigator.vibrate) { try { navigator.vibrate(30); } catch (x) {} }
@@ -878,12 +878,13 @@ function dragFollow() { // v80: the lifted card sits under the finger; slots cha
 }
 function endDrag() {
   if (!drag) return;
-  const { main, card, auto, moved } = drag; clearInterval(auto);
+  const { main, card, auto, order0 } = drag; clearInterval(auto);
+  const changed = [...main.querySelectorAll('.card')].map(c => c.dataset.name).join('|') !== order0; // v85: save and toast only when the order really changed
   card.style.transform = ''; card.classList.remove('dragging'); document.body.classList.remove('dragmode');
   const top = Math.max(90, card.getBoundingClientRect().top);
   drag = null;
   anchor(card, 0, () => top); main.classList.remove('collapsed');
-  if (moved) saveOrder(main, card.dataset.name); // a hold without a move changes nothing
+  if (changed) saveOrder(main, card.dataset.name); // same order (no move, or dragged back to the same slot): nothing saved, no toast
 }
 function enableDrag(main) {
   dragCleanup.forEach(f => f()); dragCleanup = [];
@@ -1266,7 +1267,6 @@ function render() {
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
       '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnClosed().includes(ex.canonical) ? '' : ' open') + '><summary><b>Coach (default)</b><span class="cnbtn" role="img" aria-label="' + (cnClosed().includes(ex.canonical) ? 'Expand coach notes' : 'Collapse coach notes') + '"><span class="circ"><span class="chev"></span></span></span></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML(weekNotesFor(ex)) +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + ')' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
-      (plateT(ex) ? '<div class="setup" data-bar="' + i + '"><b>Bar:</b> ' + barWeight(ex) + ' lb <span class="ed">edit</span></div>' : '') +
       tripCardHTML(ex, i) + warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
@@ -1274,7 +1274,6 @@ function render() {
   }).join('') + (d.footer && d.footer.length ? '<div class="note">' + d.footer.map(esc).join('<br>') + '</div>' : '') +
     '<div id="finwrap"></div>';
   main.querySelectorAll('[data-su]').forEach(el => el.onclick = () => editSetup(+el.dataset.su));
-  main.querySelectorAll('[data-bar]').forEach(el => el.onclick = e => { e.stopPropagation(); editBar(+el.dataset.bar); });
   main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
   enableDrag(main);
   main.querySelectorAll('details.cn').forEach(d => d.addEventListener('toggle', () => { const cb = d.querySelector('.cnbtn'); if (cb) cb.setAttribute('aria-label', d.open ? 'Collapse coach notes' : 'Expand coach notes'); const l = cnClosed().filter(x => x !== d.dataset.cn); if (!d.open) l.push(d.dataset.cn); jset('coach_cn_closed', l); }));
@@ -1382,12 +1381,6 @@ function skipWorkout() {
 function weekBoxHTML(ns, day) {
   if (!ns || !ns.length) return '';
   return '<div class="wkbox' + (day ? ' wkday' : '') + '"><b>This week (Week ' + viewWeek() + ')' + (day ? ', every exercise' : '') + ':</b><ul>' + ns.map(n => '<li>' + esc(n.text) + '</li>').join('') + '</ul></div>';
-}
-function editBar(i) {
-  const ex = cardsFor()[i]; if (!ex) return;
-  const v = prompt('Bar weight for ' + ex.canonical + ' (lb). Saved for this exercise:', String(barWeight(ex))); if (v == null) return;
-  const n = parseFloat(v); if (!(n > 0 && n < 200)) { toast('Enter a bar weight in lb, like 45 or 55'); return; }
-  putSetting(ex.canonical, 'bar', String(n)); sig = ''; applyState(S, false); toast('Bar weight saved: ' + n + ' lb');
 }
 function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
@@ -1860,7 +1853,12 @@ function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').t
 // Plate-first: tap plates (one per side each), chips remove, total = bar weight (barWeight) + 2 x plates.
 let pbList = []; // one entry per pair (one plate each side)
 function pbRender() { const tot = barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + ' &times;</button>').join('') || '<span class="s2">Empty ' + (BAR_NAME[equipType(formEx)] || 'bar') + ' (' + barWeight(formEx) + ' lb). Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
-$('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; pbRender(); } $('pbtl').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; $('pbt').classList.toggle('on', !x.hidden); };
+// v85 (Jack, Oct 20, 2026): the plate builder has a Bar weight field at the top. It edits the same per-exercise bar setting as the card row and recalculates live.
+function pbBarSet(v) { const n = parseFloat(v); if (!formEx || !(n > 0 && n < 200)) { $('pbbw').value = String(barWeight(formEx)); return; } if (n !== barWeight(formEx)) putSetting(formEx.canonical, 'bar', String(n)); $('pbbw').value = String(n); pbRender(); plUpd(); bwLine(); }
+$('pbbw').addEventListener('change', () => pbBarSet($('pbbw').value));
+$('pbbw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); pbBarSet($('pbbw').value); } });
+$('pbbm').onclick = () => pbBarSet(Math.max(5, barWeight(formEx) - 5)); $('pbbp').onclick = () => pbBarSet(barWeight(formEx) + 5);
+$('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; $('pbbw').value = String(barWeight(formEx)); pbRender(); } $('pbtl').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; $('pbt').classList.toggle('on', !x.hidden); };
 $('pbp').addEventListener('click', e => { const b = e.target.closest('[data-pp]'); if (!b) return; pbList.push(+b.dataset.pp); pbList.sort((a, c) => c - a); pbRender(); });
 $('pbc').addEventListener('click', e => { const b = e.target.closest('[data-pr]'); if (!b) return; const i = pbList.indexOf(+b.dataset.pr); if (i >= 0) pbList.splice(i, 1); pbRender(); });
 $('pbclr').onclick = () => { pbList = []; pbRender(); };

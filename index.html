@@ -188,6 +188,7 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
 .gitem{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;margin:0 0 6px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card2);color:var(--txt);font-size:16px;text-align:left}.gitem .gic{font-size:22px}.gitem .gnm{flex:1}.gitem .gtag{font-size:12px;border:1px solid var(--line);border-radius:8px;padding:1px 6px;color:var(--mut)}.gitem .gtag.on{color:#8cc8f5;border-color:#3d8fd1}.gitem .ed{color:#8cc8f5;font-size:14px}
 .gicons{display:flex;flex-wrap:wrap;gap:6px}.gicons button{font-size:24px;width:48px;height:48px;border-radius:10px;border:1px solid var(--line);background:var(--card2)}.gicons button.on{border-color:#3d8fd1;background:#163a55}
 .card.dragging{position:relative;z-index:15;box-shadow:0 14px 34px rgba(0,0,0,.6),0 0 0 3px var(--acc);opacity:.96;transition:none!important}
+.pbbar{display:flex;align-items:center;gap:8px;margin:0 0 10px}.pbbar label{font-weight:700;flex:1}.pbbar input{width:72px;text-align:center;font-size:18px}
 </style>
 </head>
 <body>
@@ -272,7 +273,7 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
       <button class="btn sec" id="fsame" type="button">Same both sides</button>
     </div>
     <button type="button" class="btn sec" id="pbt" style="display:none"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg><span id="pbtl">Build from plates</span></button>
-    <div id="pbx" hidden><div class="pbp" id="pbp"><button type="button" class="wuw" data-pp="45">45</button><button type="button" class="wuw" data-pp="35">35</button><button type="button" class="wuw" data-pp="25">25</button><button type="button" class="wuw" data-pp="10">10</button><button type="button" class="wuw" data-pp="5">5</button><button type="button" class="wuw" data-pp="2.5">2.5</button></div><div id="pbc" class="pbc"></div><div class="pbrow"><b id="pbtot"></b><button type="button" class="wuw" id="pbclr">Clear</button><button type="button" class="wuw" id="pbuse">Use this weight</button></div></div>
+    <div id="pbx" hidden><div class="pbbar"><label for="pbbw">Bar weight (lb)</label><button type="button" class="wuw" id="pbbm" aria-label="Bar weight minus 5">&minus;</button><input id="pbbw" inputmode="decimal" autocomplete="off"><button type="button" class="wuw" id="pbbp" aria-label="Bar weight plus 5">+</button></div><div class="pbp" id="pbp"><button type="button" class="wuw" data-pp="45">45</button><button type="button" class="wuw" data-pp="35">35</button><button type="button" class="wuw" data-pp="25">25</button><button type="button" class="wuw" data-pp="10">10</button><button type="button" class="wuw" data-pp="5">5</button><button type="button" class="wuw" data-pp="2.5">2.5</button></div><div id="pbc" class="pbc"></div><div class="pbrow"><b id="pbtot"></b><button type="button" class="wuw" id="pbclr">Clear</button><button type="button" class="wuw" id="pbuse">Use this weight</button></div></div>
     <div id="liftxtra">
     <div id="fxrow"><div id="fdwrap"><label>Drop sets</label>
     <div class="seg" id="fd"><button type="button" data-d="0">0</button><button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button></div></div>
@@ -371,8 +372,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=84"></script>
-<script src="exlist.js?v=84"></script>
-<script src="app.js?v=84"></script>
+<script src="parse.js?v=85"></script>
+<script src="exlist.js?v=85"></script>
+<script src="app.js?v=85"></script>
 </body>
 </html>

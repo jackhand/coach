@@ -134,7 +134,7 @@
       ex.match_keys = e ? e.keys : [norm(ex.name)];
       ex.rest_muscle = e ? e.rest_muscle : norm(ex.name); ex.types = e ? e.types : [];
       ex.single = !!(e && e.single) || /\b(single|one)[ -](arm|leg)\b|\bper (arm|leg|side)\b/i.test(ex.full_name + ' ' + ex.details);
-      ex.bodyweight = !!(e && e.bodyweight); ex.stretch = !!(e && e.stretch) || /\bstretch\b|flexability/i.test(ex.full_name + ' ' + ex.details); ex.setup = e ? e.setup : ''; ex.cue = e ? e.cue : ''; ex.equip = (e && e.equip) || ''; // raw field; the app's equipType() is the one place that interprets it
+      ex.bodyweight = !!(e && e.bodyweight); ex.stretch = !!(e && e.stretch) || /\bstretch\b|flexability/i.test(ex.full_name) /* v85: name only; 'deep stretch' in bench warm-up text made bench a stretch */; ex.setup = e ? e.setup : ''; ex.cue = e ? e.cue : ''; ex.equip = (e && e.equip) || ''; // raw field; the app's equipType() is the one place that interprets it
       let sm = (ex.note.sets || '').match(/^(\d+)\s*x/i); if (!sm) sm = (ex.details || '').match(/(\d+)\s*hold/i); ex.planned_sets = sm ? +sm[1] : ex.note.plan ? Math.max.apply(null, Object.keys(ex.note.plan).map(Number)) : (ex.stretch ? 1 : 3);
     })));
     return days;
