@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 82;
+const APP_VERSION = 83;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1179,7 +1179,7 @@ function gymBind(main) {
 // Message-only pop-up (tap anywhere to close).
 function msgPop(m) { $('msgt').textContent = m; $('msgw').classList.add('open'); pushLayer('msg', () => $('msgw').classList.remove('open')); }
 $('msgw').onclick = () => { $('msgw').classList.remove('open'); popLayer('msg'); };
-// 14) Coach tips pop up right before their exercise: when it becomes the next exercise, or when its first set is opened. Once per workout.
+// Coach tips pop up only right after Start workout and right after the last planned set of an exercise, for the next unlogged exercise. Once per exercise per workout.
 const sentence = t => { t = String(t || '').trim(); if (!t) return ''; t = t[0].toUpperCase() + t.slice(1); return /[.!?]$/.test(t) ? t : t + '.'; };
 function tipsFor(ex) { const n = ex.note || {}; return (ex.cue ? [ex.cue] : []).concat(n.extra || []).map(sentence).filter(Boolean); }
 function tipShow(ex) {
@@ -1192,12 +1192,12 @@ function tipShow(ex) {
 }
 const tipClose = () => { $('tipw').classList.remove('open'); popLayer('tip'); };
 $('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw') tipClose(); });
-function tipNext(ex) { // the set just saved finished this exercise: show the next exercise's tips
-  const list = cardsFor(), i = list.findIndex(x => x.canonical === ex.canonical);
-  if (i < 0 || rowsFor(ex, true).length < plannedCount(ex)) return;
-  const nx = list.slice(i + 1).concat(list.slice(0, i)).find(x => rowsFor(x, true).length < plannedCount(x));
-  if (nx) setTimeout(() => tipShow(nx), 600);
+function tipUpcoming() { // v83: after Start workout or after the last planned set of an exercise
+  const list = cardsFor(), i = list.findIndex(x => rowsFor(x, true).length < plannedCount(x)); if (i < 0) return;
+  const c = $('c' + i); if (c) { const h = document.querySelector('header'), off = h ? h.getBoundingClientRect().bottom : 0; scrollTo({ top: Math.max(0, scrollY + c.getBoundingClientRect().top - off - 8), behavior: 'smooth' }); }
+  setTimeout(() => tipShow(list[i]), 500);
 }
+function tipNext(ex) { if (rowsFor(ex, true).length >= plannedCount(ex)) tipUpcoming(); }
 function render() {
   const main = $('main'), d = days[dayKey];
   const nx = loggableId();
@@ -1273,7 +1273,7 @@ function wstartHTML() {
   if (n || m) return '<div class="wst"><span>' + (n ? 'Workout time' : 'Workout started') + '</span> <b id="wstt"></b><button class="wsr" id="wreset">Reset</button></div>';
   return '<button class="btn fin wsb" id="wstartb">Start workout (warm-ups count)</button>';
 }
-function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); }
+function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); if (!re) tipUpcoming(); }
 // Reset: stop the workout and clear only this workout's logged sets (after a warning).
 function openReset() { const n = workoutRows().length; $('rstt').textContent = 'This will stop the workout' + (n ? ' and clear the ' + n + (n === 1 ? ' set' : ' sets') + ' you logged in it' : '') + '. Nothing else changes.'; $('rstw').classList.add('open'); pushLayer('rst', () => $('rstw').classList.remove('open')); }
 const closeReset = () => { if (!$('rstw').classList.contains('open')) return; $('rstw').classList.remove('open'); popLayer('rst'); };
@@ -1903,7 +1903,6 @@ function openForm(i, ts, row) {
   formKey = !row && rowPrefill ? rowPrefill.key : null; rowPrefill = null;
   setPain(row ? (dayVal(ex, 'pain') || 'none') : 'none');
   $('sheet').classList.add('open'); sheetTop(); pushLayer('sheet', () => closeForm(true)); tick();
-  if (!row && !today.length && ffSel.value !== 'warm-up') tipShow(ex);
 }
 let formKey = null, formPain = 'none', formSug = null;
 function setPain(p) { formPain = p; document.querySelectorAll('#fp button').forEach(b => b.classList.toggle('on', b.dataset.p === p)); }
