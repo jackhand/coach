@@ -89,9 +89,9 @@ header h1{min-width:0;overflow:hidden;white-space:nowrap}header select{min-width
 .meso{border-collapse:separate;border-spacing:4px;margin:4px auto 0;font-size:13px}
 .meso th{color:var(--mut);font-weight:600}.meso td{width:38px;height:26px;background:var(--card2);border-radius:6px;text-align:center}
 .meso td.ok{background:var(--acc);color:#06210f}.meso td.cur{outline:2px solid var(--blue)}.meso td.miss{background:#3a2a1d}
-#menu,#hist,#tech,#repl,#calw,#wmw,#delw,#tswapw,#gdelw{position:fixed;inset:0;z-index:22;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
-#menu.open,#hist.open,#tech.open,#repl.open,#calw.open,#wmw.open,#delw.open,#tswapw.open,#gdelw.open{display:flex}
-#menu .in,#hist .in,#tech .in,#repl .in,#calw .in,#wmw .in,#delw .in,#tswapw .in,#gdelw .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
+#menu,#hist,#tech,#repl,#calw,#wmw,#delw,#tswapw,#gdelw,#tipw,#gchw,#gedw{position:fixed;inset:0;z-index:22;background:rgba(0,0,0,.6);display:none;align-items:flex-end}
+#menu.open,#hist.open,#tech.open,#repl.open,#calw.open,#wmw.open,#delw.open,#tswapw.open,#gdelw.open,#tipw.open,#gchw.open,#gedw.open,#msgw.open{display:flex}
+#menu .in,#hist .in,#tech .in,#repl .in,#calw .in,#wmw .in,#delw .in,#tswapw .in,#gdelw .in,#tipw .in,#gchw .in,#gedw .in{background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:85vh;overflow:auto}
 .hd{background:var(--card2);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:15px}
 .cbody{max-height:3000px;overflow:hidden;transition:max-height .28s ease,opacity .2s ease}
 main.collapsed .cbody{max-height:0;opacity:0}
@@ -167,7 +167,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
 .pdet{background:var(--card2);border-radius:10px;padding:10px 12px;margin:8px 0;font-size:14px}.plist{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;align-items:start}.pgrp{display:flex;flex-direction:column;gap:4px}.psub{font-size:12px;padding:5px 10px 5px 18px;color:var(--mut)}.prow{display:flex;justify-content:space-between;border:1px solid var(--line);background:var(--card2);color:inherit;border-radius:10px;padding:8px 10px;font-size:14px}.prow.psel{border-color:var(--acc)}
 details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:14px}details.wu summary{cursor:pointer;font-weight:600}details.wu ul{list-style:none;padding:0;margin:6px 0}details.wu li{padding:3px 0}.wuw{border:1px solid var(--line);background:var(--card);color:inherit;border-radius:8px;padding:3px 8px;font-size:14px}
 #pbt{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0 4px;border:1.5px solid var(--acc);color:var(--acc);font-weight:700}#pbt.on{background:var(--acc);color:#06210f}#pbx{background:var(--card2);border-radius:10px;padding:8px;margin:6px 0}.pbp{display:flex;gap:6px;flex-wrap:wrap}.pbp .wuw{min-width:44px;min-height:40px}.pbc{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.pchip{border:1px solid var(--acc);background:none;color:inherit;border-radius:14px;padding:4px 10px;font-size:14px}.pbrow{display:flex;gap:8px;align-items:center}.pbrow b{flex:1}
-#delw,#gdelw{z-index:40}#delw .in,#gdelw .in{position:relative}#delx,#gdelx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px}#delt{margin:8px 34px 14px 0;font-size:16px}#dely{background:#c62828;color:#fff;margin-bottom:8px}
+#delw,#gdelw,#gedw,#gchw{z-index:40}#gdelw{z-index:41}#tipw{z-index:35}#delw .in,#gdelw .in,#tipw .in,#gedw .in{position:relative}#delx,#gdelx,#tipx,#gedx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px}#delt{margin:8px 34px 14px 0;font-size:16px}#dely{background:#c62828;color:#fff;margin-bottom:8px}
 #wmenu{font-size:26px;font-weight:800;min-width:36px}.wmi small{display:block;font-size:13px;font-weight:600;color:var(--mut)}
 #holdbox .holdt{background:var(--card2);border-radius:12px;padding:10px;margin-top:8px;text-align:center}
 #holdbox .t{font-size:40px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--acc)}
@@ -179,6 +179,14 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
 .tripb .gl{flex:1 1 100%}.tripb.home{background:var(--card2);border-color:var(--line);border-left-color:#3d8fd1}.gseg{flex:1 1 100%}.gseg button.on{background:#163a55;border-color:#3d8fd1;color:#e6f2fc}.gymb{color:var(--mut);font-size:14px;margin:0 0 8px}
 .s2.trip{color:#8cc8f5}
 #stripbox{border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin:6px 0 10px}#stripbox .dr{display:flex;gap:8px}#stripbox .dr>div{flex:1;min-width:0}#stripbox .dr input{width:100%;min-width:0;box-sizing:border-box}
+.toast{padding-right:44px}.toast .tx{position:absolute;top:4px;right:6px;background:none;border:0;color:var(--mut);font-size:24px;line-height:1;padding:6px 8px}
+#msgw{position:fixed;inset:0;z-index:45;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center}#msgw .in{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 20px;margin:0 24px;font-size:18px;font-weight:700;text-align:center}#msgw p{margin:0}
+#tipb p{margin:6px 0;font-size:17px;line-height:1.4}
+details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}details.cn>summary::-webkit-details-marker{display:none}details.cn>summary::after{content:'▾';margin-left:auto;color:var(--mut)}details.cn:not([open])>summary::after{content:'▸'}details.cn:not([open]){padding-bottom:6px}
+.gymrow{display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap}.gymrow label{flex:1 1 140px;display:flex;flex-direction:column;font-size:13px;color:var(--mut);margin:0}.gymrow select,.gymrow input{margin-top:3px;min-height:40px;font-size:16px;width:100%;box-sizing:border-box}
+.gitem{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;margin:0 0 6px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card2);color:var(--txt);font-size:16px;text-align:left}.gitem .gic{font-size:22px}.gitem .gnm{flex:1}.gitem .gtag{font-size:12px;border:1px solid var(--line);border-radius:8px;padding:1px 6px;color:var(--mut)}.gitem .gtag.on{color:#8cc8f5;border-color:#3d8fd1}.gitem .ed{color:#8cc8f5;font-size:14px}
+.gicons{display:flex;flex-wrap:wrap;gap:6px}.gicons button{font-size:24px;width:48px;height:48px;border-radius:10px;border:1px solid var(--line);background:var(--card2)}.gicons button.on{border-color:#3d8fd1;background:#163a55}
+.card.dragging{position:relative;z-index:15;box-shadow:0 14px 34px rgba(0,0,0,.6),0 0 0 3px var(--acc);opacity:.96;transition:none!important}
 </style>
 </head>
 <body>
@@ -192,13 +200,10 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
   <label for="sbw">Body weight (lb), for dips and other bodyweight moves</label>
   <input id="sbw" inputmode="decimal" autocomplete="off" placeholder="e.g. 180">
   <div id="sbws" class="sub" style="margin:-4px 0 8px"></div>
-  <div id="stripbox" style="display:none"><label for="shn">Home gym (default)</label>
-  <input id="shn" maxlength="40" autocomplete="off" placeholder="e.g. Lifetime">
-  <label for="stn">Trip gym (this profile)</label>
-  <input id="stn" maxlength="40" autocomplete="off" placeholder="e.g. Hotel gym">
-  <div class="dr"><div><label for="sts">Start</label><input id="sts" type="date"></div><div><label for="ste">End</label><input id="ste" type="date"></div></div>
-  <div id="stinfo" class="sub"></div>
-  <button class="btn sec" id="strm" type="button" style="color:#e57373">Delete gym</button></div>
+  <div id="stripbox" style="display:none"><label>Gyms (this profile)</label>
+  <div id="glist"></div>
+  <button class="btn sec" id="gnew" type="button">Create gym</button>
+  <div class="sub">Pick the gym for each workout at the top of the day. The last gym you used is the default the next day.</div></div>
   <label class="tgl"><input type="checkbox" id="stest"> Test mode (practice logging on any day; nothing is saved)</label>
   <div id="smsg" class="sub"></div>
   <button class="btn" id="ssave">Save and connect</button>
@@ -272,6 +277,10 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
     <div class="seg" id="fd"><button type="button" data-d="0">0</button><button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button></div></div>
     <div id="fmini" style="display:none"><label>Myo-rep mini-sets</label>
     <div class="seg" id="fms"><button type="button" id="fmm" aria-label="One fewer mini-set">&minus;</button><button type="button" id="fmv" class="on" disabled>0</button><button type="button" id="fmp" aria-label="One more mini-set">+</button></div></div></div><div class="s2" id="fxhint" style="display:none"></div>
+    <div id="fmrmw" style="display:none"><button type="button" class="btn sec" id="fmrmb">Make this a myo-rep match</button>
+    <div id="fmrma"><label class="tgl"><input type="checkbox" id="fmrmc"> Set as myo-rep match</label>
+    <div id="fmrmn" style="display:none"><label>How many matching sets followed?</label><div class="seg"><button type="button" id="fmrmm" aria-label="Fewer">&minus;</button><button type="button" id="fmrmv" class="on" disabled>2</button><button type="button" id="fmrmp" aria-label="More">+</button></div>
+    <div class="s2">They are saved as matching sets with set 1's weight and reps. Edit any that differ.</div></div></div></div>
     <label for="ff">Failure type</label>
     <select id="ff"></select>
     </div>
@@ -297,7 +306,7 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
   <div class="seg" id="mpain"><button type="button" data-p="none">None</button><button type="button" data-p="mild">Mild</button><button type="button" data-p="moderate">Moderate</button><button type="button" data-p="severe">Severe</button></div>
   <div id="mmbox"><label>Set method</label>
   <div class="seg" id="mmscope"><button type="button" data-ms="workout">This workout</button><button type="button" data-ms="block">Rest of block</button></div>
-  <div class="seg" id="mmeth" style="margin-top:6px"><button type="button" data-mm="standard">Standard myo-reps</button><button type="button" data-mm="match">Myo-rep match</button></div></div>
+  <div class="seg" id="mmeth" style="margin-top:6px"><button type="button" data-mm="match">Myo-rep match</button></div><div class="s2">Tap to turn myo-rep match on or off. Off means normal sets.</div></div>
   <button class="btn sec" id="mdel" style="color:#e57373">Delete exercise</button>
   <button class="btn sec" id="mclose">Close</button>
 </div></div>
@@ -332,6 +341,14 @@ details.wu{background:var(--card2);border-radius:10px;padding:8px 10px;margin:6p
 <label for="tsi">Or type what they have</label><input id="tsi" maxlength="80" autocomplete="off" placeholder="e.g. Cybex chest press">
 <button type="button" class="btn" id="tsok">Use this</button><button type="button" class="btn sec" id="tsclr">Do the planned exercise</button><button type="button" class="btn sec" id="tsx">Close</button></div></div>
 <div id="gdelw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="gdelx" aria-label="Close">&times;</button><h3 id="gdelh">Delete gym?</h3><p>Are you sure? This removes the gym from your list. Sets you logged there are kept and still show the gym name in past workouts.</p><button type="button" class="btn" id="gdely" style="background:#e57373;color:#2a0b0b">Delete gym</button><button type="button" class="btn sec" id="gdeln">Cancel</button></div></div>
+<div id="msgw" role="dialog" aria-modal="true"><div class="in"><p id="msgt"></p></div></div>
+<div id="tipw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="tipx" aria-label="Close">&times;</button><h3 id="tiph"></h3><div id="tipb"></div><button type="button" class="btn" id="tipok">Got it</button></div></div>
+<div id="gchw" role="dialog" aria-modal="true"><div class="in"><h3>Change gym?</h3><p>Are you sure? This changes the gym for the entire day.</p><button type="button" class="btn" id="gchy">Change gym</button><button type="button" class="btn sec" id="gchn">Cancel</button></div></div>
+<div id="gedw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="gedx" aria-label="Close">&times;</button><h3 id="gedh">Gym</h3>
+<label for="gedn">Name</label><input id="gedn" maxlength="40" autocomplete="off" placeholder="e.g. Hotel gym">
+<label>Icon</label><div id="gedi" class="gicons"></div>
+<div id="gedhint" class="sub" style="margin:8px 0"></div>
+<button type="button" class="btn" id="geds">Save</button><button type="button" class="btn sec" id="gedd" style="color:#e57373">Delete gym</button><button type="button" class="btn sec" id="gedc">Cancel</button></div></div>
 <div class="toast" id="toast"></div>
 
 <div id="fatal" style="display:none;position:fixed;inset:0;z-index:99;background:#11141a;color:#eef1f5;padding:24px;font:17px system-ui,sans-serif"><h2 style="margin-top:40px">Coach hit a startup error</h2><p id="fatalmsg" style="color:#ffb3b5;word-break:break-word"></p><p style="color:#9aa4b2">Your logged sets are safe. Tap Reload to fetch a fresh copy of the app.</p><button id="fatalbtn" style="font:inherit;font-weight:700;min-height:56px;width:100%;border:0;border-radius:12px;background:#2ecc71;color:#06210f">Reload app</button></div>
@@ -353,8 +370,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=79"></script>
-<script src="exlist.js?v=79"></script>
-<script src="app.js?v=79"></script>
+<script src="parse.js?v=80"></script>
+<script src="exlist.js?v=80"></script>
+<script src="app.js?v=80"></script>
 </body>
 </html>

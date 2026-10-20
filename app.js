@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 79;
+const APP_VERSION = 80;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -23,7 +23,7 @@ const isStretch = ex => !!(ex && (ex.stretch || (ex.types || []).includes('stret
 const jget = (k, d) => { try { const v = JSON.parse(LS.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
 const jset = (k, v) => LS.setItem(k, JSON.stringify(v));
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
-function toast(m, ms) { const t = $('toast'); t.textContent = m; t.style.transform = ''; t.style.opacity = ''; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(hideToast, ms || 6000); }
+function toast(m, ms) { const t = $('toast'); t.innerHTML = '<span></span><button type="button" class="tx" aria-label="Close">&times;</button>'; t.firstChild.textContent = m; t.style.transform = ''; t.style.opacity = ''; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(hideToast, ms || 10000); }
 function hideToast() { const t = $('toast'); clearTimeout(t._h); t.style.display = 'none'; t.style.transform = ''; t.style.opacity = ''; }
 (function () { // swipe (any direction) or tap to dismiss
   const t = $('toast'); let x0 = null, y0 = null;
@@ -99,7 +99,7 @@ function enqueue(item) { if (item.action === 'log' && item.set && S) gymTag(item
 // or '[gym Lifetime | home]'. The deployed backend keeps notes, so no backend change is needed. The app strips the tag for display.
 function gymTag(set) {
   const c = tripView() && tripCfg(), ex = exFor(set.exercise), sub = c && ex ? tripSwapOf(ex) : '';
-  const name = c ? c.name : homeGym(); if (!name) return;
+  const name = c ? c.name : homeGym(); if (!name) return; if (getSetting('profile', 'gym_last') !== (c ? c.id : 'home')) putSetting('profile', 'gym_last', c ? c.id : 'home');
   set.gym = c ? 'trip:' + c.id + ' (' + c.name + ')' : name; set.sub = sub;
   set.notes = ((set.notes || '') + ' ' + gymTagTxt(name, c ? 'trip:' + c.id : 'home', sub)).trim();
 }
@@ -107,7 +107,7 @@ const gymTagTxt = (name, id, sub) => '[gym ' + String(name).replace(/[\[\]|]/g, 
 function keepTag(sid, f) { // an edit rewrites notes: put the set's gym tag back
   if (!Object.prototype.hasOwnProperty.call(f, 'notes')) return;
   const r = viewRows(true, true).find(x => x.set_id === sid);
-  if (r && r._gtag && !String(f.notes || '').includes(r._gtag)) f.notes = ((f.notes || '') + ' ' + r._gtag).trim();
+  if (r && r._gtag && !GYM_RE.test(String(f.notes || '')) && !String(f.notes || '').includes(r._gtag)) f.notes = ((f.notes || '') + ' ' + r._gtag).trim();
 }
 const NEW_ACTIONS = ['edit', 'finish', 'setting'];
 let flushing = false, warnedOld = false;
@@ -310,9 +310,9 @@ function techFor(ex) {
   const prefer = keys.includes('drop') && keys.includes('myo') && /\blast set\b[^.;]*\bmyo[- ]?reps?\b/i.test(t) && !/\blast set\b[^.;]*\b(?:drop|run(?:ning)? the rack)\b/i.test(t) && !/\b(?:drop|rack)\b[^.;]*\bor\b[^.;]*\bmyo|\bmyo[^.;]*\bor\b[^.;]*\b(?:drop|rack)\b/i.test(t) ? 'myo' : 'drop';
   return { keys, all: !/\blast set\b/i.test(t), prefer };
 }
-// One set method at a time: MRM on every set after the opener; MR only on the last set (like a finisher); DROP per program text.
+// One set method at a time: MRM on every set after the opener; MR and DROP only on the last set (never both).
 function tqShow(tq, i, n) {
-  let ks = tq.keys.filter(k => k === 'match' ? i >= 1 : k === 'myo' ? i === n - 1 : (tq.all || i === n - 1));
+  let ks = tq.keys.filter(k => k === 'match' ? i >= 1 : i === n - 1); // v80: drop sets and standard myo-reps only on the last set
   if (ks.includes('drop') && ks.includes('myo')) ks = ks.filter(k => k !== (tq.prefer === 'myo' ? 'drop' : 'myo')); // never DROP + MR on one set
   return ks;
 }
@@ -342,29 +342,39 @@ function putSetting(scope, key, value) {
   if (testOn()) { const l = localSet(); (l[scope] = l[scope] || {})[key] = value; jset(SK(), l); return; }
   enqueue({ action: 'setting', scope, key, value });
 }
-// ---------- Trip gym (v78) ----------
-// Settings profile.trip_gym = {"id","name","start","end"} ('none' = removed). profile.gym_day:<workout id, e.g. W3-monday> = the gym picked for that day ('home' or the trip gym id).
-// Sets logged on a trip day carry gym 'trip:<id> (<name>)' and sub (the movement actually done); exercise stays the planned one.
-// Trip sets stay out of home suggestions, settled weight, e1RM, arrows and history; they still count in Weekly sets.
-// No auto-expiry (removed in v79). Delete gym in Settings removes a gym from the list only; logged sets are never deleted.
-const TRIP_DEFAULT = { jack: { id: 'hotel1', name: 'Hotel gym', start: '2026-10-26', end: '2026-10-30' } };
-// Home gym name: profile.home_gym, default Lifetime for Jack (existing rows were backfilled with it).
+// ---------- Gyms (v80) ----------
+// profile.gyms = [{"id","name","icon"}]; id 'home' is the home gym (Lifetime for Jack). Other gyms work like the v78 trip gym:
+// their sets carry '[gym <name> | trip:<id> ...]', stay out of home suggestions and history, and get a Trip swap per exercise.
+// No dates: the day's gym is profile.gym_day:<workout id>, else the last used gym (profile.gym_last), else home.
+// Delete gym removes it from the list only (names kept in profile.gym_names); logged sets are never deleted. No auto-expiry.
+const TRIP_DEFAULT = { jack: { id: 'hotel1', name: 'Hotel gym' } };
 const HOME_DEFAULT = { jack: 'Lifetime' };
-const homeGym = () => (S && getSetting('profile', 'home_gym')) || HOME_DEFAULT[P] || '';
-function tripCfg() {
-  const v = getSetting('profile', 'trip_gym');
-  if (v === 'none') return null;
-  if (v) { try { const o = JSON.parse(v); if (o && o.id && o.start && o.end) return o; } catch (e) {} }
-  return TRIP_DEFAULT[P] || null;
+const GYM_ICONS = ['🏋️', '🏠', '🏨', '💪', '🏢', '🏫', '🌴', '✈️'];
+function gymList() {
+  let v = null; try { v = JSON.parse(getSetting('profile', 'gyms') || 'null'); } catch (e) {}
+  if (Array.isArray(v) && v.length) return v.filter(g => g && g.id && g.name);
+  const out = [], hn = (S && getSetting('profile', 'home_gym')) || HOME_DEFAULT[P];
+  if (hn) out.push({ id: 'home', name: hn, icon: '🏋️' });
+  const t = S && getSetting('profile', 'trip_gym'); let tg = null;
+  if (t && t !== 'none') { try { tg = JSON.parse(t); } catch (e) {} } else if (!t) tg = TRIP_DEFAULT[P] || null;
+  if (tg && tg.id) out.push({ id: tg.id, name: tg.name, icon: '🏨' });
+  return out;
 }
-// Per-day gym picker: profile.gym_day:<workout id, e.g. W3-monday> = 'home' or the trip gym id. Default: trip gym inside its dates, home gym otherwise.
-function gymPick() { const c = tripCfg(); if (!c || !S) return 'home'; const v = getSetting('profile', 'gym_day:' + todayWid()); if (v === 'home' || v === c.id) return v; return S.today >= c.start && S.today <= c.end ? c.id : 'home'; }
-function tripToday() { const c = tripCfg(); return !!(c && gymPick() === c.id); }
-const tripInRange = () => { const c = tripCfg(); return !!(c && S && S.today >= c.start && S.today <= c.end); };
+function saveGyms(list) { putSetting('profile', 'gyms', JSON.stringify(list)); const h = list.find(g => g.id === 'home'); if (h) putSetting('profile', 'home_gym', h.name); const nm = gymNames(); list.forEach(g => nm[g.id] = g.name); putSetting('profile', 'gym_names', JSON.stringify(nm)); }
+const gymById = id => gymList().find(g => g.id === id) || null;
+const homeGym = () => { const h = gymById('home'); return h ? h.name : ((S && getSetting('profile', 'home_gym')) || HOME_DEFAULT[P] || ''); };
+function gymPick() {
+  if (!S) return 'home';
+  const v = getSetting('profile', 'gym_day:' + todayWid()); if (v && gymById(v)) return v;
+  const l = getSetting('profile', 'gym_last'); if (l && gymById(l)) return l;
+  return 'home';
+}
+function tripCfg() { const g = gymById(gymPick()); return g && g.id !== 'home' ? g : null; } // the non-home gym picked for today, if any
+function tripToday() { return !!tripCfg(); }
 const TRIP_RE = /\s*\[trip ([^\]\s]+)(?: did ([^\]]+))?\]/; // v78 tag (id only)
 const GYM_RE = /\s*\[gym ([^|\]]+?) \| (home|trip:[^|\]\s]+)(?: \| did ([^\]]+))?\]/;
 // Gym names by id, kept even after a gym is deleted (profile.gym_names), so old tags still resolve to a name.
-function gymNames() { let m = {}; try { m = JSON.parse(getSetting('profile', 'gym_names') || '{}') || {}; } catch (e) {} const c = tripCfg(); if (c) m[c.id] = c.name; const d = TRIP_DEFAULT[P]; if (d && !m[d.id]) m[d.id] = d.name; return m; }
+function gymNames() { let m = {}; try { m = JSON.parse(getSetting('profile', 'gym_names') || '{}') || {}; } catch (e) {} let gl = []; try { gl = JSON.parse(getSetting('profile', 'gyms') || '[]') || []; } catch (e) {} gl.forEach(g => { if (g && g.id) m[g.id] = g.name; }); const d = TRIP_DEFAULT[P]; if (d && !m[d.id]) m[d.id] = d.name; return m; }
 function gymParse(r) { // adds gym_id ('home' or trip id), gym_name, sub, _gtag; strips the tag from notes for display
   if (!r || r._gp) return r;
   const n = String(r.notes || ''); let m = n.match(GYM_RE), o = null;
@@ -413,13 +423,13 @@ function tripAlts(ex) {
   if (/leg curl/.test(n)) out = TRIP_ALTS.find(x => String(x[0]) === String(/leg curl/))[1];
   return out.filter(x => P_.norm(x) !== P_.norm(ex.canonical));
 }
-function tripBanner() {
-  const c = tripCfg(), h = homeGym() || 'Home gym';
-  if (!c) return h && homeGym() ? '<div class="gymb">Gym: ' + esc(h) + '</div>' : '';
-  if (viewId !== todayWid() && !tripView()) return '<div class="gymb">Gym: ' + esc(h) + '</div>';
-  const pk = gymPick(), on = pk === c.id;
-  return '<div class="tripb' + (on ? '' : ' home') + '"><div class="gl">' + (on ? 'Trip gym: <b>' + esc(c.name) + '</b> (' + esc(fmtD(c.start)) + ' to ' + esc(fmtD(c.end)) + ')' : 'Gym today: <b>' + esc(h) + '</b>') + '</div>' +
-    '<div class="seg gseg"><button type="button" data-gp="home" class="' + (on ? '' : 'on') + '">' + esc(h) + '</button><button type="button" data-gp="' + esc(c.id) + '" class="' + (on ? 'on' : '') + '">' + esc(c.name) + '</button></div></div>';
+function tripBanner() { // v80: gym (and the day's goal) at the top of today's workout; editable before and during the workout
+  const gl = gymList(); if (!gl.length || !S) return '';
+  const cur = gymById(gymPick()) || gl[0], today = viewId === todayWid() || testOn();
+  if (!today) { const r = viewRows(true, true).find(x => x.workout === viewId); return r ? '<div class="gymb">Gym: ' + esc(r.gym_name) + '</div>' : ''; }
+  const goal = getSetting('profile', 'goal:' + viewId) || '';
+  return '<div class="gymrow"><label>Gym <select id="gymsel">' + gl.map(g => '<option value="' + esc(g.id) + '"' + (g.id === cur.id ? ' selected' : '') + '>' + esc((g.icon ? g.icon + ' ' : '') + g.name) + '</option>').join('') + '</select></label>' +
+    '<label>Goal <input id="goalin" maxlength="80" placeholder="e.g. 250 x 3 on bench" value="' + esc(goal) + '"></label></div>';
 }
 const fmtD = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 function tripCardHTML(ex, i) {
@@ -802,12 +812,14 @@ function startDrag(main, card, y, pointerId, h) {
   card.classList.add('dragging'); document.body.classList.add('dragmode');
   if (h && pointerId != null) { try { h.setPointerCapture(pointerId); } catch (x) {} }
   if (navigator.vibrate) { try { navigator.vibrate(30); } catch (x) {} }
-  anchor(card, y - card.getBoundingClientRect().top, () => drag ? drag.lastY : y);
+  drag.grab = Math.min(30, Math.max(8, y - card.getBoundingClientRect().top));
   main.classList.add('collapsed');
+  drag.grab0 = Math.min(30, Math.max(8, y - card.getBoundingClientRect().top)); dragFollow();
   drag.auto = setInterval(() => {
     if (!drag) return;
     const dy = drag.lastY < 110 ? -14 : drag.lastY > innerHeight - 230 ? 14 : 0;
     if (dy) { window.scrollBy(0, dy); dragSwap(); }
+    dragFollow(); // keeps the card under the finger while the other cards collapse
   }, 30);
 }
 function dragSwap() {
@@ -818,11 +830,15 @@ function dragSwap() {
     if (lastY > mid && cards.indexOf(c) > cards.indexOf(card)) { c.after(card); return; }
   }
 }
-function dragMove(y, e) { if (!drag) return; if (e && e.cancelable) e.preventDefault(); drag.lastY = y; dragSwap(); }
+function dragMove(y, e) { if (!drag) return; if (e && e.cancelable) e.preventDefault(); drag.lastY = y; dragSwap(); dragFollow(); }
+function dragFollow() { // v80: the lifted card sits under the finger; slots change underneath it
+  if (!drag) return; const c = drag.card; c.style.transform = 'none'; const top = c.getBoundingClientRect().top;
+  c.style.transform = 'translateY(' + Math.round(drag.lastY - drag.grab - top) + 'px) scale(1.03)';
+}
 function endDrag() {
   if (!drag) return;
   const { main, card, auto } = drag; clearInterval(auto);
-  card.classList.remove('dragging'); document.body.classList.remove('dragmode');
+  card.style.transform = ''; card.classList.remove('dragging'); document.body.classList.remove('dragmode');
   const top = Math.max(90, card.getBoundingClientRect().top);
   drag = null;
   anchor(card, 0, () => top); main.classList.remove('collapsed');
@@ -891,16 +907,30 @@ let mmScope = 'workout';
 document.querySelectorAll('#mmscope button').forEach(b => b.onclick = () => { mmScope = b.dataset.ms; setSeg('mmscope', 'ms', mmScope); });
 document.querySelectorAll('#mmeth button').forEach(b => b.onclick = () => {
   try {
-    const ex = menuEx, sl = ex.base ? ex.base.canonical : ex.canonical, v = b.dataset.mm, blk = blockOf(viewWeek());
+    const ex = menuEx, sl = ex.base ? ex.base.canonical : ex.canonical, v = methodOf(ex) === 'match' ? 'standard' : 'match', blk = blockOf(viewWeek()); // v80: one toggle, normal sets or myo-rep match
     if (mmScope === 'block') { putSetting(sl, 'bmethod:B' + blk, JSON.stringify({ v, from: viewId })); if (getSetting(sl, 'method:' + viewId)) putSetting(sl, 'method:' + viewId, ''); }
     else putSetting(sl, 'method:' + viewId, v);
     setSeg('mmeth', 'mm', v); sig = ''; applyState(S, false);
-    toast((v === 'match' ? 'Myo-rep match' : 'Standard myo-reps') + (mmScope === 'block' ? ' for the rest of Block ' + blk : ' for this workout'));
+    toast((v === 'match' ? 'Myo-rep match on' : 'Myo-rep match off, normal sets') + (mmScope === 'block' ? ' for the rest of Block ' + blk : ' for this workout'));
   } catch (e) { toast('Could not set the method: ' + (e && e.message || e)); }
 });
 $('mdel').onclick = () => { const ex = menuEx; closeMenu(true); if (ex) delExercise(ex); };
 $('mtrip').onclick = () => { const ex = menuEx; closeMenu(); openTripSwap(ex); };
-function pickGym(id) { if (gymPick() === id) return; putSetting('profile', 'gym_day:' + todayWid(), id); sig = ''; applyState(S, false); const c = tripCfg(); toast('Gym today: ' + (id === 'home' ? (homeGym() || 'home gym') : c.name)); }
+function pickGym(id, sure) {
+  if (gymPick() === id) return;
+  const started = workoutRows().length || manualStart();
+  if (started && !sure) { gymAsk = id; $('gchw').classList.add('open'); pushLayer('gch', () => { $('gchw').classList.remove('open'); render(); }); return; }
+  putSetting('profile', 'gym_day:' + todayWid(), id); putSetting('profile', 'gym_last', id);
+  if (started) retagDay(id);
+  sig = ''; applyState(S, false); const g = gymById(id); toast('Gym today: ' + (g ? g.name : 'home gym'), 4000);
+}
+let gymAsk = null;
+function retagDay(id) { // the whole day moves to the new gym: rewrite the gym tag on today's logged sets
+  const g = gymById(id); if (!g) return;
+  workoutRows().forEach(r => { const base = String(r.notes || '').replace(GYM_RE, '').replace(TRIP_RE, '').trim(); const nt = (base + ' ' + gymTagTxt(g.name, id === 'home' ? 'home' : 'trip:' + id, id === 'home' ? '' : r.sub)).trim(); const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === r.set_id); if (pi >= 0) { q[pi].set.notes = nt; q[pi].set.gym = id === 'home' ? g.name : 'trip:' + id + ' (' + g.name + ')'; setQ(q); } else enqueue({ action: 'edit', set_id: r.set_id, fields: { notes: nt } }); });
+}
+$('gchy').onclick = () => { const id = gymAsk; gymAsk = null; $('gchw').classList.remove('open'); popLayer('gch'); if (id) pickGym(id, true); };
+$('gchn').onclick = () => { gymAsk = null; $('gchw').classList.remove('open'); popLayer('gch'); render(); };
 $('tswapw').addEventListener('click', e => { if (e.target.id === 'tswapw') { $('tswapw').classList.remove('open'); popLayer('tswap'); return; } const b = e.target.closest('[data-tsv]'); if (b) setTripSwap(b.dataset.tsv); });
 $('tsok').onclick = () => { const v = $('tsi').value.trim(); if (!v) { $('tsi').focus(); return; } setTripSwap(v.slice(0, 80)); };
 $('tsclr').onclick = () => setTripSwap('');
@@ -1141,6 +1171,33 @@ function btnLabel(ex) {
   if (ex.single && t && t.firstSide && P_.norm(t.exercise) === P_.norm(ex.canonical)) return isStretch(ex) ? 'Second side done: log hold' : 'Second side done: log set';
   return ex.single ? (isStretch(ex) ? 'First side done' : 'First side done') : (isStretch(ex) ? 'Hold done' : 'Set done');
 }
+const cnClosed = () => jget('coach_cn_closed', []);
+function gymBind(main) {
+  const sel = main.querySelector('#gymsel'); if (sel) sel.onchange = () => pickGym(sel.value);
+  const gi = main.querySelector('#goalin'); if (gi) gi.onchange = () => { putSetting('profile', 'goal:' + viewId, gi.value.trim()); toast('Goal saved', 2500); };
+}
+// Message-only pop-up (tap anywhere to close).
+function msgPop(m) { $('msgt').textContent = m; $('msgw').classList.add('open'); pushLayer('msg', () => $('msgw').classList.remove('open')); }
+$('msgw').onclick = () => { $('msgw').classList.remove('open'); popLayer('msg'); };
+// 14) Coach tips pop up right before their exercise: when it becomes the next exercise, or when its first set is opened. Once per workout.
+const sentence = t => { t = String(t || '').trim(); if (!t) return ''; t = t[0].toUpperCase() + t.slice(1); return /[.!?]$/.test(t) ? t : t + '.'; };
+function tipsFor(ex) { const n = ex.note || {}; return (ex.cue ? [ex.cue] : []).concat(n.extra || []).map(sentence).filter(Boolean); }
+function tipShow(ex) {
+  if (!ex || !canLog()) return false;
+  const k = 'coach_tips_' + P + '_' + viewId, seen = jget(k, []); if (seen.includes(ex.canonical)) return false;
+  const tips = tipsFor(ex); if (!tips.length) return false;
+  seen.push(ex.canonical); jset(k, seen);
+  $('tiph').textContent = 'Coach tip: ' + ex.canonical; $('tipb').innerHTML = tips.map(t => '<p>' + esc(t) + '</p>').join('');
+  $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); return true;
+}
+const tipClose = () => { $('tipw').classList.remove('open'); popLayer('tip'); };
+$('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw') tipClose(); });
+function tipNext(ex) { // the set just saved finished this exercise: show the next exercise's tips
+  const list = cardsFor(), i = list.findIndex(x => x.canonical === ex.canonical);
+  if (i < 0 || rowsFor(ex, true).length < plannedCount(ex)) return;
+  const nx = list.slice(i + 1).concat(list.slice(0, i)).find(x => rowsFor(x, true).length < plannedCount(x));
+  if (nx) setTimeout(() => tipShow(nx), 600);
+}
 function render() {
   const main = $('main'), d = days[dayKey];
   const nx = loggableId();
@@ -1150,7 +1207,7 @@ function render() {
     const ws = wStatus()[viewId];
     main.innerHTML = tripBanner() + '<div id="meso">' + mesoHTML() + '</div><div class="empty"><b>Unplanned</b><br>' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet. Ask Coach to write it.' : 'No program file found for this profile yet. Ask Coach to write one.') + '</div>' +
       (!ws && canLog() ? '<button class="btn sec" id="uskip">Skip this workout</button>' : '');
-    main.onclick = e => { const gp = e.target.closest('[data-gp]'); if (gp) return pickGym(gp.dataset.gp); if (e.target.closest('#uskip')) skipWorkout(); };
+    gymBind(main); main.onclick = e => { if (e.target.closest('#uskip')) skipWorkout(); };
     return;
   }
   $('sub').textContent = subWeek() + ' - ' + titleCase(d.title);
@@ -1163,7 +1220,7 @@ function render() {
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
-      '<div class="note"><b>Coach (default):</b><div class="chips">' + chips + '</div>' + extra + '</div>' + weekBoxHTML(weekNotesFor(ex)) +
+      '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnClosed().includes(ex.canonical) ? '' : ' open') + '><summary><b>Coach (default)</b></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML(weekNotesFor(ex)) +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + ')' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
       tripCardHTML(ex, i) + warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
@@ -1174,10 +1231,11 @@ function render() {
   main.querySelectorAll('[data-su]').forEach(el => el.onclick = () => editSetup(+el.dataset.su));
   main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
   enableDrag(main);
+  main.querySelectorAll('details.cn').forEach(d => d.addEventListener('toggle', () => { const l = cnClosed().filter(x => x !== d.dataset.cn); if (!d.open) l.push(d.dataset.cn); jset('coach_cn_closed', l); }));
+  gymBind(main);
   main.onclick = e => {
     const plb = e.target.closest('[data-pl]'); if (plb) { const d = plb.parentElement.querySelector('.wup'); if (d) d.hidden = !d.hidden; return; }
-    if (e.target.closest('details.wu')) return;
-    const gp = e.target.closest('[data-gp]'); if (gp) { pickGym(gp.dataset.gp); return; }
+    if (e.target.closest('details.wu') || e.target.closest('details.cn > summary') || e.target.closest('.gymrow')) return;
     const tsb = e.target.closest('[data-ts]'); if (tsb) { openTripSwap(cardsFor()[+tsb.dataset.ts]); return; }
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
     if (e.target.closest('#wstartb')) { startWorkout(false); return; }
@@ -1199,7 +1257,7 @@ function renderFinish() {
   const w = $('finwrap'); if (!w || !S) return;
   const ws = wStatus()[viewId], f = ws && ws.state === 'done' ? ws.at : null;
   const h = ws && ws.state === 'skipped' ? '' : !f && !canLog() ? '' : f ? '<div class="done">Workout finished' + (f === 'pending' ? ' (syncing)' : ' at ' + new Date(f).toLocaleTimeString('en-US', { timeZone: NY, hour: 'numeric', minute: '2-digit' })) + '. Coach will send your recap.</div>'
-    : '<button class="btn fin" id="finish">Finish workout</button>';
+    : !(workoutRows().length || manualStart()) ? '' : '<button class="btn fin" id="finish">Finish workout</button>';
   const full = '<div id="wdur" class="wdur"></div>' + h;
   if (w.innerHTML.replace(/<div id="wdur"[^>]*>[^<]*<\/div>/, '<div id="wdur" class="wdur"></div>') !== full) { w.innerHTML = full; const b = $('finish'); if (b) b.onclick = finishWorkout; }
   tickDur();
@@ -1213,7 +1271,7 @@ function wstartHTML() {
   const ws = wStatus()[viewId]; if (ws || !canLog() || !days[dayKey]) return '';
   const n = workoutRows().length, m = manualStart();
   if (n || m) return '<div class="wst"><span>' + (n ? 'Workout time' : 'Workout started') + '</span> <b id="wstt"></b><button class="wsr" id="wreset">Reset</button></div>';
-  return '<button class="btn sec wsb" id="wstartb">Start workout (warm-ups count)</button>';
+  return '<button class="btn fin wsb" id="wstartb">Start workout (warm-ups count)</button>';
 }
 function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); }
 // Reset: stop the workout and clear only this workout's logged sets (after a warning).
@@ -1512,9 +1570,7 @@ function showSettings(msg) {
   if (S) pushLayer('settings', () => hideSettings(true));
   $('app').style.display = 'none'; $('settings').style.display = 'block'; $('timer').style.display = 'none';
   $('su').value = U; $('sk').value = K; $('stest').checked = testOn(); $('smsg').textContent = msg || '';
-  const tc = S ? tripCfg() : null; $('stripbox').style.display = S ? 'block' : 'none'; $('shn').value = S ? homeGym() : '';
-  $('strm').style.display = tc ? 'block' : 'none'; $('stn').value = tc ? tc.name : ''; $('sts').value = tc ? tc.start : ''; $('ste').value = tc ? tc.end : '';
-  $('stinfo').textContent = tc ? 'Inside these dates the workout day defaults to ' + tc.name + ' (pick the gym on the day to change it): sets are tagged to it, each exercise gets a Trip swap, and they stay out of home gym history. Deleting a gym only removes it from this list; its logged sets are kept and still show its name.' : 'No trip gym set.';
+  $('stripbox').style.display = S ? 'block' : 'none'; if (S) gymsRender();
   $('sbw').value = S ? (bodyweight() || '') : ''; $('sbws').textContent = S ? bwSrcText() + '. A newer MyFitnessPal weigh-in replaces an edit only if it is dated after the edit.' : '';
 }
 $('gear').onclick = () => showSettings();
@@ -1531,23 +1587,43 @@ $('ssave').onclick = async () => {
   if (!/^https:\/\//.test(U) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(U)) { $('smsg').textContent = 'The URL should start with https://'; return; }
   LS.setItem('coach_u', U); LS.setItem('coach_k', K); $('smsg').textContent = 'Testing...';
   const bw = parseFloat($('sbw').value);
-  const tn = $('stn').value.trim().slice(0, 40), tsd = $('sts').value, ted = $('ste').value, tc0 = S ? tripCfg() : null;
-  if (S && tn && !(tsd && ted && tsd <= ted)) { $('smsg').textContent = 'Trip gym: pick a start date on or before the end date.'; return; }
   try {
     const st = await apiGet(); if (!st.ok) { $('smsg').textContent = 'Backend said: ' + st.error; return; }
     jset('coach_cache_' + P, st); sig = ''; S = null; firstRender = true; popLayer('settings'); applyState(st, true);
     if (bw > 0 && bw !== bodyweight()) { putSetting('profile', 'bodyweight', String(bw)); putSetting('profile', 'bodyweight_src', 'manual'); putSetting('profile', 'bodyweight_date', S.today || new Date().toISOString().slice(0, 10)); }
-    const hn = $('shn').value.trim().slice(0, 40); if (hn && hn !== homeGym()) putSetting('profile', 'home_gym', hn);
-    if (tn && (!tc0 || tc0.name !== tn || tc0.start !== tsd || tc0.end !== ted)) putSetting('profile', 'trip_gym', JSON.stringify({ id: tc0 ? tc0.id : 't' + Date.now().toString(36), name: tn, start: tsd, end: ted }));
     sig = ''; applyState(S, false); toast('Connected'); flush();
   }
   catch (e) { $('smsg').textContent = 'Could not reach it: ' + e.message; }
 };
 $('scancel').onclick = () => hideSettings();
-$('strm').onclick = () => { const c = S && tripCfg(); if (!c) return; $('gdelh').textContent = 'Delete ' + c.name + '?'; $('gdelw').classList.add('open'); pushLayer('gdel', () => $('gdelw').classList.remove('open')); };
+// Gyms list (Settings): tap a gym to edit its name and icon or delete it; Create adds one.
+let gEdit = null, gIcon = '';
+function gymsRender() {
+  const gl = gymList(), pk = gymPick();
+  $('glist').innerHTML = gl.map(g => '<button type="button" class="gitem" data-gid="' + esc(g.id) + '"><span class="gic">' + esc(g.icon || '🏋️') + '</span><span class="gnm">' + esc(g.name) + '</span>' + (g.id === 'home' ? '<span class="gtag">Home</span>' : '') + (g.id === pk ? '<span class="gtag on">Today</span>' : '') + '<span class="ed">edit</span></button>').join('') || '<div class="sub">No gyms yet.</div>';
+}
+$('glist').onclick = e => { const b = e.target.closest('[data-gid]'); if (b) openGym(b.dataset.gid); };
+$('gnew').onclick = () => openGym(null);
+function openGym(id) {
+  const g = id ? gymById(id) : null; gEdit = id; gIcon = g ? (g.icon || GYM_ICONS[0]) : GYM_ICONS[0];
+  $('gedh').textContent = g ? 'Edit gym' : 'Create gym'; $('gedn').value = g ? g.name : '';
+  $('gedi').innerHTML = GYM_ICONS.map(ic => '<button type="button" data-ic="' + ic + '" class="' + (ic === gIcon ? 'on' : '') + '">' + ic + '</button>').join('');
+  $('gedd').style.display = g && id !== 'home' ? 'block' : 'none';
+  $('gedhint').textContent = id === 'home' ? 'This is your home gym. It can be renamed but not deleted.' : g ? 'Deleting a gym only removes it from this list. Sets logged there are kept.' : '';
+  $('gedw').classList.add('open'); pushLayer('ged', () => $('gedw').classList.remove('open'));
+}
+const gedClose = () => { $('gedw').classList.remove('open'); popLayer('ged'); };
+$('gedi').onclick = e => { const b = e.target.closest('[data-ic]'); if (!b) return; gIcon = b.dataset.ic; $('gedi').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
+$('gedx').onclick = gedClose; $('gedc').onclick = gedClose;
+$('geds').onclick = () => {
+  const n = $('gedn').value.trim().replace(/[\[\]|]/g, '').slice(0, 40); if (!n) { $('gedn').focus(); return; }
+  const gl = gymList(); if (gEdit) { const g = gl.find(x => x.id === gEdit); if (g) { g.name = n; g.icon = gIcon; } } else gl.push({ id: (gl.some(g => g.id === 'home') ? 'g' + Date.now().toString(36) : 'home'), name: n, icon: gIcon });
+  saveGyms(gl); gedClose(); gymsRender(); sig = ''; toast(gEdit ? 'Gym saved' : n + ' created', 3000);
+};
+$('gedd').onclick = () => { const g = gymById(gEdit); if (!g) return; $('gdelh').textContent = 'Delete ' + g.name + '?'; $('gdelw').classList.add('open'); pushLayer('gdel', () => $('gdelw').classList.remove('open')); };
 const gdelClose = () => { $('gdelw').classList.remove('open'); popLayer('gdel'); };
 $('gdeln').onclick = gdelClose; $('gdelx').onclick = gdelClose;
-$('gdely').onclick = () => { const c = tripCfg(); gdelClose(); if (!c) return; const nm = gymNames(); nm[c.id] = c.name; putSetting('profile', 'gym_names', JSON.stringify(nm)); putSetting('profile', 'trip_gym', 'none'); $('stn').value = ''; $('sts').value = ''; $('ste').value = ''; $('stinfo').textContent = 'No trip gym set.'; sig = ''; toast(c.name + ' deleted. Its logged sets are kept.'); };
+$('gdely').onclick = () => { const g = gymById(gEdit); gdelClose(); if (!g || g.id === 'home') return; const nm = gymNames(); nm[g.id] = g.name; putSetting('profile', 'gym_names', JSON.stringify(nm)); saveGyms(gymList().filter(x => x.id !== g.id)); if (getSetting('profile', 'gym_last') === g.id) putSetting('profile', 'gym_last', 'home'); gedClose(); gymsRender(); sig = ''; toast(g.name + ' deleted. Its logged sets are kept.'); };
 
 // ---------- Rest timer ----------
 // Target depends on what comes next: same muscle = that exercise's normal rest, different muscle = 75 s.
@@ -1670,7 +1746,21 @@ function setMini(n, keep) { minis = Math.max(0, Math.min(20, n | 0)); $('fmv').t
 // Last set: myo-reps (mini-sets) or a drop set, never both. Picking one clears the other.
 function exclUI() { const both = $('fmini').style.display !== 'none' && $('fdwrap').style.display !== 'none'; $('fxhint').style.display = both ? 'block' : 'none'; $('fdwrap').classList.toggle('dim', both && minis > 0); $('fmini').classList.toggle('dim', both && drops > 0); $('fxhint').textContent = !both ? '' : minis > 0 ? 'Myo-reps on. Tap a drop count to switch to a drop set.' : drops > 0 ? 'Drop set on. Tap + to switch to myo-reps.' : 'Pick one: drop sets or myo-rep mini-sets.'; }
 function setKeys(ex, i, n) { const tq = ex ? techFor(ex) : null; return tq ? tqShow(tq, i, n) : []; }
-function miniUI() { const ex = formEx, n = ex ? Math.max(plannedCount(ex), rowsFor(ex, true).length + (editId ? 0 : 1)) : 0; const last = formSetIdx >= n - 1; const on = !!ex && !isStretch(ex) && (ffSel.value === 'myo-reps' || minis > 0 || (last && methodOf(ex) !== 'match') || setKeys(ex, formSetIdx, plannedCount(ex)).some(k => k === 'myo' || k === 'match')); $('fmini').style.display = on ? '' : 'none'; exclUI(); }
+function formLast() { const ex = formEx; if (!ex) return false; const n = Math.max(plannedCount(ex), rowsFor(ex, true).length + (editId ? 0 : 1)); return formSetIdx >= n - 1; }
+function miniUI() { const ex = formEx, last = formLast(), mrm = !!ex && methodOf(ex) === 'match'; const on = !!ex && !isStretch(ex) && (minis > 0 || (mrm ? formSetIdx >= 1 : last)); $('fmini').style.display = on ? '' : 'none'; const dOn = !!ex && !isStretch(ex) && !mrm && (last || drops > 0); $('fdwrap').style.display = dOn ? '' : 'none'; if (!dOn && drops) setDrops(0, true); exclUI(); mrmUI(); }
+// v80: myo-rep match offers. Programmed exercise: 'Make this a myo-rep match' on set 1 only while nothing is logged for it today.
+// Added (non-programmed) exercise: 'Set as myo-rep match' on set 1, then how many matching sets followed; they are filled in on save.
+let mrmAdd = false, mrmN = 2;
+$('fmrmb').onclick = () => { const ex = formEx; if (!ex) return; const sl = ex.base ? ex.base.canonical : ex.canonical; putSetting(sl, 'method:' + viewId, 'match'); sig = ''; toast('Myo-rep match on. Set 1 is a normal set; later sets match its reps.', 5000); miniUI(); };
+$('fmrmc').onchange = e => { mrmAdd = e.target.checked; mrmUI(); };
+$('fmrmm').onclick = () => { mrmN = Math.max(1, mrmN - 1); mrmUI(); }; $('fmrmp').onclick = () => { mrmN = Math.min(6, mrmN + 1); mrmUI(); };
+function mrmUI() {
+  const ex = formEx, w = $('fmrmw'); if (!w) return;
+  const can = !!ex && !editId && !isStretch(ex) && warmNext == null && ffSel.value !== 'warm-up' && formSetIdx === 0 && !rowsFor(ex, true).length && methodOf(ex) !== 'match' && canLog();
+  w.style.display = can ? '' : 'none'; if (!can) { mrmAdd = false; return; }
+  $('fmrmb').style.display = ex.added ? 'none' : ''; $('fmrma').style.display = ex.added ? '' : 'none';
+  $('fmrmc').checked = mrmAdd; $('fmrmn').style.display = mrmAdd ? '' : 'none'; $('fmrmv').textContent = String(mrmN);
+}
 function setDrops(n, keep) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); if (n && !keep && minis) setMini(0, true); if (n && ffSel.value === 'myo-reps' && !keep) ffSel.value = FT_OPTS.includes('true') ? 'true' : ffSel.value; exclUI(); }
 document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
 $('fmm').onclick = () => setMini(minis - 1); $('fmp').onclick = () => setMini(minis + 1);
@@ -1693,7 +1783,7 @@ function logRow(name, idx, li) {
   setDone(i);
 }
 function setDone(i) {
-  if (!canLog()) return toast('Next up is ' + wLabel(loggableId()) + '. Finish or skip it first.');
+  if (!canLog()) return msgPop('Skip the previous workout first.');
   audio(); // unlock audio on a user tap (needed on iPhone and Chrome)
   const ex = cardsFor()[i], now = Date.now(), t = getT();
   const same = t && P_.norm(t.exercise) === P_.norm(ex.canonical);
@@ -1768,7 +1858,7 @@ function openForm(i, ts, row) {
   $('sh').textContent = (row ? 'Edit: ' : '') + ex.canonical;
   $('fll').textContent = ex.bodyweight ? 'Added weight (vest/belt, 0 if none)' : 'Load (lb)';
   stopHold(); const stx = isStretch(ex);
-  const sg = row ? null : suggest(ex, today.length);
+  const sg = row ? null : suggest(ex, today.length); formSug = sg;
   $('fl').value = row ? (row.load || '') : sg && sg.load ? sg.load : prev ? prev.load : (ex.bodyweight ? '0' : '');
   $('fr').value = row ? row.reps : (sg && !ex.single ? sg.reps : '');
   if (!row && ex.single && sg) { $('frl').placeholder = sg.repsL || sg.reps; $('frr').placeholder = sg.repsR || sg.reps; }
@@ -1796,7 +1886,7 @@ function openForm(i, ts, row) {
   if (SR) $('heard').textContent = '';
   const f = (ex.note.failure || '').toLowerCase();
   const isMrm = !isStretch(ex) && methodOf(ex) === 'match';
-  $('fdwrap').style.display = isMrm ? 'none' : ''; if (isMrm && !(row && +row.drops)) setDrops(0);
+  if (isMrm && !(row && +row.drops)) setDrops(0); mrmAdd = false; mrmN = 2;
   ftOptions(row && row.failure_type === 'drop set' ? 'drop set' : null, isMrm && !(row && row.failure_type === 'myo-reps'));
   ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : prev && FT_OPTS.includes(prev.failure_type) && !(isMrm && prev.failure_type === 'myo-reps') ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
   miniUI();
@@ -1813,8 +1903,9 @@ function openForm(i, ts, row) {
   formKey = !row && rowPrefill ? rowPrefill.key : null; rowPrefill = null;
   setPain(row ? (dayVal(ex, 'pain') || 'none') : 'none');
   $('sheet').classList.add('open'); sheetTop(); pushLayer('sheet', () => closeForm(true)); tick();
+  if (!row && !today.length && ffSel.value !== 'warm-up') tipShow(ex);
 }
-let formKey = null, formPain = 'none';
+let formKey = null, formPain = 'none', formSug = null;
 function setPain(p) { formPain = p; document.querySelectorAll('#fp button').forEach(b => b.classList.toggle('on', b.dataset.p === p)); }
 document.querySelectorAll('#fp button').forEach(b => b.onclick = () => setPain(b.dataset.p));
 function openEdit(sid) { const r = viewRows(true).find(x => x.set_id === sid); if (r) openForm(-1, tsOf(r), r); }
@@ -1876,8 +1967,18 @@ $('fsave').onclick = () => {
   if (t && !t.hidden) { t.target = nt.target; t.next = nt.next; t.firstSide = false; t.hidden = false; t.exercise = ex.canonical; setT(t); }
   else { t = { start: doneTs, exercise: ex.canonical, target: nt.target, next: nt.next }; setT(t); }
   $('sheet').classList.remove('open'); formEx = null; stopRec(); popLayer('sheet');
-  update(); feedback(ex, set, before, prevRest, t ? t.target : 120);
+  if (mrmAdd && ex.added && formSetIdx === 0) mrmFill(ex, set);
+  mrmAdd = false;
+  update(); feedback(ex, set, before, prevRest, t ? t.target : 120, formSug); tipNext(ex);
 };
+function mrmFill(ex, set) { // set 1 is logged; add the matching sets as myo-rep match sets, then fix the planned count
+  const sl = ex.base ? ex.base.canonical : ex.canonical; putSetting(sl, 'method:' + viewId, 'match');
+  for (let k = 1; k <= mrmN; k++) enqueue({ action: 'log', date: S.today, set: Object.assign({}, set, { set_id: uid(), client_ts: set.client_ts + k * 1000, failure_type: 'myo-reps', drops: '', notes: ('myo-rep match set ' + (k + 1) + ' (target ' + repN(set) + ' reps, filled in)').trim() }) });
+  const want = 1 + mrmN, planned = plannedCount(ex);
+  if (planned > want) setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + planned - want)); // extra planned rows go away
+  else if (want > planned) setDayVal(ex, 'extra', String((+dayVal(ex, 'extra') || 0) + want - planned));
+  toast('Myo-rep match: set 1 plus ' + mrmN + ' matching ' + (mrmN === 1 ? 'set' : 'sets') + ' saved. Edit any of them if the reps differ.');
+}
 
 function saveStretch(ex) {
   stopHold(); holdUI();
@@ -1917,22 +2018,31 @@ const JOKES = [
   'Somewhere a protein shake is proud of you.', 'Chest day: the most important meeting of the week.', 'Good set. The mirror noticed.',
   'Hydrate. Your muscles are 75% water and 25% stubbornness.', 'Remember: the dumbbells were here before you, and they will be here after.',
   'Every rep is a deposit. Compound interest starts now.', 'Form check: excellent. Ego check: also passing.'];
-function feedback(ex, set, before, rest, target) {
+const PR_CHEERS = ['Nice work, that is a new best.', 'Strong set. You are getting better every week.', 'That is progress you can feel. Keep it up.', 'Great job. That one goes in the books.'];
+const BEAT_CHEERS = ['You beat the estimate. Great set.', 'More reps than planned. Your body is ready for more.', 'Above the target. Nice push.'];
+const REST_NUDGES = ['That was a long rest. The weights started to miss you.', 'Long break there. Try starting the next set when the timer turns red.', 'Rest ran long. No problem, just keep the next one a bit shorter.', 'Your rest timer says hello. It has been waiting.'];
+const pick = a => a[Math.floor(Math.random() * a.length)];
+// Fun or encouraging extras show sparingly: at most one every 6 minutes, and only half the time.
+function funOk() { const t = +LS.getItem('coach_fun_ts') || 0; if (Date.now() - t < 6 * 60000 || Math.random() >= 0.5) return false; LS.setItem('coach_fun_ts', String(Date.now())); return true; }
+function feedback(ex, set, before, rest, target, sg) {
   if (isWarm(set)) return; // warm-ups: no PR or rep feedback
   const keys = keysOf(ex), prior = before.filter(r => keys.has(P_.norm(r.exercise)));
   const w = parseFloat(set.total_load || set.load), reps = repN(set);
-  const msgs = [];
+  const msgs = []; let pr = false;
   if (w > 0 && reps > 0 && prior.length) {
     const e = P_.e1rm(w, reps), best = Math.max(0, ...prior.map(r => { const x = P_.e1rm(loadOf(r), repN(r)); return x ? x.ep : 0; }));
     const maxW = Math.max(0, ...prior.map(r => parseFloat(loadOf(r)) || 0));
     const repsAt = Math.max(0, ...prior.filter(r => (parseFloat(loadOf(r)) || 0) >= w).map(r => repN(r) || 0));
-    if (e && best && e.ep > best) msgs.push('New best estimated 1RM: ' + e.ep + ' lb (Epley), ' + e.br + ' (Brzycki).');
-    else if (w > maxW) msgs.push('Heaviest ' + ex.canonical.toLowerCase() + ' logged yet: ' + w + ' lb.');
-    else if (repsAt && reps > repsAt) msgs.push('Rep PR: ' + reps + ' reps at ' + w + ' lb.');
+    if (e && best && e.ep > best) { msgs.push('New best estimated 1RM: ' + e.ep + ' lb (Epley), ' + e.br + ' (Brzycki).'); pr = true; }
+    else if (w > maxW) { msgs.push('Heaviest ' + ex.canonical.toLowerCase() + ' logged yet: ' + w + ' lb.'); pr = true; }
+    else if (repsAt && reps > repsAt) { msgs.push('Rep PR: ' + reps + ' reps at ' + w + ' lb.'); pr = true; }
   }
-  if (!msgs.length && rest != null && rest > target + 90) msgs.push(['Rest ran ' + fmt(rest) + ' vs ' + fmt(target) + ' target. Tap Set done as you rack it, log while you rest.', 'Long rest (' + fmt(rest) + '). Your muscles were ready a while ago.'][Math.floor(Math.random() * 2)]);
-  if (!msgs.length && Math.random() < 0.33) msgs.push(JOKES[Math.floor(Math.random() * JOKES.length)]);
-  toast(msgs.length ? msgs[0] : 'Saved', msgs.length ? 7500 : 3000);
+  const est = sg ? Math.max(...String(sg.reps || '').split(/[^\d]+/).map(Number).filter(n => n > 0), 0) : 0;
+  const beat = est > 0 && reps > est && (!sg.load || !(w < parseFloat(sg.load)));
+  if (pr) { if (funOk()) msgs[0] += ' ' + pick(PR_CHEERS); }
+  else if (beat && funOk()) msgs.push(pick(BEAT_CHEERS) + ' (' + reps + ' reps vs ' + est + ' estimated)');
+  else if (rest != null && target && rest > target * 1.25 && rest > target + 30 && funOk()) msgs.push(pick(REST_NUDGES) + ' (' + fmt(rest) + ' vs ' + fmt(target) + ')');
+  if (msgs.length) toast(msgs[0]); else toast('Saved', 2500);
 }
 
 // ---------- Voice (hidden when unsupported, e.g. iOS) ----------
@@ -1959,7 +2069,7 @@ badge();
 if (!U || !K) showSettings(); else { load(true); flush(); }
 setInterval(() => { if (U && K && document.visibilityState === 'visible' && !flushing) load(); }, 20000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && U && K) { load(); flush(); tick(); } });
-if (testOn()) window.CoachT = { viewRows, rowsFor, cardsFor, tripView, tripToday, tripSwapOf, weekSets, openForm, tripAlts, openWorkout, get viewId() { return viewId; } }; // test mode only
+if (testOn()) window.CoachT = { viewRows, rowsFor, cardsFor, tripView, tripToday, tripSwapOf, weekSets, openForm, tripAlts, openWorkout, addMany, gymList, tipShow, openMenu, msgPop, plannedCount, techFor, tqShow, get viewId() { return viewId; } }; // test mode only
 window.coachReady = true;
 } catch (err) { if (window.coachFatal) window.coachFatal((err && err.message) || err); throw err; }
 })();
