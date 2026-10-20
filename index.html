@@ -97,6 +97,7 @@ header h1{min-width:0;overflow:hidden;white-space:nowrap}header select{min-width
 main.collapsed .cbody{max-height:0;opacity:0}
 main.collapsed .card{padding-bottom:4px;margin:6px 0;transition:margin .28s ease}
 main.collapsed .card h2{margin-bottom:0}
+main.collapsed{padding-bottom:100vh} /* v84: room to scroll the held card under the finger */
 main.collapsed #meso{display:none}
 #fsug{color:#ffd666;font-size:14px;margin-top:4px}
 
@@ -370,8 +371,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=83"></script>
-<script src="exlist.js?v=83"></script>
-<script src="app.js?v=83"></script>
+<script src="parse.js?v=84"></script>
+<script src="exlist.js?v=84"></script>
+<script src="app.js?v=84"></script>
 </body>
 </html>

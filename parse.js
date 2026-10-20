@@ -91,6 +91,8 @@
       if (m && cur) {
         const [name, details] = splitName(m[2]);
         const note = parseNote(details);
+        // Day-specific custom tip: the 'Note: ...' text on this day's program line (drives the coach tip pop-up).
+        const cm = details.match(/\bnote:\s*(.+)$/is); note.custom = cm ? cm[1].trim() : '';
         const pars = [...name.matchAll(/\(([^)]*)\)/g)].map(x => cap(x[1].trim()));
         note.extra = pars.concat(note.extra);
         cur.exercises.push({ n: +m[1], name: stripParens(name), full_name: name, details, note });
