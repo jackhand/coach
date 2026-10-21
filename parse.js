@@ -71,7 +71,7 @@
     const [a, b] = splitName(body); if (!b) return null;
     if (/^all( days)?$|^every day$/i.test(a)) name = ''; else if (DAYN.test(a) && !day) day = a.toLowerCase(); else name = a;
     const o = { w, day, name, key: name ? norm(stripParens(name)) : '', key2: name ? norm(name) : '', text: b };
-    const sm = b.match(/\bstarts?\s+at\s+(\d+(?:\.\d+)?)\s*(?:lbs?)?\b/i); if (sm) o.plan = { 1: { label: 'start', load: +sm[1], lo: null, hi: null } };
+    const sm = b.match(/\b(?:starts?\s+at|drop\s+to)\s+(\d+(?:\.\d+)?)\s*(?:lbs?)?\b/i); if (sm) { const gm = b.match(/\bget\s+(\d+)\b/i); o.plan = { 1: { label: /^drop/i.test(sm[0]) ? 'drop' : 'start', load: +sm[1], lo: null, hi: gm ? +gm[1] : null } }; }
     return o;
   }
   function parseProgram(md) {

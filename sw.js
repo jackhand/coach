@@ -1,6 +1,6 @@
 // Coach service worker: caches the app shell only. Backend data is never cached here.
-const CACHE = 'coach-shell-v85';
-const SHELL = ['./', 'index.html', 'app.js?v=85', 'parse.js?v=85', 'exlist.js?v=85', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const CACHE = 'coach-shell-v86';
+const SHELL = ['./', 'index.html', 'app.js?v=86', 'parse.js?v=86', 'exlist.js?v=86', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
@@ -23,4 +23,20 @@ self.addEventListener('fetch', e => {
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => cs.length ? cs[0].focus() : self.clients.openWindow('./')));
+});
+
+// v86: rest alerts held by the service worker so they fire with the page in the background or the screen off.
+// Chrome keeps a worker alive while an event's waitUntil promise is pending (up to about 5 minutes), which covers normal rests.
+let restKey = null;
+const waitUntilTime = ts => new Promise(r => setTimeout(r, Math.max(0, ts - Date.now())));
+self.addEventListener('message', e => {
+  const d = e.data || {};
+  if (d.type === 'restCancel') { restKey = null; return; }
+  if (d.type !== 'rest') return;
+  restKey = d.key; const k = d.key;
+  const show = (title, opt) => restKey === k ? self.registration.showNotification(title, opt).catch(() => {}) : null;
+  const jobs = [];
+  if (d.warnAt - Date.now() > 1000) jobs.push(waitUntilTime(d.warnAt).then(() => show(d.warnTitle, d.warn)));
+  jobs.push(waitUntilTime(d.endAt).then(() => show(d.overTitle, d.over)));
+  e.waitUntil(Promise.all(jobs));
 });

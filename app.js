@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 85;
+const APP_VERSION = 86;
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -39,6 +39,22 @@ try { history.scrollRestoration = 'manual'; } catch (e) {} // closing a sheet (h
 function pushLayer(name, close) {
   if (layers.some(l => l.name === name)) return;
   layers.push({ name, close }); history.pushState({ coach: name }, '');
+}
+// v86: in-app replacement for prompt/confirm (no browser dialogs). askBox({title, body, ok, cancel, input, value, danger}) -> Promise: true/false, or the text/null with input.
+function askBox(o) {
+  return new Promise(res0 => { let tries = 0; const go = () => { if (ignorePop && tries++ < 20) return setTimeout(go, 30); askOpen(o, res0); }; go(); });
+}
+function askOpen(o, res) {
+  {
+    const w = $('askw'), inp = $('aski'); let done = false;
+    $('askh').textContent = o.title || ''; $('askt').textContent = o.body || ''; $('askt').hidden = !o.body;
+    inp.hidden = o.input == null && o.value == null; inp.value = o.value || ''; inp.placeholder = o.input || '';
+    $('asky').textContent = o.ok || 'OK'; $('askn').textContent = o.cancel || 'Cancel'; $('asky').classList.toggle('dng', !!o.danger);
+    const fin = v => { if (done) return; done = true; w.classList.remove('open'); popLayer('ask'); res(v); };
+    $('asky').onclick = () => fin(inp.hidden ? true : inp.value); $('askn').onclick = $('askx').onclick = () => fin(inp.hidden ? false : null);
+    w.classList.add('open'); pushLayer('ask', () => { if (!done) { done = true; w.classList.remove('open'); res(inp.hidden ? false : null); } });
+    if (!inp.hidden) setTimeout(() => inp.focus(), 50);
+  }
 }
 function popLayer(name) { // closed from the UI: drop the matching history entry
   const i = layers.findIndex(l => l.name === name); if (i < 0) return;
@@ -215,7 +231,9 @@ function barWeight(ex) {
   const m = s.match(/\b(\d+(?:\.\d+)?)\s*(?:lb|lbs)\s*(?:hex |trap |ez |smith )?bar\b/i) || s.match(/\bbar\s*(?:weight|wt)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
   const v = m ? parseFloat(m[1]) : NaN; return v > 0 && v < 200 ? v : (BAR_DEF[t] || BAR);
 }
-function platesFor(w, bar) { bar = bar || BAR; let side = (w - bar) / 2; if (!(side > 0)) return w > 0 && w <= bar ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return out.join(' + ') + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
+// v86 (Jack, Oct 21): one shared formatter groups repeated plates: [45,45,5] -> '45x2 + 5'. Every plate text goes through platesFor/platesShort.
+function plateGroup(list) { const g = []; list.forEach(p => { const l = g[g.length - 1]; if (l && l.p === p) l.n++; else g.push({ p, n: 1 }); }); return g.map(x => x.p + (x.n > 1 ? 'x' + x.n : '')).join(' + '); }
+function platesFor(w, bar) { bar = bar || BAR; let side = (w - bar) / 2; if (!(side > 0)) return w > 0 && w <= bar ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return plateGroup(out) + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
 const platesShort = (w, bar) => { const p = platesFor(+w, bar); return p ? p.replace(' per side', ' /side') : ''; };
 const plateLine = (ex, w) => plateT(ex) && +w > 0 ? platesShort(w, barWeight(ex)) : '';
 // Warm-up kind: 'plate' (bar types), 'dumbbell', or '' (no ramp).
@@ -277,7 +295,10 @@ function setsHTML(ex) {
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
     const tb = tq ? tqShow(tq, i, n).map(k => '<button class="tq" data-tq="' + k + '" aria-label="' + esc(TECH[k].name) + ' info">' + TECH[k].tag + '</button>').join('') : '';
-    const sg = suggest(ex, i), w = (sg && sg.load) || '', r = (sg && (sg.repsL ? 'L' + sg.repsL + '/R' + sg.repsR : sg.reps)) || '';
+    let sg = suggest(ex, i);
+    { const d = jget('coach_draft', null); if (d && d.k === viewId + '|' + ex.canonical + '|' + i && d.load) sg = Object.assign({}, sg || {}, { load: d.load, reps: d.reps || '', repsL: d.reps || '', repsR: d.reps || '', est: true, coach: false, why: d.why || 'your edited weight' }); } // v86: a backed-out weight edit stays on the row with its estimate
+    if (sg && sg.repsL && !ex.single) { delete sg.repsL; delete sg.repsR; }
+    const w = (sg && sg.load) || '', r = (sg && (sg.repsL ? 'L' + sg.repsL + '/R' + sg.repsR : sg.reps)) || '';
     const isNext = i === rs.length;
     const gw = angs(w), wShow = st && w ? (gw.L !== gw.R ? 'L' + gw.L + '° R' + gw.R + '°' : gw.L + '°') : w;
     const rShow = st && r ? (fmtHold(r) || r) : r;
@@ -675,7 +696,7 @@ function coachPlan(ex, idx) {
   let reps = p.hi ? String(p.hi) : '';
   if (p.load != null) {
     if (!reps) { const b = suggestNext(ex, idx); reps = b && num(b.load) === p.load && b.reps ? String(b.reps) : String(repRange(ex)[0]); }
-    const what = p.label === 'start' ? 'start at ' + p.load + ' this week' : p.label + ' ' + p.load + (rr ? ' x ' + rr : '');
+    const what = p.label === 'drop' ? 'drop to ' + p.load + ' lbs, get ' + (p.hi || reps) : p.label === 'start' ? 'start at ' + p.load + ' lbs this week' : p.label + ' ' + p.load + (rr ? ' x ' + rr : '');
     return { load: String(p.load), reps, coach: true, why: 'Coach plan: ' + what + (idx === 0 && !today.length && p.label === 'top set' ? ', an estimate. Change it if the warm-ups feel off' : '') };
   }
   if (p.pct) {
@@ -748,8 +769,13 @@ function suggestRaw(ex, idx) {
     if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'deload: about 85% load, half the sets, stop 2-3 reps short of failure' };
     if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'aim +1 rep (last ' + setTxt(ref) + ')' };
     if (holdW(ex)) return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'keep the settled weight ' + sw + ', aim +1 rep (last ' + setTxt(ref) + ')' + ramp };
+    if (top > 0 && top < lo && sw > 0) { // v86 (Jack, Oct 21): below the rep range = one firm call. Pick the weight whose estimated reps land mid-range (Epley and Brzycki average), rounded to the machine's increments.
+      const best = at.reduce((m, r) => (repN(r) || 0) > (repN(m) || 0) ? r : m, at[0]), br = Math.min(repN(best) || top, 30), e = (sw * (1 + br / 30) + sw * 36 / (37 - br)) / 2;
+      const mid = Math.round((lo + hi) / 2), u = st.unit || 5, raw = (e / (1 + mid / 30) + e * (37 - mid) / 36) / 2, nl = Math.max(u, Math.round(raw / u) * u);
+      if (nl < sw) return { load: String(nl), reps: String(mid), firm: true, why: 'last ' + setTxt(best) + ' was under ' + lo + '-' + hi + ': drop to ' + nl + ' lbs, get ' + mid };
+    }
     const small = iso && sw > 0 && st.step / sw > 0.12;
-    if (top >= hi + (small ? 2 : 0) && failed) return { load: String(sw + st.step), reps: String(lo), why: 'top of range hit: +' + st.step + ' lb' + st.txt };
+    if (top >= hi + (small ? 2 : 0) && failed) return { load: String(sw + st.step), reps: String(lo), why: 'top of range hit: +' + st.step + ' lbs' + st.txt };
     if (small && top >= hi) return { load: String(sw), reps: String(Math.min(hi + 2, reps + 1)), why: '+' + st.step + ' lb is a big jump here: add a rep first, go up at ' + (hi + 2) };
     return Object.assign({ load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'same weight, aim +1 rep (last ' + setTxt(ref) + ')' + ramp }, ex.single && sr.L != null && sr.R != null && sr.L !== sr.R ? { repsL: plus1(sr.L, hi), repsR: plus1(sr.R, hi) } : {});
   }
@@ -943,7 +969,7 @@ $('mskip').onclick = () => {
   if (left <= 0) return toast('No sets left to skip');
   setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left)); toast('Skipped ' + left + (left === 1 ? ' set' : ' sets'));
 };
-$('mnote').onclick = () => { const ex = menuEx; closeMenu(); const v = prompt('Note for ' + ex.canonical + ' today:', dayVal(ex, 'note') || ''); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
+$('mnote').onclick = async () => { const ex = menuEx; closeMenu(); const v = await askBox({ title: 'Note for today', body: ex.canonical, input: 'How it went, machine taken, etc.', value: dayVal(ex, 'note') || '', ok: 'Save' }); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
 $('mhist').onclick = () => { const ex = menuEx; closeMenu(true); openHistory(ex, true); };
 let mmScope = 'workout';
 document.querySelectorAll('#mmscope button').forEach(b => b.onclick = () => { mmScope = b.dataset.ms; setSeg('mmscope', 'ms', mmScope); });
@@ -1136,14 +1162,14 @@ $('repl').addEventListener('click', e => {
 });
 const closeRepl = () => { $('repl').classList.remove('open'); popLayer('repl'); };
 $('rclose').onclick = closeRepl;
-function pickReplace(name, custom) {
+async function pickReplace(name, custom) {
   if (!rReason) { toast('Pick a reason first: equipment busy, pain or preference.', 4000); $('rreason').scrollIntoView({ block: 'center' }); return; }
   const ex = rEx, b = baseOf(ex), c = catFind(name) || { name: custom ? name.replace(/^./, x => x.toUpperCase()) : name, muscles: '' }, to = c.name;
   if (P_.norm(to) === P_.norm(ex.canonical)) return toast('That is the current exercise.');
-  if (!related(c, curInfo(ex)) && !confirm(to + (c.muscles ? ' works ' + c.muscles.toLowerCase() : ' has no muscle info') + ', not the same muscles as ' + ex.canonical + '. Replace anyway?')) return;
+  if (!related(c, curInfo(ex)) && !(await askBox({ title: 'Replace anyway?', body: to + (c.muscles ? ' works ' + c.muscles.toLowerCase() : ' has no muscle info') + ', not the same muscles as ' + ex.canonical + '.', ok: 'Replace' }))) return;
   const blk = blockOf(viewWeek());
-  if (rScope === 'block' && !(b.types || []).includes('isolation') && !confirm(b.canonical + ' is a main lift, fixed for the block. Replace it with ' + to + ' for the rest of Block ' + blk + '?')) return;
-  if (rowsFor(ex, true).length && !confirm('You already logged ' + ex.canonical + ' sets in this workout. They stay in your log. Replace anyway?')) return;
+  if (rScope === 'block' && !(b.types || []).includes('isolation') && !(await askBox({ title: 'Replace a main lift?', body: b.canonical + ' is a main lift, fixed for the block. Replace it with ' + to + ' for the rest of Block ' + blk + '?', ok: 'Replace' }))) return;
+  if (rowsFor(ex, true).length && !(await askBox({ title: 'Replace anyway?', body: 'You already logged ' + ex.canonical + ' sets in this workout. They stay in your log.', ok: 'Replace' }))) return;
   const unknown = !catFind(to);
   try {
     applySwap(b, to, rScope, rReason, ex.canonical, unknown);
@@ -1160,10 +1186,10 @@ function applySwap(b, to, scope, reason, was, custom) {
   putSetting('swaps', 's' + Date.now().toString(36), JSON.stringify(Object.assign({ at: new Date().toISOString(), wid: viewId, block: blk, from: b.canonical, was, to, scope, reason }, custom ? { custom: true, pending: 'pending_exercises' } : {})));
   swapMemo = {}; sig = ''; applyState(S, true);
 }
-$('rundo').onclick = () => {
+$('rundo').onclick = async () => {
   const ex = rEx, b = baseOf(ex); if (!ex.swappedFrom) return;
   if (ex.swapScope === 'workout') { putSetting(b.canonical, 'swap:' + viewId, ''); if (swapInfo(b)) putSetting(b.canonical, 'swap:' + viewId, b.canonical); }
-  else { if (!confirm('Go back to ' + b.canonical + ' for the rest of Block ' + blockOf(viewWeek()) + '?')) return; const v = JSON.parse(getSetting(b.canonical, 'bswap:B' + blockOf(viewWeek())) || '{}'); putSetting(b.canonical, 'bswap:B' + blockOf(viewWeek()), v.from === viewId ? '' : JSON.stringify({ to: b.canonical, from: viewId })); }
+  else { if (!(await askBox({ title: 'Go back?', body: 'Go back to ' + b.canonical + ' for the rest of Block ' + blockOf(viewWeek()) + '?', ok: 'Go back' }))) return; const v = JSON.parse(getSetting(b.canonical, 'bswap:B' + blockOf(viewWeek())) || '{}'); putSetting(b.canonical, 'bswap:B' + blockOf(viewWeek()), v.from === viewId ? '' : JSON.stringify({ to: b.canonical, from: viewId })); }
   putSetting('swaps', 's' + Date.now().toString(36), JSON.stringify({ at: new Date().toISOString(), wid: viewId, block: blockOf(viewWeek()), from: b.canonical, was: ex.canonical, to: b.canonical, scope: ex.swapScope, reason: 'undo' }));
   closeRepl(); swapMemo = {}; sig = ''; applyState(S, true); toast('Back to ' + b.canonical);
 };
@@ -1226,20 +1252,28 @@ const sentence = t => { t = String(t || '').trim(); if (!t) return ''; t = t[0].
 // Rule (Jack, Oct 20, 2026): the tip pop-up shows only day-specific custom tips, never the default library tip or other card text.
 // Custom = the program line's 'Note:' for that day plus this week's notes for this exercise on this day. None = no pop-up (the card still shows the default tips).
 function tipsFor(ex) { const n = ex.note || {}; let w = []; try { w = weekNotesFor(ex).map(x => x.text); } catch (e) {} return (n.custom ? [n.custom] : []).concat(w).map(sentence).filter(Boolean); }
-function tipShow(ex, force) { // force: ignore the seen list. Both triggers (Rule 1 Start, Rule 2 last set) pass force; the seen list no longer suppresses either
-  if (!ex || !canLog()) return false;
-  const k = 'coach_tips_' + P + '_' + viewId, seen = jget(k, []); if (!force && seen.includes(ex.canonical)) return false;
-  const tips = tipsFor(ex); if (!tips.length) return false;
-  if (!seen.includes(ex.canonical)) seen.push(ex.canonical); jset(k, seen);
-  $('tiph').textContent = 'Coach tip: ' + ex.canonical; $('tipb').innerHTML = tips.map(t => '<p>' + esc(t) + '</p>').join('');
+// v86 (Jack, Oct 21): daily quote, preloaded with the program (the '## Daily quotes' block that build-quotes.py writes into program.md from the Coach Quotes sheet). No fetch at workout start.
+function quoteToday() {
+  const s = (S && S.program) || '', d = (S && S.today) || ''; if (!d) return null;
+  const m = s.match(new RegExp('^- ' + d + ' \\| (.+?) \\| ?(.*)$', 'm')); return m ? { q: m[1].trim(), a: m[2].trim() } : null;
+}
+function tipShow(ex, force, withQuote) { // force: ignore the seen list. Both triggers (Rule 1 Start, Rule 2 last set) pass force; the seen list no longer suppresses either
+  if (!canLog()) return false;
+  const qt = withQuote ? quoteToday() : null; if (!ex && !qt) return false;
+  const k = 'coach_tips_' + P + '_' + viewId, seen = jget(k, []); if (!qt && !force && seen.includes(ex.canonical)) return false;
+  const tips = ex ? tipsFor(ex) : []; if (!tips.length && !qt) return false;
+  if (ex && tips.length && !seen.includes(ex.canonical)) { seen.push(ex.canonical); jset(k, seen); }
+  const qh = qt ? '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>' : '';
+  const th = tips.length ? (qt ? '<h4 class="tiph2">Coach tip: ' + esc(ex.canonical) + '</h4>' : '') + tips.map(t => '<p>' + esc(t) + '</p>').join('') : '';
+  $('tiph').textContent = qt ? '' : 'Coach tip: ' + ex.canonical; $('tiph').hidden = !!qt; $('tipb').innerHTML = qh + th;
   $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); return true;
 }
 const tipClose = () => { $('tipw').classList.remove('open'); popLayer('tip'); };
 $('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw') tipClose(); });
-function tipUpcoming(force) { // after Start workout or after the last planned set: scroll to the next unlogged exercise; pop up only if it has a custom tip
-  const list = cardsFor(), i = list.findIndex(x => rowsFor(x, true).length < plannedCount(x)); if (i < 0) return;
+function tipUpcoming(force, withQuote) { // after Start workout or after the last planned set: scroll to the next unlogged exercise; pop up only if it has a custom tip
+  const list = cardsFor(), i = list.findIndex(x => rowsFor(x, true).length < plannedCount(x)); if (i < 0) { if (withQuote) tipShow(null, force, true); return; }
   const c = $('c' + i); if (c) { const h = document.querySelector('header'), off = h ? h.getBoundingClientRect().bottom : 0; scrollTo({ top: Math.max(0, scrollY + c.getBoundingClientRect().top - off - 8), behavior: 'smooth' }); }
-  setTimeout(() => tipShow(list[i], force), 500);
+  setTimeout(() => tipShow(list[i], force, withQuote), 500);
 }
 // Rule 2 (intended): after the last planned set of an exercise, the next unlogged exercise's tip pops up even if it was seen before.
 function tipNext(ex) { if (rowsFor(ex, true).length >= plannedCount(ex)) tipUpcoming(true); }
@@ -1283,7 +1317,7 @@ function render() {
     if (e.target.closest('details.wu') || e.target.closest('details.cn > summary') || e.target.closest('.gymrow')) return;
     const tsb = e.target.closest('[data-ts]'); if (tsb) { openTripSwap(cardsFor()[+tsb.dataset.ts]); return; }
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
-    if (e.target.closest('#wstartb')) { startWorkout(false); return; }
+    if (e.target.closest('#wstartb')) { askNotifyOnTap(); startWorkout(false); return; }
     if (e.target.closest('#wreset')) { openReset(); return; }
     const tf = e.target.closest('li.plan:not(.wrm) [data-f]');
     if (tf) { const lb = tf.closest('li').querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, tf.dataset.f); return; }
@@ -1319,7 +1353,7 @@ function wstartHTML() {
   return '<button class="btn fin wsb" id="wstartb">Start workout (warm-ups count)</button>';
 }
 // Rule 1 (intended): Start workout always pops up the first unlogged exercise's tip, even if it was seen before. Tapping Log never shows a tip.
-function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); if (!re) tipUpcoming(true); }
+function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); if (!re) tipUpcoming(true, true); }
 // Reset: stop the workout and clear only this workout's logged sets (after a warning).
 function openReset() { const n = workoutRows().length; $('rstt').textContent = 'This will stop the workout' + (n ? ' and clear the ' + n + (n === 1 ? ' set' : ' sets') + ' you logged in it' : '') + '. Nothing else changes.'; $('rstw').classList.add('open'); pushLayer('rst', () => $('rstw').classList.remove('open')); }
 const closeReset = () => { if (!$('rstw').classList.contains('open')) return; $('rstw').classList.remove('open'); popLayer('rst'); };
@@ -1354,9 +1388,13 @@ function durText() { // workout timer: first logged set -> Finish
 function tickDur() { const d = $('wdur'); if (d && S) { const t = durText(); if (d.textContent !== t) d.textContent = t; } const e = $('wstt'); if (e && S) { const st = workoutStart(), t = st ? fmtHMS((Date.now() - st) / 1000) : ''; if (e.textContent !== t) e.textContent = t; } }
 setInterval(tickDur, 1000);
 function workoutRows() { return viewRows(true).filter(r => widOf(r) === viewId); }
-function finishWorkout() {
+async function finishPrompt() { // v86: after the final set of the final exercise
+  if (!canLog() || finishedToday()) return;
+  if (await askBox({ title: 'That was your last set', body: 'Finish ' + wLabel(viewId) + ' now? ' + workoutRows().length + ' sets logged.', ok: 'Finish workout', cancel: 'Not yet' })) finishWorkout(true);
+}
+async function finishWorkout(asked) {
   const rs = workoutRows();
-  if (!confirm('Finish ' + wLabel(viewId) + '? ' + rs.length + ' sets logged.')) return;
+  if (asked !== true && !(await askBox({ title: 'Finish ' + wLabel(viewId) + '?', body: rs.length + ' sets logged.', ok: 'Finish workout' }))) return;
   const ex = new Set(rs.map(r => P_.norm(r.exercise)));
   const now = Date.now(), st = workoutStart(), dur = st ? Math.max(0, Math.round((now - st) / 60000)) : null;
   enqueue({ action: 'finish', session: { session_id: uid(), client_ts: now, date: S.today, day: viewId, sets: String(rs.length), exercises: String(ex.size), notes: dur != null ? 'duration_min=' + dur : '' } });
@@ -1369,11 +1407,11 @@ function finishWorkout() {
   LS.removeItem(WSK());
   sig = ''; applyState(S, true); toast('Workout finished. Nice work.', 6000);
 }
-function skipWorkout() {
+async function skipWorkout() {
   if (!canLog()) return toast('Only the next workout (' + wLabel(loggableId()) + ') can be skipped.');
   if (wStatus()[viewId]) return toast(wLabel(viewId) + ' is already ' + wStatus()[viewId].state + '.');
   const rs = workoutRows(), n = rs.length;
-  if (!confirm(n ? 'Skip ' + wLabel(viewId) + '? The ' + n + (n === 1 ? ' set' : ' sets') + ' you logged stay in your log, and the workout is marked skipped (not finished). The next workout becomes available.' : 'Skip ' + wLabel(viewId) + '? The next workout becomes available.')) return;
+  if (!(await askBox({ title: 'Skip ' + wLabel(viewId) + '?', body: n ? 'The ' + n + (n === 1 ? ' set' : ' sets') + ' you logged stay in your log, and the workout is marked skipped (not finished). The next workout becomes available.' : 'The next workout becomes available.', ok: 'Skip workout' }))) return;
   enqueue({ action: 'finish', session: { session_id: uid(), client_ts: Date.now(), date: S.today, day: viewId, sets: String(n), exercises: String(new Set(rs.map(r => P_.norm(r.exercise))).size), notes: n ? 'skipped (partial, ' + n + ' sets kept)' : 'skipped' } });
   LS.removeItem(WSK()); const t = getT(); if (t && n) { t.hidden = true; setT(t); }
   setView(loggableId() || viewId); sig = ''; applyState(S, true); window.scrollTo(0, 0); toast('Workout skipped');
@@ -1382,9 +1420,9 @@ function weekBoxHTML(ns, day) {
   if (!ns || !ns.length) return '';
   return '<div class="wkbox' + (day ? ' wkday' : '') + '"><b>This week (Week ' + viewWeek() + ')' + (day ? ', every exercise' : '') + ':</b><ul>' + ns.map(n => '<li>' + esc(n.text) + '</li>').join('') + '</ul></div>';
 }
-function editSetup(i) {
+async function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
-  const v = prompt('Equipment setup for ' + ex.canonical + (plateT(ex) ? ' (seat, pins, angle; bar weight like "45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + '" sets plate math, now ' + barWeight(ex) + ' lb):' : ' (seat, pins, bench angle):'), cur);
+  const v = await askBox({ title: 'Equipment setup', ok: 'Save', value: cur || '', input: 'Seat, pins, angle', body: ex.canonical + (plateT(ex) ? ' (seat, pins, angle; bar weight like "45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + '" sets plate math, now ' + barWeight(ex) + ' lb):' : ' (seat, pins, bench angle):') });
   if (v == null) return;
   putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; toast('Setup saved'); if (plateT(ex)) render();
 }
@@ -1620,10 +1658,10 @@ function showSettings(msg) {
   $('sbw').value = S ? (bodyweight() || '') : ''; $('sbws').textContent = S ? bwSrcText() + '. A newer MyFitnessPal weigh-in replaces an edit only if it is dated after the edit.' : '';
 }
 $('gear').onclick = () => showSettings();
-$('stest').onchange = e => {
+$('stest').onchange = async e => {
   if (e.target.checked) { LS.setItem('coach_test', '1'); toast('Test mode on'); }
   else {
-    if (!confirm('Turn off test mode and discard all test sets?')) { e.target.checked = true; return; }
+    if (!(await askBox({ title: 'Turn off test mode?', body: 'All test sets are discarded.', ok: 'Turn off', danger: true }))) { e.target.checked = true; return; }
     LS.removeItem('coach_test'); LS.removeItem('coach_testq'); LS.removeItem('coach_settings_test_' + P); LS.removeItem('coach_wstart_test_' + P); LS.removeItem(TKEY()); setRQ(getRQ().filter(x => !x.test)); toast('Test mode off, test data discarded');
   }
   sig = ''; if (S) { hideSettings(); applyState(S, true); }
@@ -1679,8 +1717,12 @@ const getT = () => jget(TKEY(), null);
 function setT(t) { if (t) jset(TKEY(), t); else LS.removeItem(TKEY()); tick(); markActive(); restNotify(t); }
 // Rest notification: 'Rest ends at h:mm' when a rest starts (or its target changes); best-effort 'Rest is over' at the end.
 let notifKey = '', notifTimer = null;
+const swPost = m => { try { const c = navigator.serviceWorker && navigator.serviceWorker.controller; if (c) c.postMessage(m); } catch (e) {} };
+// v86: ask for notification permission on a real tap (Start workout), which Android Chrome needs to show the prompt.
+function askNotifyOnTap() { try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); } catch (e) {} }
 function restNotify(t) {
   try {
+    if (!t || t.hidden || t.firstSide) { swPost({ type: 'restCancel' }); notifKey = ''; }
     if (!t || t.hidden || t.firstSide || !('Notification' in window) || !navigator.serviceWorker) return;
     const end = t.start + (t.target || 0) * 1000, key = t.start + '|' + t.target;
     if (key === notifKey || end <= Date.now()) return; notifKey = key;
@@ -1691,7 +1733,9 @@ function restNotify(t) {
         reg.showNotification(t.exercise || 'Rest', { tag: 'coach-rest', body: 'Rest ends ' + at + (t.next ? ' · ' + t.next : ''), silent: true, renotify: false, icon: 'icon-192.png' }).catch(() => {});
         clearTimeout(notifTimer);
         const over = { tag: 'coach-rest', body: 'Rest is over. ' + (t.next || ''), renotify: true, vibrate: [200, 100, 200], icon: 'icon-192.png' };
-        if ('TimestampTrigger' in window) { try { reg.showNotification('Rest is over', Object.assign({ showTrigger: new window.TimestampTrigger(end) }, over)).catch(() => {}); return; } catch (e) {} }
+        const warn = { tag: 'coach-rest', body: '10 seconds left. ' + (t.next || ''), renotify: true, vibrate: [300, 150, 300, 150, 300], icon: 'icon-192.png', requireInteraction: false };
+        // v86: the service worker holds both alerts (10 s warning with vibration, then rest over), so they still fire when the page is in the background or the screen is off. Page timer only as a fallback.
+        if (navigator.serviceWorker.controller) { swPost({ type: 'rest', key, warnAt: end - 10000, endAt: end, warnTitle: 'Rest: 10 seconds', warn, overTitle: 'Rest is over', over }); return; }
         notifTimer = setTimeout(() => { const c = getT(); if (c && c.start === t.start && !c.hidden) reg.showNotification('Rest is over', over).catch(() => {}); }, end - Date.now());
       }).catch(() => {});
     };
@@ -1705,7 +1749,7 @@ function nextTarget(name) {
   const done = idx >= 0 ? rowsFor(ex, true).length : 0;
   if (idx < 0 || done < plannedCount(ex)) return { target: normal, next: idx < 0 ? '' : 'next: ' + ex.canonical + ' set ' + (done + 1) };
   const nx = list.slice(idx + 1).concat(list.slice(0, idx)).find(x => rowsFor(x, true).length < plannedCount(x));
-  if (!nx) return { target: normal, next: 'last exercise done' };
+  if (!nx) return { target: normal, next: 'last exercise done', last: true }; // v86: no rest timer after the final set; Finish workout is offered instead
   if (nx.rest_muscle && nx.rest_muscle === ex.rest_muscle) return { target: nx.note.rest_target_sec || normal, next: 'next: ' + nx.canonical + ' (same muscle)' };
   return { target: SWITCH_REST, next: 'next: ' + nx.canonical + ' (new muscle)' };
 }
@@ -1718,7 +1762,7 @@ function syncTimer() {
   const last = recentLast();
   if (!last) { const t = getT(); if (t && !t.firstSide && Date.now() - t.start > TIMER_MAX) setT(null); return; }
   const ts = tsOf(last), t = getT();
-  if (!t || (ts > t.start + 5000 && !t.firstSide && !formEx)) { const nt = nextTarget(last.exercise); setT({ start: ts, exercise: last.exercise, target: nt.target, next: nt.next, hidden: !!finishedToday() }); }
+  if (!t || (ts > t.start + 5000 && !t.firstSide && !formEx)) { const nt = nextTarget(last.exercise); setT({ start: ts, exercise: last.exercise, target: nt.target, next: nt.next, hidden: !!finishedToday() || !!nt.last }); }
 }
 // Soft beeps in the last 10 s of green. Web Audio oscillators mix with music on Android instead of pausing it.
 let actx = null, lastBeep = -1;
@@ -1763,16 +1807,16 @@ $('tundo').onclick = () => {
   if (!today.length) return toast('Nothing logged today');
   deleteSet(today[today.length - 1].set_id, true);
 };
-function deleteSet(sid, ask) {
+async function deleteSet(sid, ask) {
   const r = viewRows(true).find(x => x.set_id === sid); if (!r) return;
-  if (ask && !confirm('Remove ' + r.exercise + ' ' + setTxt(r) + '?')) return;
+  if (ask && !(await askBox({ title: 'Remove this set?', body: r.exercise + ' ' + setTxt(r), ok: 'Remove', danger: true }))) return;
   const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === sid);
   if (pi >= 0) { q.splice(pi, 1); setQ(q.filter(x => !(x.action === 'edit' && x.set_id === sid))); }
   else { setQ(q.filter(x => !(x.action === 'edit' && x.set_id === sid))); enqueue({ action: 'undo', set_id: sid }); }
   const t = getT();
   if (t && !t.firstSide) {
     const l = recentLast();
-    if (l) { const nt = nextTarget(l.exercise); setT({ start: tsOf(l), exercise: l.exercise, target: nt.target, next: nt.next }); } else setT(null);
+    if (l) { const nt = nextTarget(l.exercise); setT({ start: tsOf(l), exercise: l.exercise, target: nt.target, next: nt.next, hidden: !!nt.last }); } else setT(null);
   }
   update(); toast('Removed');
 }
@@ -1852,7 +1896,7 @@ function bwLine() {
 function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; const bb = plateT(formEx); $('pbt').style.display = bb ? '' : 'none'; $('fl').inputMode = bb ? 'text' : 'decimal'; $('fl').placeholder = bb ? 'e.g. 185 or 4x45 2x25' : ''; if (!bb) $('pbx').hidden = true; }
 // Plate-first: tap plates (one per side each), chips remove, total = bar weight (barWeight) + 2 x plates.
 let pbList = []; // one entry per pair (one plate each side)
-function pbRender() { const tot = barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + ' &times;</button>').join('') || '<span class="s2">Empty ' + (BAR_NAME[equipType(formEx)] || 'bar') + ' (' + barWeight(formEx) + ' lb). Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
+function pbRender() { const tot = barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + '</button>').join('') || '<span class="s2">Empty ' + (BAR_NAME[equipType(formEx)] || 'bar') + ' (' + barWeight(formEx) + ' lb). Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
 // v85 (Jack, Oct 20, 2026): the plate builder has a Bar weight field at the top. It edits the same per-exercise bar setting as the card row and recalculates live.
 function pbBarSet(v) { const n = parseFloat(v); if (!formEx || !(n > 0 && n < 200)) { $('pbbw').value = String(barWeight(formEx)); return; } if (n !== barWeight(formEx)) putSetting(formEx.canonical, 'bar', String(n)); $('pbbw').value = String(n); pbRender(); plUpd(); bwLine(); }
 $('pbbw').addEventListener('change', () => pbBarSet($('pbbw').value));
@@ -1880,12 +1924,12 @@ function reEstimate() {
     const keys = keysOf(ex), hist = viewRows().filter(r => keys.has(P_.norm(r.exercise)) && !isWarm(r) && parseFloat(loadOf(r)) === nl && repN(r) > 0);
     if (hist.length) {
       const day = hist.map(r => r.date || '').sort().pop(), best = Math.max(...hist.filter(r => (r.date || '') === day).map(r => repN(r)));
-      formSug = { load: String(nl), reps: String(best), est: true, why: 'your last ' + nl + ' lb set: ' + nl + ' x ' + best + (day ? ' on ' + day : '') };
+      formSug = { load: String(nl), reps: String(best), est: true, why: 'your last ' + nl + ' lbs set: ' + nl + ' x ' + best + (day ? ' on ' + day : '') };
     } else {
       const r0 = Math.min(br, 30), eE = bl * (1 + r0 / 30), eB = bl * 36 / (37 - r0);
       const rE = 30 * (eE / nl - 1), rB = 37 - 36 * nl / eB;
       const n = Math.max(1, Math.min(30, Math.round((rE + rB) / 2)));
-      formSug = { load: String(nl), reps: String(n), est: true, why: 'estimated for ' + nl + ' lb from ' + bl + ' x ' + br + ' (Epley and Brzycki average)' };
+      formSug = { load: String(nl), reps: String(n), est: true, why: 'estimated for ' + nl + ' lbs from ' + bl + ' x ' + br + ' (Epley and Brzycki average)' };
     }
   }
   const r = formSug.reps; if (ex.single) { $('frl').value = String(formSug.repsL || r); $('frr').value = String(formSug.repsR || r); } else $('fr').value = r;
@@ -1906,15 +1950,23 @@ setInterval(holdTick, 250);
 function holdUI() {
   const on = !!hold, single = !!(formEx && formEx.single);
   $('hstop').style.display = on ? 'block' : 'none';
-  if (!single) { $('hstartr').style.display = 'none'; $('hstart').style.display = on ? 'none' : 'block'; $('hstart').textContent = 'Start hold'; $('hstart').dataset.side = ''; $('hside').textContent = on ? 'Timing hold' : 'Timer fills hold time'; return; }
+  if (!single) { $('redol').hidden = $('redor').hidden = true; $('hstart').classList.remove('prim'); $('hstartr').style.display = 'none'; $('hstart').style.display = on ? 'none' : 'block'; $('hstart').textContent = 'Start hold'; $('hstart').dataset.side = ''; $('hside').textContent = on ? 'Timing hold' : 'Timer fills hold time'; return; }
   // Fixed labels: Start Left / Start Right. After one side stops, prompt the other.
-  $('hstart').style.display = on ? 'none' : 'block'; $('hstartr').style.display = on ? 'none' : 'block';
+  const lDone = !!$('frl').value, rDone = !!$('frr').value, one = lDone !== rDone;
+  $('hstart').style.display = on || lDone ? 'none' : 'block'; $('hstartr').style.display = on || rDone ? 'none' : 'block';
+  $('hstart').classList.toggle('prim', one); $('hstartr').classList.toggle('prim', one);
   $('hstart').textContent = 'Start Left'; $('hstart').dataset.side = 'L';
   $('hstartr').textContent = 'Start Right'; $('hstartr').dataset.side = 'R';
-  const lDone = !!$('frl').value, rDone = !!$('frr').value;
-  $('hside').textContent = on ? 'Timing ' + (hold.el === $('frr') ? 'right' : 'left') + ' side' : (lDone && !rDone ? 'Next: right side' : rDone && !lDone ? 'Next: left side' : 'Pick a side');
+  const st = isStretch(formEx); $('redol').hidden = !st || on || !lDone; $('redor').hidden = !st || on || !rDone;
+  $('hside').textContent = on ? 'Timing ' + (hold.el === $('frr') ? 'right' : 'left') + ' side' : (lDone && rDone ? 'Both sides done' : lDone && !rDone ? 'Next: right side' : rDone && !lDone ? 'Next: left side' : 'Pick a side');
 }
 const startHold = side => { audio(); const single = formEx && formEx.single; const el = !single ? $('fr') : side === 'R' ? $('frr') : $('frl'); hold = { start: Date.now(), el }; holdTick(); holdUI(); };
+let redoSide = null;
+const redoAsk = sd => { redoSide = sd; const nm = sd === 'L' ? 'left' : 'right'; $('redoh').textContent = 'Redo ' + nm + ' side?'; $('redot').textContent = 'This clears ' + ($(sd === 'L' ? 'frl' : 'frr').value || 'the time') + '.'; $('redow').classList.add('open'); };
+const redoClose = () => { $('redow').classList.remove('open'); redoSide = null; };
+$('redol').onclick = () => redoAsk('L'); $('redor').onclick = () => redoAsk('R');
+$('redon').onclick = redoClose; $('redox').onclick = redoClose;
+$('redoy').onclick = () => { if (redoSide) $(redoSide === 'L' ? 'frl' : 'frr').value = ''; redoClose(); holdUI(); };
 $('hstart').onclick = () => startHold($('hstart').dataset.side || 'L');
 $('hstartr').onclick = () => startHold($('hstartr').dataset.side || 'R');
 $('hstop').onclick = () => { if (!hold) return; holdTick(); hold = null; holdUI(); };
@@ -1985,7 +2037,9 @@ function openForm(i, ts, row) {
 }
 let formKey = null, formPain = 'none', formSug = null;
 function setPain(p) { formPain = p; document.querySelectorAll('#fp button').forEach(b => b.classList.toggle('on', b.dataset.p === p)); }
-document.querySelectorAll('#fp button').forEach(b => b.onclick = () => setPain(b.dataset.p));
+document.querySelectorAll('#fp button').forEach(b => b.onclick = async () => { // v86: Severe needs a confirm so a stray tap cannot set it
+  if (b.dataset.p === 'severe' && formPain !== 'severe' && !(await askBox({ title: 'Severe joint pain?', body: 'Mark this set as severe joint pain.', ok: 'Yes, severe', danger: true }))) return;
+  setPain(b.dataset.p); });
 function openEdit(sid) { const r = viewRows(true).find(x => x.set_id === sid); if (r) openForm(-1, tsOf(r), r); }
 ['fr', 'frl', 'frr'].forEach(id => {
   const el = $(id);
@@ -2010,10 +2064,10 @@ function sheetTop() { // after open, layout, and keyboard: put the popup at its 
 // Rule (Jack, Oct 20, 2026): backing out of a new set without logging leaves the previous rest timer running as if the form was never opened
 // (same start, so elapsed time keeps counting; target unchanged). Only a saved set ends that rest.
 let restSnap = null, warmNow = false;
-function closeForm(fromPop) { if (formEx && !editId && formBase) { const l = $('fl').value.trim(); if (l && l !== String(formBase.load)) jset('coach_draft', { k: draftKey(), load: l }); else LS.removeItem('coach_draft'); }
+function closeForm(fromPop) { if (formEx && !editId && formBase) { flPlates(); const l = $('fl').value.trim(); if (l && l !== String(formBase.load)) { if (!formSug || String(formSug.load) !== l) reEstimate(); const s = formSug && String(formSug.load) === l ? formSug : null; jset('coach_draft', { k: draftKey(), load: l, reps: s ? String(s.reps) : '', why: s ? s.why : '' }); } else LS.removeItem('coach_draft'); }
   if (formEx && !editId) { const t = getT(); if (t && t.firstSide) { t.hidden = true; t.firstSide = false; setT(t); } else if (restSnap && (!t || (t.hidden && t.start === restSnap.start))) setT(restSnap); } restSnap = null; $('sheet').classList.remove('open'); stopHold(); formEx = null; editId = null; stopRec(); if (fromPop !== true) popLayer('sheet'); if (S) applyState(S, false); }
 $('fcancel').onclick = closeForm;
-$('fdel').onclick = () => { const id = editId; if (!confirm('Delete this set?')) return; closeForm(); deleteSet(id, false); };
+$('fdel').onclick = async () => { const id = editId; if (!(await askBox({ title: 'Delete this set?', ok: 'Delete', danger: true }))) return; closeForm(); deleteSet(id, false); };
 $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeForm(); });
 $('fsave').onclick = () => {
   const ex = formEx;
@@ -2046,12 +2100,12 @@ $('fsave').onclick = () => {
   if (!workoutRows().length && !manualStart()) jset(WSK(), { wid: viewId, ts: doneTs });
   enqueue({ action: 'log', date: S.today, set });
   const nt = nextTarget(ex.canonical); let t = getT();
-  if (t && !t.hidden) { t.target = nt.target; t.next = nt.next; t.firstSide = false; t.hidden = false; t.exercise = ex.canonical; setT(t); }
-  else { t = { start: doneTs, exercise: ex.canonical, target: nt.target, next: nt.next }; setT(t); }
+  if (t && !t.hidden) { t.target = nt.target; t.next = nt.next; t.firstSide = false; t.hidden = !!nt.last; t.exercise = ex.canonical; setT(t); }
+  else { t = { start: doneTs, exercise: ex.canonical, target: nt.target, next: nt.next, hidden: !!nt.last }; setT(t); }
   $('sheet').classList.remove('open'); formEx = null; restSnap = null; LS.removeItem('coach_draft'); stopRec(); popLayer('sheet');
   if (mrmAdd && ex.added && formSetIdx === 0) mrmFill(ex, set);
   mrmAdd = false;
-  update(); feedback(ex, set, before, prevRest, t ? t.target : 120, formSug); tipNext(ex);
+  update(); feedback(ex, set, before, prevRest, t ? t.target : 120, formSug); if (nt.last) finishPrompt(); else tipNext(ex);
 };
 function mrmFill(ex, set) { // set 1 is logged; add the matching sets as myo-rep match sets, then fix the planned count
   const sl = ex.base ? ex.base.canonical : ex.canonical; putSetting(sl, 'method:' + viewId, 'match');
@@ -2090,9 +2144,9 @@ function saveStretch(ex) {
   if (!workoutRows().length && !manualStart()) jset(WSK(), { wid: viewId, ts: doneTs });
   enqueue({ action: 'log', date: S.today, set });
   const nt = nextTarget(ex.canonical);
-  setT({ start: Date.now(), exercise: ex.canonical, target: nt.target || 60, next: nt.next, hidden: false });
+  setT({ start: Date.now(), exercise: ex.canonical, target: nt.target || 60, next: nt.next, hidden: !!nt.last });
   $('sheet').classList.remove('open'); formEx = null; restSnap = null; LS.removeItem('coach_draft'); stopRec(); popLayer('sheet');
-  update(); toast('Hold saved: ' + setTxt(set), 4000);
+  update(); toast('Hold saved: ' + setTxt(set), 4000); if (nt.last) finishPrompt();
 }
 // ---------- Feedback toasts ----------
 const JOKES = [

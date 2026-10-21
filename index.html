@@ -189,6 +189,44 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
 .gicons{display:flex;flex-wrap:wrap;gap:6px}.gicons button{font-size:24px;width:48px;height:48px;border-radius:10px;border:1px solid var(--line);background:var(--card2)}.gicons button.on{border-color:#3d8fd1;background:#163a55}
 .card.dragging{position:relative;z-index:15;box-shadow:0 14px 34px rgba(0,0,0,.6),0 0 0 3px var(--acc);opacity:.96;transition:none!important}
 .pbbar{display:flex;align-items:center;gap:8px;margin:0 0 10px}.pbbar label{font-weight:700;flex:1}.pbbar input{width:72px;text-align:center;font-size:18px}
+
+/* v86: Redo link for timed sides */
+.redo[hidden]{display:none}
+.redo{display:block;background:none;border:0;color:var(--mut);font-size:14px;text-decoration:underline;min-height:44px;min-width:44px;padding:0 4px;margin-top:2px}
+#redow{position:fixed;inset:0;z-index:46;background:rgba(0,0,0,.6);display:none;align-items:flex-end}#redow.open{display:flex}
+#redow .in{position:relative;background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom))}
+#redox{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px;min-width:44px;min-height:44px}
+#redot{margin:8px 34px 14px 0;font-size:16px}#redoy{margin-bottom:8px}
+#hstart.prim,#hstartr.prim{background:var(--acc);color:#06210f;border:0}
+/* v86 design pass: sizing and spacing only, no colors */
+#cal,#wmenu{min-width:44px;min-height:44px}
+.menu-btn,.grip{min-height:44px}
+.rm{width:44px}
+.srow,.sets li.shead,.sets li.shead.stretch{grid-template-columns:40px 1fr 1fr 44px 48px}
+.meta a{padding:12px 0}
+#pbbm,#pbbp{min-width:44px;min-height:44px;border-radius:10px;font-size:20px}
+.pbp .wuw{min-height:44px;border-radius:10px}
+.pchip{min-height:36px;border-radius:999px}
+#pbclr,#pbuse{min-height:44px;border-radius:10px;padding:0 14px}
+#wreset{min-height:44px;border-radius:10px}
+.toast .tx{min-width:44px;min-height:44px}
+#stest{width:26px;height:26px}
+.chip,.pill{border-radius:999px}
+.tag{font-size:13px}.wgh{font-size:13px}.hx{font-size:13px}
+.sets li.shead{font-size:13px}
+.sub,.meta,.last,.setup,.note{line-height:1.45}
+.card{margin:20px 0}
+.card .note{margin:12px 0 8px}
+
+.painl{display:block;margin-top:24px}
+#tipw .in{min-height:45vh;display:flex;flex-direction:column}#tipok{margin-top:auto}
+.qt{margin:8px 44px 14px 0}.qt blockquote{margin:0;font-size:20px;line-height:1.4;font-weight:600;font-style:italic}.qt figcaption{margin-top:8px;font-size:15px;color:var(--mut)}.qt figcaption:before{content:"- "}.tiph2{margin:6px 0 2px;font-size:17px} /* v86: the tip pop-up sits higher even for a one-line tip */
+/* v86: in-app ask sheet (replaces prompt/confirm) */
+#askw{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:none;align-items:flex-end}#askw.open{display:flex}
+#askw .in{position:relative;background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom))}
+#askx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px;min-width:44px;min-height:44px}
+#askh{margin:8px 44px 8px 0;font-size:20px}#askt{margin:0 0 12px;font-size:16px;line-height:1.45;color:var(--mut)}#aski{margin:0 0 4px}#asky{margin-bottom:8px}
+#asky.dng{background:#c62828;color:#fff}
 </style>
 </head>
 <body>
@@ -262,8 +300,8 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
     <div id="fbw"></div>
     <div id="sides" style="display:none">
       <div class="grid">
-        <div><label for="frl" id="frll">Left reps</label><input id="frl" inputmode="numeric" autocomplete="off"></div>
-        <div><label for="frr" id="frrl">Right reps</label><input id="frr" inputmode="numeric" autocomplete="off"></div>
+        <div><label for="frl" id="frll">Left reps</label><input id="frl" inputmode="numeric" autocomplete="off"><button type="button" class="redo" id="redol" hidden>Redo</button></div>
+        <div><label for="frr" id="frrl">Right reps</label><input id="frr" inputmode="numeric" autocomplete="off"><button type="button" class="redo" id="redor" hidden>Redo</button></div>
       </div>
       <div class="grid" id="sangs" style="display:none">
         <div><label for="fangl">Left angle</label><input id="fangl" inputmode="decimal" autocomplete="off"></div>
@@ -286,7 +324,7 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
     <label for="ff">Failure type</label>
     <select id="ff"></select>
     </div>
-    <label>Joint pain</label>
+    <label class="painl">Joint pain</label>
     <div class="seg" id="fp"><button type="button" data-p="none">None</button><button type="button" data-p="mild">Mild</button><button type="button" data-p="moderate">Moderate</button><button type="button" data-p="severe">Severe</button></div>
     <label for="fn">Notes</label>
     <textarea id="fn" rows="2" placeholder="How it felt, left arm, etc."></textarea>
@@ -329,6 +367,8 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
 </div></div>
 <div id="calw"><div class="in"><h3>Meso calendar</h3><div id="calnow" class="calnow"></div><div id="calb"></div><button class="btn sec" id="calclose">Close</button></div></div>
 <div id="delw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="delx" aria-label="Close">&times;</button><h3 id="delh"></h3><p id="delt">Are you sure? This will delete it from the entire rest of the meso. If you just want to delete it from this workout, just skip it.</p><button type="button" class="btn" id="dely">Delete</button><button type="button" class="btn sec" id="deln">Cancel</button></div></div>
+<div id="redow" role="dialog" aria-modal="true"><div class="in"><button type="button" id="redox" aria-label="Close">&times;</button><h3 id="redoh"></h3><p id="redot"></p><button type="button" class="btn" id="redoy">Redo</button><button type="button" class="btn sec" id="redon">Cancel</button></div></div>
+<div id="askw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="askx" aria-label="Close">&times;</button><h3 id="askh"></h3><p id="askt"></p><textarea id="aski" rows="3" hidden></textarea><button type="button" class="btn" id="asky">OK</button><button type="button" class="btn sec" id="askn">Cancel</button></div></div>
 <div id="wmw"><div class="in"><h3 id="wmh"></h3><div id="wml"></div><button class="btn sec" id="wmclose">Close</button></div></div>
 <div id="rstw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="rstx" aria-label="Close">&times;</button><h3>Reset this workout?</h3><p id="rstt"></p><button type="button" class="btn" id="rsty">Reset</button><button type="button" class="btn sec" id="rstn">Cancel</button></div></div>
 <div id="rfil" role="dialog" aria-modal="true"><div class="in"><h3>Filter</h3>
@@ -372,8 +412,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=85"></script>
-<script src="exlist.js?v=85"></script>
-<script src="app.js?v=85"></script>
+<script src="parse.js?v=86"></script>
+<script src="exlist.js?v=86"></script>
+<script src="app.js?v=86"></script>
 </body>
 </html>
