@@ -769,7 +769,9 @@ function suggestRaw(ex, idx) {
     if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'deload: about 85% load, half the sets, stop 2-3 reps short of failure' };
     if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'aim +1 rep (last ' + setTxt(ref) + ')' };
     if (holdW(ex)) return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'keep the settled weight ' + sw + ', aim +1 rep (last ' + setTxt(ref) + ')' + ramp };
-    if (top > 0 && top < lo && sw > 0) { // v86 (Jack, Oct 21): below the rep range = one firm call. Pick the weight whose estimated reps land mid-range (Epley and Brzycki average), rounded to the machine's increments.
+    if (top > 0 && top < lo && lo - top < 3 && sw > 0) // v87 (Jack, Oct 21): heavier is preferred. 1-2 reps under the range: keep the weight, aim for the bottom, finish with a drop set
+      return { load: String(sw), reps: String(lo), firm: true, why: 'last ' + setTxt(ref) + ' was under ' + lo + '-' + hi + ': stay at ' + sw + ' lbs, get ' + lo + ', then a drop set on the last set' };
+    if (top > 0 && top < lo && sw > 0) { // v86: 3 or more reps under the range = one firm call to a lighter weight. Pick the weight whose estimated reps land mid-range (Epley and Brzycki average), rounded to the machine's increments.
       const best = at.reduce((m, r) => (repN(r) || 0) > (repN(m) || 0) ? r : m, at[0]), br = Math.min(repN(best) || top, 30), e = (sw * (1 + br / 30) + sw * 36 / (37 - br)) / 2;
       const mid = Math.round((lo + hi) / 2), u = st.unit || 5, raw = (e / (1 + mid / 30) + e * (37 - mid) / 36) / 2, nl = Math.max(u, Math.round(raw / u) * u);
       if (nl < sw) return { load: String(nl), reps: String(mid), firm: true, why: 'last ' + setTxt(best) + ' was under ' + lo + '-' + hi + ': drop to ' + nl + ' lbs, get ' + mid };
