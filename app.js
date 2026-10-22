@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 86;
+const APP_VERSION = 93; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1439,8 +1439,15 @@ function applyState(st, initial) {
   if (nsig !== sig) { if (!formEx || initial) { const y = window.scrollY; render(); sig = nsig; if (!firstRender) window.scrollTo(0, y); } }
   else update();
   syncTimer();
-  if (firstRender) { firstRender = false; const s = jget('coach_scroll', null); if (s && s.p === P && s.day === viewId) requestAnimationFrame(() => window.scrollTo(0, s.y)); }
+  if (firstRender) { restoreScreen();
+    firstRender = false; const s = jget('coach_scroll', null); if (s && s.p === P && s.day === viewId) requestAnimationFrame(() => window.scrollTo(0, s.y)); }
 }
+// v93: a reload (pull-to-refresh, swReload, location.reload) reopens the top-level screen Jack was on: Settings or Progress (weekly volume). Transient sheets are not restored.
+function saveScreen() { try { const v = $('settings').style.display === 'block' && S ? 'settings' : $('prog').classList.contains('open') ? 'prog:' + progOff : ''; if (v) sessionStorage.setItem('coach_screen', v); else sessionStorage.removeItem('coach_screen'); } catch (e) {} }
+window.addEventListener('pagehide', saveScreen); window.addEventListener('beforeunload', saveScreen);
+let screenRestored = false;
+function restoreScreen() { if (screenRestored) return; screenRestored = true; let v = ''; try { v = sessionStorage.getItem('coach_screen') || ''; sessionStorage.removeItem('coach_screen'); } catch (e) {}
+  if (v === 'settings') setTimeout(() => showSettings(), 0); else if (v.startsWith('prog:')) setTimeout(() => openProg(parseInt(v.slice(5), 10) || 0), 0); }
 async function load(initial) {
   if (!U || !K) return showSettings();
   if (initial && !S) { const c = jget('coach_cache_' + P, null); if (c) applyState(c, true); } // instant start, works offline
@@ -1502,6 +1509,16 @@ function weekSets(off) {
     (window.CoachRegionsOf ? window.CoachRegionsOf(c) : []).forEach(([k, v]) => bump('r_' + k, v));
   });
   return { mon, sun, m };
+}
+// v93: training phase per profile (settings profile.phase = lean | bulk | cut; default lean). Synced to the backend like other profile settings.
+const PHASES = { lean: { name: 'Lean bulk', rng: '10-19', lo: 10, hi: 19, band: [3, 4], ideal: 'ideal 10-19' }, bulk: { name: 'Bulk', rng: '10-20', lo: 10, hi: 20, band: [3, 4], ideal: 'ideal 10-20' }, cut: { name: 'Cut', rng: '8-15', lo: 8, hi: 15, band: [2, 3], ideal: 'ideal 8-15' } };
+function phase() { const v = S && getSetting('profile', 'phase'); return PHASES[v] ? v : 'lean'; }
+function phaseLegend() {
+  const ph = PHASES[phase()], it = i => '<span><i style="background:' + PCOL[i] + '"></i>' + PLEG[i] + '</span>';
+  let leg = '';
+  for (let i = 0; i < PLEG.length; i++) { if (i === ph.band[0]) { leg += '<span class="pideal"><span class="pir">' + ph.band.map(it).join('') + '</span><em>' + ph.ideal + '</em></span>'; i = ph.band[ph.band.length - 1]; } else leg += it(i); }
+  const cur = phase(), part = (k, extra) => '<span class="' + (k === cur ? 'on' : 'off') + '"><b>' + PHASES[k].name + '</b> ' + PHASES[k].rng + (extra || '') + (k === cur ? ' (you)' : '') + '</span>';
+  return '<div class="pleg">' + leg + '</div><div class="pphase">' + part('lean') + ' <span>·</span> ' + part('bulk') + ' <span>·</span> ' + part('cut', ', stay under ~15 (less recovery)') + '</div>';
 }
 const PCOL = ['#3b4049', '#3b82f6', '#22c55e', '#facc15', '#ea580c', '#ff2d2d']; // v92: rainbow scale (Jack, Oct 21)
 const pBand = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 15 ? 3 : n < 20 ? 4 : 5;
@@ -1589,7 +1606,7 @@ function openProg(off) {
   $('pgprev').onclick = e => { e.stopPropagation(); openProg(progOff - 1); };
   $('pgnext').onclick = e => { e.stopPropagation(); openProg(progOff + 1); };
   $('pgb').innerHTML = '<div class="bmap">' + bodySvg('front', w.m) + bodySvg('back', w.m) + '</div>' +
-    '<div class="pleg">' + (() => { const it = i => '<span><i style="background:' + PCOL[i] + '"></i>' + PLEG[i] + '</span>'; return [0, 1, 2].map(it).join('') + '<span class="pideal"><span class="pir">' + it(3) + it(4) + '</span><em>ideal</em></span>' + it(5); })() + '</div>' + '<div class="pphase"><b>Lean bulk</b> 10-19 (you) <span>·</span> <b>Bulk</b> 10-20 <span>·</span> <b>Cut</b> 8-15, stay under ~15 (less recovery)</div>' + // v89: bracket marks 10-19 as the target band
+    phaseLegend() + // v89: bracket marks 10-19 as the target band
 
     '<div class="s2">Hard sets logged ' + (progOff ? 'that week' : 'this week') + ' (Mon to Sun). Main muscle counts 1 set, each other listed muscle 0.5. Regions use the same rule. Tap a muscle.</div><div id="pgd"></div>' +
     '<div class="plist">' + (() => { const card = g => { const subs = (window.CoachRegions || []).filter(r => r[2] === g && !(r[0] === g && (window.CoachRegions || []).filter(x => x[2] === g).length === 1));
@@ -1661,10 +1678,12 @@ function showSettings(msg) {
   if (S) pushLayer('settings', () => hideSettings(true));
   $('app').style.display = 'none'; $('settings').style.display = 'block'; $('timer').style.display = 'none';
   $('su').value = U; $('sk').value = K; $('stest').checked = testOn(); $('smsg').textContent = msg || '';
-  $('stripbox').style.display = S ? 'block' : 'none'; if (S) gymsRender();
+  $('stripbox').style.display = S ? 'block' : 'none'; if (S) gymsRender(); $('sphasebox').style.display = S ? 'block' : 'none'; if (S) phaseRender();
   $('sbw').value = S ? (bodyweight() || '') : ''; $('sbws').textContent = S ? bwSrcText() + '. A newer MyFitnessPal weigh-in replaces an edit only if it is dated after the edit.' : '';
 }
 $('gear').onclick = () => showSettings();
+function phaseRender() { const c = phase(); $('sphase').querySelectorAll('[data-ph]').forEach(b => { b.classList.toggle('on', b.dataset.ph === c); b.setAttribute('aria-pressed', b.dataset.ph === c ? 'true' : 'false'); }); }
+$('sphase').onclick = e => { const b = e.target.closest('[data-ph]'); if (!b || !S || b.dataset.ph === phase()) return; putSetting('profile', 'phase', b.dataset.ph); phaseRender(); flush(); toast('Training phase: ' + PHASES[b.dataset.ph].name); };
 $('stest').onchange = async e => {
   if (e.target.checked) { LS.setItem('coach_test', '1'); toast('Test mode on'); }
   else {
@@ -2213,7 +2232,7 @@ badge();
 if (!U || !K) showSettings(); else { load(true); flush(); }
 setInterval(() => { if (U && K && document.visibilityState === 'visible' && !flushing) load(); }, 20000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && U && K) { load(); flush(); tick(); } });
-if (testOn()) window.CoachT = { viewRows, rowsFor, cardsFor, tripView, tripToday, tripSwapOf, weekSets, openForm, tripAlts, openWorkout, addMany, gymList, tipShow, openMenu, msgPop, plannedCount, techFor, tqShow, get viewId() { return viewId; } }; // test mode only
+if (testOn()) window.CoachT = { viewRows, rowsFor, cardsFor, tripView, tripToday, tripSwapOf, weekSets, openForm, tripAlts, openWorkout, addMany, gymList, tipShow, openMenu, msgPop, plannedCount, techFor, tqShow, openProg, phase, getSetting, get viewId() { return viewId; } }; // test mode only
 window.coachReady = true;
 } catch (err) { if (window.coachFatal) window.coachFatal((err && err.message) || err); throw err; }
 })();
