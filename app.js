@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 98; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 99; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1612,8 +1612,9 @@ function openProg(off) {
     '<div class="plist">' + (() => { const card = g => { const subs = (window.CoachRegions || []).filter(r => r[2] === g && !(r[0] === g && (window.CoachRegions || []).filter(x => x[2] === g).length === 1)).slice().sort((a, b) => String(a[1]).localeCompare(String(b[1]))); // v98: alphabetical
       return '<div class="pgrp"><button type="button" class="prow" data-g="' + g + '"><span>' + g + '</span><b>' + fmtSets(w.m[g].n) + '</b></button>' + subs.map(r => '<button type="button" class="prow psub" data-g="r_' + r[0] + '"><span>' + esc(r[1]) + '</span><b>' + fmtSets(w.m['r_' + r[0]].n) + '</b></button>').join('') + '</div>'; }; // v91: grouped under section headings, layout only
     const H = (t, c) => '<div class="phd' + (c ? ' ' + c : '') + '">' + t + '</div>', has = g => (window.CoachMG || []).includes(g), cs = gs => gs.filter(has).map(card).join('');
-    const sec = (t, gs) => '<div class="pcol">' + H(t, 'phd1') + cs(gs) + '</div>', row = (a, b) => '<div class="pcols">' + a + (b || '<div class="pcol"></div>') + '</div>'; // v98: sections A to Z, two per row
-    return row(sec('Arms', ['Biceps', 'Forearms', 'Triceps']), sec('Back', ['Back'])) + row(sec('Chest', ['Chest']), sec('Core', ['Abs'])) + row(sec('Legs', ['Calves', 'Glutes', 'Hamstrings', 'Quads']), sec('Shoulders', ['Shoulders'])) + row(sec('Traps', ['Traps'])) +
+    const sec = (t, gs) => '<div class="pcol">' + H(t) + cs(gs) + '</div>', row = (a, b) => '<div class="pcols">' + a + (b || '<div class="pcol"></div>') + '</div>'; // v98: sections A to Z, two per row
+    return H('Upper body', 'phd1') + row(sec('Arms', ['Biceps', 'Forearms', 'Triceps']), sec('Back', ['Back'])) + row(sec('Chest', ['Chest']), sec('Shoulders', ['Shoulders'])) + // v99: Upper body / Lower body headings restored
+      H('Lower body', 'phd1') + row(sec('Core', ['Abs']), sec('Legs', ['Calves', 'Glutes', 'Hamstrings', 'Quads'])) + row(sec('Traps', ['Traps'])) +
       cs((window.CoachMG || []).filter(g => !['Chest','Back','Shoulders','Biceps','Triceps','Forearms','Quads','Hamstrings','Glutes','Calves','Abs','Traps'].includes(g))); })() + '</div>';
   progW = w; if (reopen) return; $('prog').classList.add('open');
   const close = () => $('prog').classList.remove('open');
