@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 97; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 98; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1518,7 +1518,7 @@ function phaseLegend() {
   let leg = '';
   for (let i = 0; i < PLEG.length; i++) { if (i === ph.band[0]) { leg += '<span class="pideal"><span class="pir">' + ph.band.map(it).join('') + '</span><em>' + ph.ideal + '</em></span>'; i = ph.band[ph.band.length - 1]; } else leg += it(i); }
   const cur = phase(), part = (k, extra) => '<span class="' + (k === cur ? 'on' : 'off') + '"><b>' + PHASES[k].name + '</b> ' + PHASES[k].rng + (extra || '') + (k === cur ? ' <em class="pcur">current</em>' : '') + '</span>';
-  return '<div class="pleg">' + leg + '</div><div class="pphase"><div class="pph">Ideal sets per muscle</div>' + part('lean') + ' <span>·</span> ' + part('bulk') + ' <span>·</span> ' + part('cut') + '</div>';
+  return '<div class="pleg">' + leg + '</div><div class="pphase"><div class="pph">Ideal sets per muscle</div>' + part('cut') + ' <span>·</span> ' + part('lean') + ' <span>·</span> ' + part('bulk') + '</div>';
 }
 const PCOL = ['#3b4049', '#3b82f6', '#22c55e', '#facc15', '#f59e0b', '#ff2d2d']; // v92: rainbow scale (Jack, Oct 21)
 const pBand = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 15 ? 3 : n < 20 ? 4 : 5;
@@ -1609,13 +1609,11 @@ function openProg(off) {
     phaseLegend() + // v89: bracket marks 10-19 as the target band
 
     '<div class="s2">Hard sets logged ' + (progOff ? 'that week' : 'this week') + ' (Mon to Sun). Main muscle counts 1 set, each other listed muscle 0.5. Regions use the same rule. Tap a muscle.</div><div id="pgd"></div>' +
-    '<div class="plist">' + (() => { const card = g => { const subs = (window.CoachRegions || []).filter(r => r[2] === g && !(r[0] === g && (window.CoachRegions || []).filter(x => x[2] === g).length === 1));
+    '<div class="plist">' + (() => { const card = g => { const subs = (window.CoachRegions || []).filter(r => r[2] === g && !(r[0] === g && (window.CoachRegions || []).filter(x => x[2] === g).length === 1)).slice().sort((a, b) => String(a[1]).localeCompare(String(b[1]))); // v98: alphabetical
       return '<div class="pgrp"><button type="button" class="prow" data-g="' + g + '"><span>' + g + '</span><b>' + fmtSets(w.m[g].n) + '</b></button>' + subs.map(r => '<button type="button" class="prow psub" data-g="r_' + r[0] + '"><span>' + esc(r[1]) + '</span><b>' + fmtSets(w.m['r_' + r[0]].n) + '</b></button>').join('') + '</div>'; }; // v91: grouped under section headings, layout only
     const H = (t, c) => '<div class="phd' + (c ? ' ' + c : '') + '">' + t + '</div>', has = g => (window.CoachMG || []).includes(g), cs = gs => gs.filter(has).map(card).join('');
-    return H('Upper body', 'phd1') + '<div class="pcols"><div class="pcol">' + H('Chest') + cs(['Chest']) + H('Arms') + cs(['Biceps', 'Forearms', 'Triceps']) + '</div><div class="pcol">' + H('Back') + cs(['Back']) + H('Shoulders') + cs(['Shoulders']) + '</div></div>' + // v96: two stacked columns so arms stay together
-      
-      H('Legs', 'phd1') + cs(['Quads', 'Hamstrings', 'Glutes', 'Calves']) + '<div class="pcols"><div class="pcol">' + H('Core', 'phd1') + cs(['Abs']) + '</div><div class="pcol">' + H('Traps', 'phd1') + cs(['Traps']) + '</div></div>' + // v97: Core and Traps side by side
-      
+    const sec = (t, gs) => '<div class="pcol">' + H(t, 'phd1') + cs(gs) + '</div>', row = (a, b) => '<div class="pcols">' + a + (b || '<div class="pcol"></div>') + '</div>'; // v98: sections A to Z, two per row
+    return row(sec('Arms', ['Biceps', 'Forearms', 'Triceps']), sec('Back', ['Back'])) + row(sec('Chest', ['Chest']), sec('Core', ['Abs'])) + row(sec('Legs', ['Calves', 'Glutes', 'Hamstrings', 'Quads']), sec('Shoulders', ['Shoulders'])) + row(sec('Traps', ['Traps'])) +
       cs((window.CoachMG || []).filter(g => !['Chest','Back','Shoulders','Biceps','Triceps','Forearms','Quads','Hamstrings','Glutes','Calves','Abs','Traps'].includes(g))); })() + '</div>';
   progW = w; if (reopen) return; $('prog').classList.add('open');
   const close = () => $('prog').classList.remove('open');

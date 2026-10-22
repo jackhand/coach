@@ -241,7 +241,7 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
   <input id="sbw" inputmode="decimal" autocomplete="off" placeholder="e.g. 180">
   <div id="sbws" class="sub" style="margin:-4px 0 8px"></div>
   <div id="sphasebox" style="display:none"><label>Training phase (this profile)</label>
-  <div class="phseg" id="sphase"><button type="button" data-ph="lean">Lean bulk<small>10-19</small></button><button type="button" data-ph="bulk">Bulk<small>10-20</small></button><button type="button" data-ph="cut">Cut<small>8-15</small></button></div>
+  <div class="phseg" id="sphase"><button type="button" data-ph="cut">Cut<small>8-15</small></button><button type="button" data-ph="lean">Lean bulk<small>10-19</small></button><button type="button" data-ph="bulk">Bulk<small>10-20</small></button></div>
   <div class="sub">Sets per muscle per week. Drives the weekly volume legend and the Sunday review. In a cut, stay under about 15 since recovery is tighter.</div></div>
   <div id="stripbox" style="display:none"><label>Gyms (this profile)</label>
   <div id="glist"></div>
@@ -415,8 +415,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=97"></script>
-<script src="exlist.js?v=97"></script>
-<script src="app.js?v=97"></script>
+<script src="parse.js?v=98"></script>
+<script src="exlist.js?v=98"></script>
+<script src="app.js?v=98"></script>
 </body>
 </html>
