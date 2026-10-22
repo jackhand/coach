@@ -1592,8 +1592,12 @@ function openProg(off) {
     '<div class="pleg">' + (() => { const it = i => '<span><i style="background:' + PCOL[i] + '"></i>' + PLEG[i] + '</span>'; return [0, 1, 2].map(it).join('') + '<span class="pideal"><span class="pir">' + it(3) + it(4) + '</span><em>ideal</em></span>' + it(5); })() + '</div>' + '<div class="pphase"><b>Lean bulk</b> 10-19 (you) <span>·</span> <b>Bulk</b> 10-20 <span>·</span> <b>Cut</b> 8-15, stay under ~15 (less recovery)</div>' + // v89: bracket marks 10-19 as the target band
 
     '<div class="s2">Hard sets logged ' + (progOff ? 'that week' : 'this week') + ' (Mon to Sun). Main muscle counts 1 set, each other listed muscle 0.5. Regions use the same rule. Tap a muscle.</div><div id="pgd"></div>' +
-    '<div class="plist">' + (window.CoachMG || []).map(g => { const subs = (window.CoachRegions || []).filter(r => r[2] === g && !(r[0] === g && (window.CoachRegions || []).filter(x => x[2] === g).length === 1));
-      return '<div class="pgrp"><button type="button" class="prow" data-g="' + g + '"><span>' + g + '</span><b>' + fmtSets(w.m[g].n) + '</b></button>' + subs.map(r => '<button type="button" class="prow psub" data-g="r_' + r[0] + '"><span>' + esc(r[1]) + '</span><b>' + fmtSets(w.m['r_' + r[0]].n) + '</b></button>').join('') + '</div>'; }).join('') + '</div>';
+    '<div class="plist">' + (() => { const card = g => { const subs = (window.CoachRegions || []).filter(r => r[2] === g && !(r[0] === g && (window.CoachRegions || []).filter(x => x[2] === g).length === 1));
+      return '<div class="pgrp"><button type="button" class="prow" data-g="' + g + '"><span>' + g + '</span><b>' + fmtSets(w.m[g].n) + '</b></button>' + subs.map(r => '<button type="button" class="prow psub" data-g="r_' + r[0] + '"><span>' + esc(r[1]) + '</span><b>' + fmtSets(w.m['r_' + r[0]].n) + '</b></button>').join('') + '</div>'; }; // v91: grouped under section headings, layout only
+    const H = (t, c) => '<div class="phd' + (c ? ' ' + c : '') + '">' + t + '</div>', has = g => (window.CoachMG || []).includes(g), cs = gs => gs.filter(has).map(card).join('');
+    return H('Upper body', 'phd1') + H('Chest') + cs(['Chest']) + H('Back') + cs(['Back']) + H('Shoulders') + cs(['Shoulders']) + H('Arms') + cs(['Biceps', 'Triceps', 'Forearms']) +
+      H('Legs', 'phd1') + cs(['Quads', 'Hamstrings', 'Glutes', 'Calves']) + H('Core', 'phd1') + cs(['Abs']) + H('Traps', 'phd1') + cs(['Traps']) +
+      cs((window.CoachMG || []).filter(g => !['Chest','Back','Shoulders','Biceps','Triceps','Forearms','Quads','Hamstrings','Glutes','Calves','Abs','Traps'].includes(g))); })() + '</div>';
   progW = w; if (reopen) return; $('prog').classList.add('open');
   const close = () => $('prog').classList.remove('open');
   if (layerOpen('wm')) swapLayer('wm', 'prog', close); else pushLayer('prog', close);
