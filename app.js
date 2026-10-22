@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 93; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 94; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1520,7 +1520,7 @@ function phaseLegend() {
   const cur = phase(), part = (k, extra) => '<span class="' + (k === cur ? 'on' : 'off') + '"><b>' + PHASES[k].name + '</b> ' + PHASES[k].rng + (extra || '') + (k === cur ? ' (you)' : '') + '</span>';
   return '<div class="pleg">' + leg + '</div><div class="pphase">' + part('lean') + ' <span>·</span> ' + part('bulk') + ' <span>·</span> ' + part('cut', ', stay under ~15 (less recovery)') + '</div>';
 }
-const PCOL = ['#3b4049', '#3b82f6', '#22c55e', '#facc15', '#ea580c', '#ff2d2d']; // v92: rainbow scale (Jack, Oct 21)
+const PCOL = ['#3b4049', '#3b82f6', '#22c55e', '#facc15', '#f59e0b', '#ff2d2d']; // v92: rainbow scale (Jack, Oct 21)
 const pBand = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 15 ? 3 : n < 20 ? 4 : 5;
 const PLEG = ['0', '1-4', '5-9', '10-14', '15-19', '20+'];
 // Stylized front/back figures. Each muscle is a <g data-g> with the left shape plus its mirror (viewBox 120 x 240).
