@@ -4,7 +4,10 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 105; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 106; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+// v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
+['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -159,6 +162,7 @@ async function flush() {
       }
       if (!res.ok && !(it.action === 'edit' && res.error === 'not found')) toast('Dropped a queued item: ' + res.error);
       setRQ(getRQ().filter(x => x.id !== it.id)); changed = true;
+      if (res.ok && !it.test) recentPut(it, res.row);
       if (res.ok && S && it.profile === P && it.action === 'setting') { const ss = S.settings = S.settings || {}; if (it.value === '' || it.value == null) { if (ss[it.scope]) delete ss[it.scope][it.key]; } else (ss[it.scope] = ss[it.scope] || {})[it.key] = it.value; }
       if (res.ok && res.row && S && it.profile === P && (it.action === 'log' || it.action === 'edit')) { S.rows = S.rows.filter(r => r.set_id !== res.row.set_id).concat([res.row]); }
     }
@@ -172,21 +176,33 @@ window.addEventListener('online', flush);
 const tsOf = r => Date.parse(r.logged_at) || 0;
 // Warm-up sets (failure type 'warm-up') are logged but left out of suggestions, settled weight, e1RM, trends and weekly sets. viewRows(true) includes them.
 const isWarm = r => !!r && r.failure_type === 'warm-up';
+// v106: a synced item stays in coach_recent for 3 min, so an older server read that lands after the sync cannot hide a just-saved set
+// (the check mark and reps used to vanish until the next refresh). Server rows win once they include the change.
+const RECENT_MS = 180000;
+function recentPut(it, row) {
+  if (!['log', 'edit', 'undo'].includes(it.action)) return;
+  const l = jget('coach_recent', []).filter(x => Date.now() - x.t < RECENT_MS);
+  l.push(it.action === 'log' && row ? Object.assign({}, it, { set: Object.assign({}, it.set, row) }, { t: Date.now() }) : Object.assign({}, it, { t: Date.now() }));
+  jset('coach_recent', l);
+}
 function viewRows(all, incTrip) {
   if (!S) return [];
-  const q = (testOn() ? getRQ().concat(getQ()) : getQ()).filter(x => x.profile === P);
+  const rq = testOn() ? [] : jget('coach_recent', []).filter(x => Date.now() - x.t < RECENT_MS && x.profile === P);
+  const q = rq.concat((testOn() ? getRQ().concat(getQ()) : getQ()).filter(x => x.profile === P));
   const undone = new Set(q.filter(x => x.action === 'undo').map(x => x.set_id));
   const have = new Set(S.rows.map(r => r.set_id));
-  const pend = q.filter(x => x.action === 'log' && !have.has(x.set.set_id)).map(x => Object.assign({}, x.set, { date: x.date, rest_time: '', logged_at: new Date(x.set.client_ts).toISOString(), pending: true }));
-  const edits = {};
-  q.filter(x => x.action === 'edit').forEach(x => { edits[x.set_id] = Object.assign(edits[x.set_id] || {}, x.fields); });
+  const pend = q.filter(x => x.action === 'log' && !have.has(x.set.set_id)).map(x => Object.assign({}, x.set, { date: x.date, rest_time: x.set.rest_time || '', logged_at: x.set.logged_at || new Date(x.set.client_ts).toISOString(), pending: !x.t }));
+  const edits = {}, synced = {};
+  q.filter(x => x.action === 'edit').forEach(x => { edits[x.set_id] = Object.assign(edits[x.set_id] || {}, x.fields); if (!x.t) synced[x.set_id] = false; else if (synced[x.set_id] == null) synced[x.set_id] = true; });
   return S.rows.concat(pend).filter(r => !undone.has(r.set_id))
-    .map(r => edits[r.set_id] ? Object.assign({}, r, edits[r.set_id], { pending: true }) : r).map(gymParse)
+    .map(r => edits[r.set_id] ? Object.assign({}, r, edits[r.set_id], { pending: r.pending || !synced[r.set_id] }) : r).map(gymParse)
     .sort((a, b) => tsOf(a) - tsOf(b)).filter(r => (all || !isWarm(r)) && (!isTrip(r) || incTrip || r.workout === viewId));
 }
 function keysOf(ex) { return new Set(ex.match_keys.concat([P_.norm(ex.canonical), P_.norm(ex.name)])); }
 function exFor(name) { const n = P_.norm(name); for (const ex of cardsFor()) if (keysOf(ex).has(n)) return ex; for (const ex of (days[dayKey] ? days[dayKey].exercises : [])) if (keysOf(ex).has(n)) return ex; for (const d of Object.values(days)) for (const ex of d.exercises) if (keysOf(ex).has(n)) return ex; return null; }
+let todayCut = null; // v106: trend() sets this so the estimate for set i only sees the sets logged before it
 function rowsFor(ex, today) {
+  if (today && todayCut != null) { const c = todayCut; todayCut = null; try { return rowsFor(ex, true).slice(0, c); } finally { todayCut = c; } }
   const keys = keysOf(ex), tsw = !today && tripSwapOf(ex);
   if (tsw) { const g = tripCfg().id; return viewRows(false, true).filter(r => isTrip(r) && tripGymOf(r) === g && P_.norm(subOf(r)) === P_.norm(tsw) && wIndex(widOf(r)) < wIndex(viewId)); }
   return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? widOf(r) === viewId : wIndex(widOf(r)) < wIndex(viewId)));
@@ -643,7 +659,11 @@ function repRange(ex) { const m = (ex.note.sets || '').match(/x\s*(\d+)(?:\s*-\s
 const LOWER = /quad|hamstring|glute|leg|calf|calves|adductor|abductor/i;
 const FAIL = ['technical', 'true', 'drop set', 'myo-reps'];
 function lastSession(ex) {
-  let rs = rowsFor(ex, false); if (!rs.length) return null;
+  let rs = rowsFor(ex, false);
+  // v106: setting <exercise> nobasis = comma list of workout ids whose sets are not used as the basis for later estimates (e.g. order swapped that day).
+  const nb = String(getSetting(ex.canonical, 'nobasis') || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (nb.length) { const k = rs.filter(r => !nb.includes(widOf(r))); if (k.length) rs = k; }
+  if (!rs.length) return null;
   if (!isDeload(viewWeek())) { const nd = rs.filter(r => { const p = wParse(widOf(r)); return !p || !isDeload(p.w); }); if (nd.length) rs = nd; }
   const d = rs.reduce((m, r) => wIndex(widOf(r)) > wIndex(m) ? widOf(r) : m, widOf(rs[0]));
   return { date: d, rows: rs.filter(r => widOf(r) === d) };
@@ -708,15 +728,20 @@ function coachPlan(ex, idx) {
   }
   return null;
 }
-// Within a workout, a later set at the weight just used suggests the same reps as the last set logged today (never more).
+// v106 fatigue rule (Jack, Oct 22, 2026): within a workout, a later set at the weight just used expects the last set's reps minus the usual
+// set-to-set drop-off when that set went to failure (about 10% of the reps, at least 1), never more than the planned target.
+// Not to failure = no drop. RP documents same load across sets, logged reps per set and no fixed formula; the 10% is the typical drop-off at 0-1 RIR with 2-3 min rest.
+const fatDrop = (n, ft) => !n || ft === 'not to failure' || ft === 'warm-up' ? 0 : Math.max(1, Math.round(n * 0.1));
 function suggest(ex, idx) {
   const r = suggest0(ex, idx), today = rowsFor(ex, true);
   if (!r || isStretch(ex) || !today.length || idx < today.length) return r;
   const last = today[today.length - 1], lr = repN(last);
   if (num(r.load) == null || num(r.load) !== num(last.load) || !lr) return r;
-  const sl = sideReps(last), o = Object.assign({}, r, { reps: String(lr) });
-  if (ex.single && sl.L != null && sl.R != null) { o.repsL = String(sl.L); o.repsR = String(sl.R); } else { delete o.repsL; delete o.repsR; }
-  o.why = r.coach ? r.why + ', same reps as your last set (' + setTxt(last) + ')' : 'same weight as your last set, same reps (' + setTxt(last) + ')';
+  const ft = last.failure_type, cap = (v, plan) => { const e = Math.max(1, v - fatDrop(v, ft)); const p = num(plan); return String(p != null && p > 0 && p < e ? p : e); };
+  const sl = sideReps(last), o = Object.assign({}, r, { reps: cap(lr, r.reps) });
+  if (ex.single && sl.L != null && sl.R != null) { o.repsL = cap(sl.L, r.repsL != null ? r.repsL : r.reps); o.repsR = cap(sl.R, r.repsR != null ? r.repsR : r.reps); } else { delete o.repsL; delete o.repsR; }
+  const dtxt = fatDrop(lr, ft) ? 'your last set (' + setTxt(last) + ') minus the usual drop-off' : 'same reps as your last set (' + setTxt(last) + ')';
+  o.why = r.coach ? r.why + ', ' + dtxt : 'same weight as your last set, ' + dtxt;
   return o;
 }
 function suggest0(ex, idx) {
@@ -804,7 +829,8 @@ function suggestRaw(ex, idx) {
 // Arrows next to logged reps (Jack, Oct 20, 2026): compare to Coach's target for that set (coach plan, else suggestNext after the set rule), not last week.
 // Same weight: reps vs target reps (each side on one-arm sets, any side short = down). Different weight: estimated 1RM vs the target's. No target = no arrow.
 function trend(ex, r, i) {
-  let t = null; try { t = coachPlan(ex, i) || suggestNext(ex, i); } catch (e) {}
+  // v106: compare to the set's re-estimated target, as it stood when the set was logged (earlier sets today included), not the original plan.
+  let t = null; todayCut = i; try { t = suggest(ex, i); } catch (e) {} finally { todayCut = null; }
   if (!t || !t.reps || num(t.reps) == null) return '';
   const UP = '<span class="tr up">&#9650;</span>', DN = '<span class="tr dn">&#9660;</span>', EQ = '<span class="tr eq">&#9654;</span>';
   const lw = parseFloat(loadOf(r)), tw = parseFloat(t.load), s = sideReps(r);
@@ -945,7 +971,6 @@ function removePlanned(name) {
   const extra = +dayVal(ex, 'extra') || 0;
   if (extra > 0) setDayVal(ex, 'extra', extra > 1 ? String(extra - 1) : '');
   else setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + 1));
-  toast('Set removed');
 }
 // Exercise menu
 let menuEx = null;
@@ -1850,7 +1875,7 @@ async function deleteSet(sid, ask) {
     const l = recentLast();
     if (l) { const nt = nextTarget(l.exercise); setT({ start: tsOf(l), exercise: l.exercise, target: nt.target, next: nt.next, hidden: !!nt.last }); } else setT(null);
   }
-  update(); toast('Removed');
+  update();
 }
 
 // ---------- Set done / log form ----------
@@ -2211,7 +2236,7 @@ function feedback(ex, set, before, rest, target, sg) {
   if (pr) { if (beat) msgs[0] += ' ' + beatTxt; if (funOk()) msgs[0] += ' ' + pick(PR_CHEERS); }
   else if (beat) msgs.push(beatTxt + (funOk() ? ' ' + pick(BEAT_CHEERS) : '')); // v84: always show the numbers
   else if (rest != null && target && rest > target * 1.25 && rest > target + 30 && funOk()) msgs.push(pick(REST_NUDGES) + ' (' + fmt(rest) + ' vs ' + fmt(target) + ')');
-  if (msgs.length) toast(msgs[0]); else toast('Saved', 2500);
+  if (msgs.length) toast(msgs[0]); // v106: no 'Saved' toast
 }
 
 // ---------- Voice (hidden when unsupported, e.g. iOS) ----------

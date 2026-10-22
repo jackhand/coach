@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#11141a">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
@@ -17,7 +17,7 @@
 <style>
 :root{--bg:#11141a;--card:#1b2029;--card2:#232a35;--txt:#eef1f5;--mut:#9aa4b2;--acc:#2ecc71;--red:#ff4d4f;--blue:#4da3ff;--line:#2d3542}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--txt);font:17px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+html,body{touch-action:pan-x pan-y;margin:0;background:var(--bg);color:var(--txt);font:17px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 body{padding:env(safe-area-inset-top) 0 0}
 header{position:sticky;top:var(--th,0px);z-index:5;background:var(--bg);padding:10px 14px 8px;border-bottom:1px solid var(--line)}
 .row{display:flex;gap:8px;align-items:center}
@@ -415,8 +415,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=105"></script>
-<script src="exlist.js?v=105"></script>
-<script src="app.js?v=105"></script>
+<script src="parse.js?v=106"></script>
+<script src="exlist.js?v=106"></script>
+<script src="app.js?v=106"></script>
 </body>
 </html>
