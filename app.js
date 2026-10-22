@@ -1503,7 +1503,7 @@ function weekSets(off) {
   });
   return { mon, sun, m };
 }
-const PCOL = ['#3b4049', '#2e5d3a', '#3f8f4f', '#f2c14e', '#f28c38', '#e04f4f'];
+const PCOL = ['#3b4049', '#56b4e9', '#0072b2', '#e69f00', '#cc79a7', '#d55e00']; // v88: colorblind-safe (Okabe-Ito), no green/red or yellow/orange pairs
 const pBand = n => n <= 0 ? 0 : n < 5 ? 1 : n < 10 ? 2 : n < 15 ? 3 : n < 20 ? 4 : 5;
 const PLEG = ['0', '1-4', '5-9', '10-14', '15-19', '20+'];
 // Stylized front/back figures. Each muscle is a <g data-g> with the left shape plus its mirror (viewBox 120 x 240).
