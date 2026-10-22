@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 95; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 96; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1612,7 +1612,8 @@ function openProg(off) {
     '<div class="plist">' + (() => { const card = g => { const subs = (window.CoachRegions || []).filter(r => r[2] === g && !(r[0] === g && (window.CoachRegions || []).filter(x => x[2] === g).length === 1));
       return '<div class="pgrp"><button type="button" class="prow" data-g="' + g + '"><span>' + g + '</span><b>' + fmtSets(w.m[g].n) + '</b></button>' + subs.map(r => '<button type="button" class="prow psub" data-g="r_' + r[0] + '"><span>' + esc(r[1]) + '</span><b>' + fmtSets(w.m['r_' + r[0]].n) + '</b></button>').join('') + '</div>'; }; // v91: grouped under section headings, layout only
     const H = (t, c) => '<div class="phd' + (c ? ' ' + c : '') + '">' + t + '</div>', has = g => (window.CoachMG || []).includes(g), cs = gs => gs.filter(has).map(card).join('');
-    return H('Upper body', 'phd1') + H('Chest') + cs(['Chest']) + H('Back') + cs(['Back']) + H('Shoulders') + cs(['Shoulders']) + H('Arms') + cs(['Biceps', 'Triceps', 'Forearms']) +
+    return H('Upper body', 'phd1') + '<div class="pcols"><div class="pcol">' + H('Chest') + cs(['Chest']) + H('Arms') + cs(['Biceps', 'Forearms', 'Triceps']) + '</div><div class="pcol">' + H('Back') + cs(['Back']) + H('Shoulders') + cs(['Shoulders']) + '</div></div>' + // v96: two stacked columns so arms stay together
+      
       H('Legs', 'phd1') + cs(['Quads', 'Hamstrings', 'Glutes', 'Calves']) + H('Core', 'phd1') + cs(['Abs']) + H('Traps', 'phd1') + cs(['Traps']) +
       cs((window.CoachMG || []).filter(g => !['Chest','Back','Shoulders','Biceps','Triceps','Forearms','Quads','Hamstrings','Glutes','Calves','Abs','Traps'].includes(g))); })() + '</div>';
   progW = w; if (reopen) return; $('prog').classList.add('open');
