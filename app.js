@@ -1589,7 +1589,8 @@ function openProg(off) {
   $('pgprev').onclick = e => { e.stopPropagation(); openProg(progOff - 1); };
   $('pgnext').onclick = e => { e.stopPropagation(); openProg(progOff + 1); };
   $('pgb').innerHTML = '<div class="bmap">' + bodySvg('front', w.m) + bodySvg('back', w.m) + '</div>' +
-    '<div class="pleg">' + PLEG.map((l, i) => '<span><i style="background:' + PCOL[i] + '"></i>' + l + '</span>') .join('') + '</div>' +
+    '<div class="pleg">' + (() => { const it = i => '<span><i style="background:' + PCOL[i] + '"></i>' + PLEG[i] + '</span>'; return [0, 1, 2].map(it).join('') + '<span class="pideal"><span class="pir">' + it(3) + it(4) + '</span><em>ideal</em></span>' + it(5); })() + '</div>' + // v89: bracket marks 10-19 as the target band
+
     '<div class="s2">Hard sets logged ' + (progOff ? 'that week' : 'this week') + ' (Mon to Sun). Main muscle counts 1 set, each other listed muscle 0.5. Regions use the same rule. Tap a muscle.</div><div id="pgd"></div>' +
     '<div class="plist">' + (window.CoachMG || []).map(g => { const subs = (window.CoachRegions || []).filter(r => r[2] === g && !(r[0] === g && (window.CoachRegions || []).filter(x => x[2] === g).length === 1));
       return '<div class="pgrp"><button type="button" class="prow" data-g="' + g + '"><span>' + g + '</span><b>' + fmtSets(w.m[g].n) + '</b></button>' + subs.map(r => '<button type="button" class="prow psub" data-g="r_' + r[0] + '"><span>' + esc(r[1]) + '</span><b>' + fmtSets(w.m['r_' + r[0]].n) + '</b></button>').join('') + '</div>'; }).join('') + '</div>';
