@@ -184,16 +184,16 @@ root.CoachRegions = [
   ['FrontDelts', 'Front delts', 'Shoulders'], ['SideDelts', 'Side delts', 'Shoulders'], ['RearDelts', 'Rear delts', 'Shoulders'],
   ['Quads', 'Quads', 'Quads'],
   ['Glutes', 'Glute max', 'Glutes'], ['Adductors', 'Inner thighs (adductors)', 'Glutes'], ['Abductors', 'Outer hips (abductors)', 'Glutes'],
-  ['Hamstrings', 'Hamstrings', 'Hamstrings'], ['Calves', 'Calves (gastroc, soleus)', 'Calves'], ['Tibialis', 'Tibialis (shins)', 'Calves'],
+  ['Hamstrings', 'Hamstrings', 'Hamstrings'], ['Calves', 'Calves (gastroc, soleus)', 'Calves'],
   ['Traps', 'Upper traps', 'Traps'], ['MidTraps', 'Mid/lower traps', 'Traps'], ['Neck', 'Neck', 'Traps'],
   ['Forearms', 'Forearms', 'Forearms'],
   ['UpperAbs', 'Upper abs', 'Abs'], ['LowerAbs', 'Lower abs', 'Abs'], ['Obliques', 'Obliques', 'Abs']];
 const RTXT = [[/neck/, 'Neck'], [/upper chest|clavicular/, 'UpperChest'], [/serratus/, 'Serratus'], [/lower chest|chest|pec/, 'Chest'], [/front delt|anterior delt/, 'FrontDelts'], [/side delt|lateral delt|medial delt/, 'SideDelts'], [/rear delt|posterior delt/, 'RearDelts'],
   [/delt|shoulder/, 'SideDelts'], [/mid trap|middle trap|lower trap/, 'MidTraps'], [/trap/, 'Traps'], [/lat\b|lats/, 'Lats'], [/mid back|upper back|rhomboid|teres/, 'UpperBack'], [/lower back|erector|spinal/, 'LowerBack'], [/back/, 'Lats'],
   [/bicep|brachialis/, 'Biceps'], [/tricep/, 'Triceps'], [/forearm|grip|wrist/, 'Forearms'], [/oblique/, 'Obliques'], [/upper abs/, 'UpperAbs'], [/lower abs/, 'LowerAbs'], [/abs|core|abdomin/, 'UpperAbs'],
-  [/adductor|inner thigh/, 'Adductors'], [/abductor|outer hip|glute med/, 'Abductors'], [/glute/, 'Glutes'], [/hamstring/, 'Hamstrings'], [/quad/, 'Quads'], [/tibialis|shin/, 'Tibialis'], [/calf|calves|soleus/, 'Calves']];
+  [/adductor|inner thigh/, 'Adductors'], [/abductor|outer hip|glute med/, 'Abductors'], [/glute/, 'Glutes'], [/hamstring/, 'Hamstrings'], [/quad/, 'Quads'], [/calf|calves|soleus/, 'Calves']];
 // Name rules: [pattern, main region, extra regions at 0.5]
-const RNAME = [[/neck (curl|extension|flexion|harness)|neck$/, 'Neck', []], [/tib(ialis)? raise|tibialis/, 'Tibialis', []], [/pullover/, 'Lats', ['Serratus']],
+const RNAME = [[/neck (curl|extension|flexion|harness)|neck$/, 'Neck', []], [/pullover/, 'Lats', ['Serratus']],
   [/leg raise|knee raise|captain|dragon flag|reverse crunch|l-sit/, 'LowerAbs', []], [/crunch|sit-?up/, 'UpperAbs', []], [/pallof|woodchop|wood chop|oblique|side plank|russian twist/, 'Obliques', []],
   [/adduct/, 'Adductors', []], [/abduct/, 'Abductors', []], [/back extension|hyperextension|good morning|reverse hyper/, 'LowerBack', []], [/lateral raise|upright row/, 'SideDelts', []],
   [/face pull/, 'RearDelts', ['MidTraps', 'UpperBack']], [/reverse fly|reverse pec|rear delt/, 'RearDelts', ['UpperBack']], [/front raise|shoulder press|overhead press|military/, 'FrontDelts', []],
