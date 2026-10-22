@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 102; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 103; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 try { const av = document.getElementById('appver'); if (av) av.textContent = String(APP_VERSION); } catch (e) {}
 const LS = localStorage;
 const DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
@@ -1614,7 +1614,8 @@ function openProg(off) {
     const H = (t, c) => '<div class="phd' + (c ? ' ' + c : '') + '">' + t + '</div>', has = g => (window.CoachMG || []).includes(g), cs = gs => gs.filter(has).map(card).join('');
     const sec = (t, gs) => '<div class="pcol">' + H(t) + cs(gs) + '</div>', row = (a, b) => '<div class="pcols">' + a + (b || '<div class="pcol"></div>') + '</div>'; // v98: sections A to Z, two per row
     return H('Upper body', 'phd1') + row(sec('Arms', ['Biceps', 'Forearms', 'Triceps']), sec('Back', ['Back'])) + row(sec('Chest', ['Chest']), sec('Shoulders', ['Shoulders'])) + row(sec('Traps', ['Traps'])) + // v99: Upper body / Lower body headings restored
-      H('Legs', 'phd1') + cs(['Calves', 'Glutes', 'Hamstrings', 'Quads']) + H('Core', 'phd1') + cs(['Abs']) + // v102: Legs then Core as main headings, cards fill both columns
+      H('Legs', 'phd1') + cs(['Calves', 'Glutes', 'Hamstrings', 'Quads']) + H('Core', 'phd1') + (has('Abs') ? ['<button type="button" class="prow" data-g="Abs"><span>Abs</span><b>' + fmtSets(w.m.Abs.n) + '</b></button>'].concat((window.CoachRegions || []).filter(r => r[2] === 'Abs' && w.m['r_' + r[0]]).sort((a, b) => a[1].localeCompare(b[1])).map(r => '<button type="button" class="prow psub" data-g="r_' + r[0] + '"><span>' + esc(r[1]) + '</span><b>' + fmtSets(w.m['r_' + r[0]].n) + '</b></button>')).map(b => '<div class="pgrp">' + b + '</div>').join('') : '') + // v103: core rows spread over both columns
+      // v102: Legs then Core as main headings, cards fill both columns
       // v101: Legs is its own main heading
       // v100: Traps moved to Upper body
      
