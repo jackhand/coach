@@ -72,6 +72,10 @@
     if (/^all( days)?$|^every day$/i.test(a)) name = ''; else if (DAYN.test(a) && !day) day = a.toLowerCase(); else name = a;
     const o = { w, day, name, key: name ? norm(stripParens(name)) : '', key2: name ? norm(name) : '', text: b };
     const sm = b.match(/\b(?:starts?\s+at|drop\s+to)\s+(\d+(?:\.\d+)?)\s*(?:lbs?)?\b/i); if (sm) { const gm = b.match(/\bget\s+(\d+)\b/i); o.plan = { 1: { label: /^drop/i.test(sm[0]) ? 'drop' : 'start', load: +sm[1], lo: null, hi: gm ? +gm[1] : null } }; }
+    else { // v107 (Jack, Oct 24): 'Stay at 180 lbs' / 'Use 160 lbs' set the weight for every working set, so the pre-fill matches the tip.
+      const um = b.match(/\b(?:stay\s+at|use)\s+(\d+(?:\.\d+)?)\s*lbs?\b(?!\s*(?:dumbbells?|dbs?)\b)/i);
+      if (um) { const gm = b.match(/\bget\s+(\d+)\b/i); o.plan = {}; for (let i = 1; i <= 12; i++) o.plan[i] = { label: 'use', load: +um[1], lo: null, hi: gm ? +gm[1] : null }; }
+    }
     return o;
   }
   function parseProgram(md) {

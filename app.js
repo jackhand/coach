@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 106; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 107; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -716,15 +716,15 @@ function coachPlan(ex, idx) {
   let reps = p.hi ? String(p.hi) : '';
   if (p.load != null) {
     if (!reps) { const b = suggestNext(ex, idx); reps = b && num(b.load) === p.load && b.reps ? String(b.reps) : String(repRange(ex)[0]); }
-    const what = p.label === 'drop' ? 'drop to ' + p.load + ' lbs, get ' + (p.hi || reps) : p.label === 'start' ? 'start at ' + p.load + ' lbs this week' : p.label + ' ' + p.load + (rr ? ' x ' + rr : '');
-    return { load: String(p.load), reps, coach: true, why: 'Coach plan: ' + what + (idx === 0 && !today.length && p.label === 'top set' ? ', an estimate. Change it if the warm-ups feel off' : '') };
+    const what = p.label === 'drop' ? 'Use ' + p.load + ' lbs and get ' + (p.hi || reps) + '. This week\'s plan.' : (p.label === 'start' || p.label === 'use') ? 'Use ' + p.load + ' lbs. This week\'s plan.' : 'Use ' + p.load + ' lbs for ' + (rr || reps) + '. This is your ' + p.label + '.';
+    return { load: String(p.load), reps, coach: true, why: what + (idx === 0 && !today.length && p.label === 'top set' ? ' Adjust if warm-ups feel off.' : '') };
   }
   if (p.pct) {
     const unit = Math.max(2.5, stepFor(ex).unit || 5), rnd = v => Math.round(v / unit) * unit, ref = today[p.ref - 1], rp = plan[p.ref];
     const refName = p.ref === 1 ? 'top set' : 'set ' + p.ref;
-    if (ref && num(ref.load) > 0) return { load: String(rnd(num(ref.load) * p.pct / 100)), reps, coach: true, why: 'Coach plan: ' + p.label + ' at ' + p.pct + '% of your ' + refName + ' (' + setTxt(ref) + ')' + (rr ? ', ' + rr + ' reps' : '') };
+    if (ref && num(ref.load) > 0) return { load: String(rnd(num(ref.load) * p.pct / 100)), reps, coach: true, why: 'Use ' + rnd(num(ref.load) * p.pct / 100) + ' lbs. That is ' + p.pct + '% of your ' + refName + '.' };
     const base = rp && rp.load != null ? rp.load : null;
-    if (base) return { load: String(rnd(base * p.pct / 100)), reps, coach: true, est: true, why: 'Coach plan: ' + p.label + ' at ' + p.pct + '% of the ' + refName + ' (' + base + ' planned). Updates from the weight you actually log' };
+    if (base) return { load: String(rnd(base * p.pct / 100)), reps, coach: true, est: true, why: 'Use ' + rnd(base * p.pct / 100) + ' lbs. That is ' + p.pct + '% of your ' + refName + '.' };
   }
   return null;
 }
@@ -740,8 +740,7 @@ function suggest(ex, idx) {
   const ft = last.failure_type, cap = (v, plan) => { const e = Math.max(1, v - fatDrop(v, ft)); const p = num(plan); return String(p != null && p > 0 && p < e ? p : e); };
   const sl = sideReps(last), o = Object.assign({}, r, { reps: cap(lr, r.reps) });
   if (ex.single && sl.L != null && sl.R != null) { o.repsL = cap(sl.L, r.repsL != null ? r.repsL : r.reps); o.repsR = cap(sl.R, r.repsR != null ? r.repsR : r.reps); } else { delete o.repsL; delete o.repsR; }
-  const dtxt = fatDrop(lr, ft) ? 'your last set (' + setTxt(last) + ') minus the usual drop-off' : 'same reps as your last set (' + setTxt(last) + ')';
-  o.why = r.coach ? r.why + ', ' + dtxt : 'same weight as your last set, ' + dtxt;
+  o.why = 'Use ' + r.load + ' lbs and get ' + o.reps + '. ' + (fatDrop(lr, ft) ? 'You are a bit tired after the last set.' : 'Match your last set.');
   return o;
 }
 function suggest0(ex, idx) {
@@ -752,7 +751,7 @@ function suggest0(ex, idx) {
     const last = today[today.length - 1], lw = num(last.load);
     if (lw != null) {
       if (base && num(base.load) === lw) return base;
-      const sl = sideReps(last); return Object.assign({ load: String(lw), reps: String(repN(last) || (base && base.reps) || ''), why: 'matches your last set (' + setTxt(last) + ')' }, ex.single && sl.L != null && sl.R != null && sl.L !== sl.R ? { repsL: String(sl.L), repsR: String(sl.R) } : {});
+      const sl = sideReps(last); return Object.assign({ load: String(lw), reps: String(repN(last) || (base && base.reps) || ''), why: 'Use ' + lw + ' lbs. Same as your last set.' }, ex.single && sl.L != null && sl.R != null && sl.L !== sl.R ? { repsL: String(sl.L), repsR: String(sl.R) } : {});
     }
   }
   return base;
@@ -767,7 +766,7 @@ function suggestNext(ex, idx) {
     const l = suggestRaw(ex, j); if (!l || num(l.load) !== num(b.load) || num(l.load) == null) continue;
     if (num(l.reps) > num(o.reps) || (o.repsL != null && l.repsL != null) ) {
       o = Object.assign({}, o, { reps: up(o.reps, l.reps) }, o.repsL != null && l.repsL != null ? { repsL: up(o.repsL, l.repsL), repsR: up(o.repsR, l.repsR) } : {});
-      if (num(l.reps) > num(b.reps)) o.why = l.why + ' · a later set had more reps, so every set aims at ' + o.reps;
+      if (num(l.reps) > num(b.reps)) o.why = 'Use ' + o.load + ' lbs and get ' + o.reps + '. Same goal on every set.';
     }
   }
   return o;
@@ -786,25 +785,25 @@ function suggestRaw(ex, idx) {
   const ls = lastSession(ex);
   if (ls) {
     const rows = ls.rows, sw = settled(rows);
-    if (sw == null) { const r = rows[Math.min(idx, rows.length - 1)], reps = repN(r) || 0; return { load: r.load, reps: String(dl ? lo : Math.min(hi, reps + 1)), why: (dl ? 'deload, ' : '') + 'last time ' + setTxt(r) }; }
+    if (sw == null) { const r = rows[Math.min(idx, rows.length - 1)], reps = repN(r) || 0; return { load: r.load, reps: String(dl ? lo : Math.min(hi, reps + 1)), why: 'Use ' + r.load + ' lbs. ' + (dl ? 'Easy deload week.' : 'Beat last time.') }; }
     const at = rows.filter(r => num(r.load) === sw), ref = at[Math.min(idx, at.length - 1)], reps = repN(ref), sr = sideReps(ref);
     const top = Math.max(0, ...at.map(r => repN(r) || 0));
     const failed = at.some(r => (repN(r) || 0) === top && r.failure_type !== 'not to failure');
     const ramp = num(rows[0].load) != null && num(rows[0].load) < sw ? ' · settled on ' + sw : '';
-    if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'deload: about 85% load, half the sets, stop 2-3 reps short of failure' };
-    if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'aim +1 rep (last ' + setTxt(ref) + ')' };
-    if (holdW(ex)) return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'keep the settled weight ' + sw + ', aim +1 rep (last ' + setTxt(ref) + ')' + ramp };
+    if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'Use ' + Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw) + ' lbs. Deload week, so stop 2 to 3 reps short.' };
+    if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'Get ' + (reps + 1) + ' reps. One more than last time.' };
+    if (holdW(ex)) return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'Use ' + sw + ' lbs. Hold the weight and add a rep.' };
     if (top > 0 && top < lo && lo - top < 3 && sw > 0) // v87 (Jack, Oct 21): heavier is preferred. 1-2 reps under the range: keep the weight, aim for the bottom, finish with a drop set
-      return { load: String(sw), reps: String(lo), firm: true, why: 'last ' + setTxt(ref) + ' was under ' + lo + '-' + hi + ': stay at ' + sw + ' lbs, get ' + lo + ', then a drop set on the last set' };
+      return { load: String(sw), reps: String(lo), firm: true, why: 'Use ' + sw + ' lbs. Reps were a bit low, so stay and drop set at the end.' };
     if (top > 0 && top < lo && sw > 0) { // v86: 3 or more reps under the range = one firm call to a lighter weight. Pick the weight whose estimated reps land mid-range (Epley and Brzycki average), rounded to the machine's increments.
       const best = at.reduce((m, r) => (repN(r) || 0) > (repN(m) || 0) ? r : m, at[0]), br = Math.min(repN(best) || top, 30), e = (sw * (1 + br / 30) + sw * 36 / (37 - br)) / 2;
       const mid = Math.round((lo + hi) / 2), u = st.unit || 5, raw = (e / (1 + mid / 30) + e * (37 - mid) / 36) / 2, nl = Math.max(u, Math.round(raw / u) * u);
-      if (nl < sw) return { load: String(nl), reps: String(mid), firm: true, why: 'last ' + setTxt(best) + ' was under ' + lo + '-' + hi + ': drop to ' + nl + ' lbs, get ' + mid };
+      if (nl < sw) return { load: String(nl), reps: String(mid), firm: true, why: 'Use ' + nl + ' lbs. Reps were too low, so go lighter.' };
     }
     const small = iso && sw > 0 && st.step / sw > 0.12;
-    if (top >= hi + (small ? 2 : 0) && failed) return { load: String(sw + st.step), reps: String(lo), why: 'top of range hit: +' + st.step + ' lbs' + st.txt };
-    if (small && top >= hi) return { load: String(sw), reps: String(Math.min(hi + 2, reps + 1)), why: '+' + st.step + ' lb is a big jump here: add a rep first, go up at ' + (hi + 2) };
-    return Object.assign({ load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'same weight, aim +1 rep (last ' + setTxt(ref) + ')' + ramp }, ex.single && sr.L != null && sr.R != null && sr.L !== sr.R ? { repsL: plus1(sr.L, hi), repsR: plus1(sr.R, hi) } : {});
+    if (top >= hi + (small ? 2 : 0) && failed) return { load: String(sw + st.step), reps: String(lo), why: 'Use ' + (sw + st.step) + ' lbs. Top of range hit, so step up.' };
+    if (small && top >= hi) return { load: String(sw), reps: String(Math.min(hi + 2, reps + 1)), why: 'Use ' + sw + ' lbs. The next weight is a big jump, so add a rep first.' };
+    return Object.assign({ load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'Use ' + sw + ' lbs. Same weight, so add a rep.' }, ex.single && sr.L != null && sr.R != null && sr.L !== sr.R ? { repsL: plus1(sr.L, hi), repsR: plus1(sr.R, hi) } : {});
   }
   if (ex.bodyweight) return null;
   // Never done: estimate from the best e1RM on a similar exercise (same rest muscle), scaled by equipment.
@@ -824,7 +823,7 @@ function suggestRaw(ex, idx) {
   if (!best) return null;
   const reps = Math.round((lo + hi) / 2), u = Math.max(5, st.step || 5);
   let load = r5(best.v / (1 + reps / 30), u); if (dl) load = r5(load * 0.85, u);
-  return { load: String(load), reps: String(dl ? lo : reps), why: (dl ? 'deload, ' : '') + 'from ' + best.from, est: true };
+  return { load: String(load), reps: String(dl ? lo : reps), why: 'Use ' + load + ' lbs. A first guess from your ' + best.from + '.', est: true };
 }
 // Arrows next to logged reps (Jack, Oct 20, 2026): compare to Coach's target for that set (coach plan, else suggestNext after the set rule), not last week.
 // Same weight: reps vs target reps (each side on one-arm sets, any side short = down). Different weight: estimated 1RM vs the target's. No target = no arrow.
@@ -841,9 +840,20 @@ function trend(ex, r, i) {
     if (pairs.some(p => p[0] < p[1])) return DN;
     return pairs.some(p => p[0] > p[1]) ? UP : EQ;
   }
-  const a = P_.e1rm(lw, repN(r)), b = P_.e1rm(tw, num(t.reps));
-  const d = a && b ? a.ep - b.ep : lw - tw;
-  return d > 0 ? UP : d < 0 ? DN : EQ;
+  // v107 (Jack, Oct 24): re-estimate the target at the weight actually logged. Last session's reps at that weight win; else an Epley/Brzycki estimate.
+  const tr = repsAtLoad(ex, lw, i, tw, num(t.reps));
+  if (tr == null) return '';
+  const n = repN(r);
+  return n < tr ? DN : n > tr ? UP : EQ;
+}
+// Target reps at a weight other than the planned one: last session at that weight (same set index, else its last set), else the planned set's estimate moved to that weight.
+function repsAtLoad(ex, lw, i, tw, treps) {
+  let ls = null; try { ls = lastSession(ex); } catch (e) {}
+  const at = ls ? ls.rows.filter(x => num(x.load) === lw && x.failure_type !== 'warm-up') : [];
+  if (at.length) return repN(at[Math.min(i, at.length - 1)]) || null;
+  if (!(lw > 0) || !(tw > 0) || !(treps > 0)) return null;
+  const e = (tw * (1 + treps / 30) + tw * 36 / (37 - Math.min(treps, 30))) / 2;
+  return Math.max(1, Math.round(((e / lw - 1) * 30 + 37 - 36 * lw / e) / 2));
 }
 // Mesocycle grid: settings profile.meso = {"start":"YYYY-MM-DD","weeks":N,"deload":N} (written by Coach), else Week 1 only.
 function mesoCfg() {
@@ -1981,16 +1991,16 @@ function reEstimate() {
     const keys = keysOf(ex), hist = viewRows().filter(r => keys.has(P_.norm(r.exercise)) && !isWarm(r) && parseFloat(loadOf(r)) === nl && repN(r) > 0);
     if (hist.length) {
       const day = hist.map(r => r.date || '').sort().pop(), best = Math.max(...hist.filter(r => (r.date || '') === day).map(r => repN(r)));
-      formSug = { load: String(nl), reps: String(best), est: true, why: 'your last ' + nl + ' lbs set: ' + nl + ' x ' + best + (day ? ' on ' + day : '') };
+      formSug = { load: String(nl), reps: String(best), est: true, why: 'Get ' + best + '. That is what you did last time at ' + nl + ' lbs.' };
     } else {
       const r0 = Math.min(br, 30), eE = bl * (1 + r0 / 30), eB = bl * 36 / (37 - r0);
       const rE = 30 * (eE / nl - 1), rB = 37 - 36 * nl / eB;
       const n = Math.max(1, Math.min(30, Math.round((rE + rB) / 2)));
-      formSug = { load: String(nl), reps: String(n), est: true, why: 'estimated for ' + nl + ' lbs from ' + bl + ' x ' + br + ' (Epley and Brzycki average)' };
+      formSug = { load: String(nl), reps: String(n), est: true, why: 'Get ' + n + '. A guess for ' + nl + ' lbs.' };
     }
   }
   const r = formSug.reps; if (ex.single) { $('frl').value = String(formSug.repsL || r); $('frr').value = String(formSug.repsR || r); } else $('fr').value = r;
-  $('fsug').textContent = (formSug.est ? 'Estimate: ' : 'Suggested: ') + formSug.load + ' x ' + r + ' (' + formSug.why + '). Change it if you did something else.';
+  $('fsug').textContent = 'Target ' + formSug.load + ' x ' + r + '. ' + formSug.why;
 }
 $('fl').addEventListener('change', () => { flPlates(); reEstimate(); });
 function showSides(on) { $('sides').style.display = on ? 'block' : 'none'; $('repsbox').style.display = on ? 'none' : 'block'; }
@@ -2048,7 +2058,7 @@ function openForm(i, ts, row) {
   $('fl').value = row ? (row.load || '') : sg && sg.load ? sg.load : prev ? prev.load : (ex.bodyweight ? '0' : '');
   $('fr').value = row ? row.reps : (sg && !ex.single ? sg.reps : '');
   if (!row && ex.single && sg) { $('frl').placeholder = sg.repsL || sg.reps; $('frr').placeholder = sg.repsR || sg.reps; }
-  $('fsug').textContent = sg ? (sg.coach ? '' : sg.est ? 'Estimate: ' : 'Suggested: ') + (sg.load || '-') + ' x ' + sg.reps + ' (' + sg.why + '). Change it if you did something else.' : ''; $('fn').value = row ? noteTxt(row) : ''; $('ferr').textContent = '';
+  $('fsug').textContent = sg ? 'Target ' + (sg.load || '-') + ' x ' + sg.reps + '. ' + sg.why : ''; $('fn').value = row ? noteTxt(row) : ''; $('ferr').textContent = '';
   $('frl').value = row ? (row.left_reps || '') : (ex.single && sg ? String(sg.repsL || sg.reps || '') : ''); $('frr').value = row ? (row.right_reps || '') : (ex.single && sg ? String(sg.repsR || sg.reps || '') : ''); // single-arm: both sides prefilled, one save logs the set
   showSides(!!ex.single); setDrops(row ? (+row.drops || 0) : 0); setMini(row ? miniOf(row) : 0);
   formSetIdx = row ? Math.max(0, rowsFor(ex, true).findIndex(x => x.set_id === row.set_id)) : today.length;
