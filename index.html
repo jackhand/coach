@@ -227,6 +227,14 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
 #askx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px;min-width:44px;min-height:44px}
 #askh{margin:8px 44px 8px 0;font-size:20px}#askt{margin:0 0 12px;font-size:16px;line-height:1.45;color:var(--mut)}#aski{margin:0 0 4px}#asky{margin-bottom:8px}
 #asky.dng{background:#c62828;color:#fff}
+#gpkw{position:fixed;inset:0;z-index:38;background:rgba(0,0,0,.6);display:none}#gpkw.open{display:flex}
+/* v110: every window sits centered with its close X at the top right */
+#menu,#hist,#tech,#repl,#calw,#wmw,#delw,#tswapw,#gdelw,#tipw,#gchw,#gedw,#gpkw,#rstw,#rfil,#prog,#redow,#askw{align-items:center;justify-content:center}
+#menu .in, #hist .in, #tech .in, #repl .in, #calw .in, #wmw .in, #delw .in, #tswapw .in, #gdelw .in, #tipw .in, #gchw .in, #gedw .in, #gpkw .in, #rstw .in, #rfil .in, #prog .in, #redow .in, #askw .in{width:calc(100% - 24px);max-width:560px;border-radius:18px;position:relative;max-height:85vh;overflow:auto;padding-top:20px}
+#sheet{align-items:flex-start;justify-content:center}#sheet .in{position:relative;width:calc(100% - 16px);max-width:560px;border-radius:18px;margin-top:8px}
+.in>h3{margin-right:40px}
+.xc,#delx,#gdelx,#tipx,#gedx,#rstx,#redox,#askx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px;z-index:2}
+#gpkl .gitem{width:100%}
 </style>
 </head>
 <body>
@@ -281,7 +289,7 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
 </div>
 
 <div id="sheet">
-  <div class="in">
+  <div class="in"><button type="button" class="xc" id="fxc" aria-label="Close">&times;</button>
     <div id="ftimer"></div>
     <h3 id="sh">Log set</h3>
     <button class="btn" id="mic" type="button">Tap and speak</button>
@@ -337,7 +345,7 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
     <button class="btn red" id="fdel" style="display:none">Delete set</button>
   </div>
 </div>
-<div id="menu"><div class="in">
+<div id="menu"><div class="in"><button type="button" class="xc" id="mclose" aria-label="Close">&times;</button>
   <h3 id="mh"></h3>
   <button class="btn sec" id="madd">Add a set</button>
   <button class="btn sec" id="mskip">Skip remaining sets</button>
@@ -351,10 +359,9 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
   <div class="seg" id="mmscope"><button type="button" data-ms="workout">This workout</button><button type="button" data-ms="block">Rest of block</button></div>
   <div class="seg" id="mmeth" style="margin-top:6px"><button type="button" data-mm="match">Myo-rep match</button></div><div class="s2">Tap to turn myo-rep match on or off. Off means normal sets.</div></div>
   <button class="btn sec" id="mdel" style="color:#e57373">Delete exercise</button>
-  <button class="btn sec" id="mclose">Close</button>
 </div></div>
-<div id="tech"><div class="in"><h3 id="tqh"></h3><div id="tqb"></div><button class="btn sec" id="tqclose">Close</button></div></div>
-<div id="repl"><div class="in">
+<div id="tech"><div class="in"><button type="button" class="xc" id="tqclose" aria-label="Close">&times;</button><h3 id="tqh"></h3><div id="tqb"></div></div></div>
+<div id="repl"><div class="in"><button type="button" class="xc" id="rclose" aria-label="Close">&times;</button>
   <h3 id="rh"></h3>
   <label>Replace for</label>
   <div class="seg" id="rscope"><button type="button" data-s="workout">This workout only</button><button type="button" data-s="block">Rest of the block</button></div>
@@ -366,34 +373,34 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
   <div id="rres" style="margin-top:8px"></div>
   <div id="rgo"><button type="button" class="btn" id="rgob">Add</button></div>
   <button class="btn sec" id="rundo" style="display:none">Go back</button>
-  <button class="btn sec" id="rclose">Close</button>
 </div></div>
-<div id="calw"><div class="in"><h3>Meso calendar</h3><div id="calnow" class="calnow"></div><div id="calb"></div><button class="btn sec" id="calclose">Close</button></div></div>
+<div id="calw"><div class="in"><button type="button" class="xc" id="calclose" aria-label="Close">&times;</button><h3>Meso calendar</h3><div id="calnow" class="calnow"></div><div id="calb"></div></div></div>
 <div id="delw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="delx" aria-label="Close">&times;</button><h3 id="delh"></h3><p id="delt">Are you sure? This will delete it from the entire rest of the meso. If you just want to delete it from this workout, just skip it.</p><button type="button" class="btn" id="dely">Delete</button><button type="button" class="btn sec" id="deln">Cancel</button></div></div>
 <div id="redow" role="dialog" aria-modal="true"><div class="in"><button type="button" id="redox" aria-label="Close">&times;</button><h3 id="redoh"></h3><p id="redot"></p><button type="button" class="btn" id="redoy">Redo</button><button type="button" class="btn sec" id="redon">Cancel</button></div></div>
 <div id="askw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="askx" aria-label="Close">&times;</button><h3 id="askh"></h3><p id="askt"></p><textarea id="aski" rows="3" hidden></textarea><button type="button" class="btn" id="asky">OK</button><button type="button" class="btn sec" id="askn">Cancel</button></div></div>
-<div id="wmw"><div class="in"><h3 id="wmh"></h3><div id="wml"></div><button class="btn sec" id="wmclose">Close</button></div></div>
+<div id="wmw"><div class="in"><button type="button" class="xc" id="wmclose" aria-label="Close">&times;</button><h3 id="wmh"></h3><div id="wml"></div></div></div>
 <div id="rstw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="rstx" aria-label="Close">&times;</button><h3>Reset this workout?</h3><p id="rstt"></p><button type="button" class="btn" id="rsty">Reset</button><button type="button" class="btn sec" id="rstn">Cancel</button></div></div>
-<div id="rfil" role="dialog" aria-modal="true"><div class="in"><h3>Filter</h3>
+<div id="rfil" role="dialog" aria-modal="true"><div class="in"><button type="button" class="xc" id="rfx" aria-label="Close">&times;</button><h3>Filter</h3>
   <label>Muscle groups</label><div class="chips2" id="rfmg"></div>
   <label>Equipment</label><div class="chips2" id="rfeq"></div>
   <label class="tgl"><input type="checkbox" id="rfdone"> Only exercises I've done</label>
   <div class="rfb2"><button type="button" class="btn sec" id="rfc">Cancel</button><button type="button" class="btn" id="rfa">Apply</button></div>
 </div></div>
-<div id="prog"><div class="in"><h3 id="pgh"></h3><div id="pgb"></div><button class="btn sec" id="pgclose">Close</button></div></div>
-<div id="hist"><div class="in"><h3 id="hh"></h3><div id="hgym" class="sub" style="margin:-4px 0 8px"></div><div id="hb"></div><button class="btn sec" id="hmore" style="display:none">Load older</button><button class="btn sec" id="hclose">Close</button></div></div>
-<div id="tswapw" role="dialog" aria-modal="true"><div class="in"><h3 id="tsh"></h3><div id="tss" class="sub" style="margin-bottom:8px"></div><div id="tsl"></div>
+<div id="prog"><div class="in"><button type="button" class="xc" id="pgclose" aria-label="Close">&times;</button><h3 id="pgh"></h3><div id="pgb"></div></div></div>
+<div id="hist"><div class="in"><button type="button" class="xc" id="hclose" aria-label="Close">&times;</button><h3 id="hh"></h3><div id="hgym" class="sub" style="margin:-4px 0 8px"></div><div id="hb"></div><button class="btn sec" id="hmore" style="display:none">Load older</button></div></div>
+<div id="tswapw" role="dialog" aria-modal="true"><div class="in"><button type="button" class="xc" id="tsx" aria-label="Close">&times;</button><h3 id="tsh"></h3><div id="tss" class="sub" style="margin-bottom:8px"></div><div id="tsl"></div>
 <label for="tsi">Or type what they have</label><input id="tsi" maxlength="80" autocomplete="off" placeholder="e.g. Cybex chest press">
-<button type="button" class="btn" id="tsok">Use this</button><button type="button" class="btn sec" id="tsclr">Do the planned exercise</button><button type="button" class="btn sec" id="tsx">Close</button></div></div>
+<button type="button" class="btn" id="tsok">Use this</button><button type="button" class="btn sec" id="tsclr">Do the planned exercise</button></div></div>
 <div id="gdelw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="gdelx" aria-label="Close">&times;</button><h3 id="gdelh">Delete gym?</h3><p>Are you sure? This removes the gym from your list. Sets you logged there are kept and still show the gym name in past workouts.</p><button type="button" class="btn" id="gdely" style="background:#e57373;color:#2a0b0b">Delete gym</button><button type="button" class="btn sec" id="gdeln">Cancel</button></div></div>
 <div id="msgw" role="dialog" aria-modal="true"><div class="in"><p id="msgt"></p></div></div>
 <div id="tipw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="tipx" aria-label="Close">&times;</button><h3 id="tiph"></h3><div id="tipb"></div><button type="button" class="btn" id="tipok">Got it</button></div></div>
-<div id="gchw" role="dialog" aria-modal="true"><div class="in"><h3>Change gym?</h3><p>Are you sure? This changes the gym for the entire day.</p><button type="button" class="btn" id="gchy">Change gym</button><button type="button" class="btn sec" id="gchn">Cancel</button></div></div>
+<div id="gchw" role="dialog" aria-modal="true"><div class="in"><button type="button" class="xc" id="gchx" aria-label="Close">&times;</button><h3>Change gym?</h3><p>Are you sure? This changes the gym for the entire day.</p><button type="button" class="btn" id="gchy">Change gym</button><button type="button" class="btn sec" id="gchn">Cancel</button></div></div>
 <div id="gedw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="gedx" aria-label="Close">&times;</button><h3 id="gedh">Gym</h3>
 <label for="gedn">Name</label><input id="gedn" maxlength="40" autocomplete="off" placeholder="e.g. Hotel gym">
 <label>Icon</label><div id="gedi" class="gicons"></div>
 <div id="gedhint" class="sub" style="margin:8px 0"></div>
 <button type="button" class="btn" id="geds">Save</button><button type="button" class="btn sec" id="gedd" style="color:#e57373">Delete gym</button><button type="button" class="btn sec" id="gedc">Cancel</button></div></div>
+<div id="gpkw" role="dialog" aria-modal="true"><div class="in"><button type="button" class="xc" id="gpkx" aria-label="Close">&times;</button><h3 id="gpkh">Modify gym</h3><div id="gpkt" class="sub" style="margin-bottom:8px"></div><div id="gpkl"></div><button type="button" class="btn sec" id="gpkn">Add a new gym</button></div></div>
 <div class="toast" id="toast"></div>
 
 <div id="fatal" style="display:none;position:fixed;inset:0;z-index:99;background:#11141a;color:#eef1f5;padding:24px;font:17px system-ui,sans-serif"><h2 style="margin-top:40px">Coach hit a startup error</h2><p id="fatalmsg" style="color:#ffb3b5;word-break:break-word"></p><p style="color:#9aa4b2">Your logged sets are safe. Tap Reload to fetch a fresh copy of the app.</p><button id="fatalbtn" style="font:inherit;font-weight:700;min-height:56px;width:100%;border:0;border-radius:12px;background:#2ecc71;color:#06210f">Reload app</button></div>
@@ -415,8 +422,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=109"></script>
-<script src="exlist.js?v=109"></script>
-<script src="app.js?v=109"></script>
+<script src="parse.js?v=110"></script>
+<script src="exlist.js?v=110"></script>
+<script src="app.js?v=110"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 109; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 110; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -1038,6 +1038,7 @@ function retagDay(id) { // the whole day moves to the new gym: rewrite the gym t
   workoutRows().forEach(r => { const base = String(r.notes || '').replace(GYM_RE, '').replace(TRIP_RE, '').trim(); const nt = (base + ' ' + gymTagTxt(g.name, id === 'home' ? 'home' : 'trip:' + id, id === 'home' ? '' : r.sub)).trim(); const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === r.set_id); if (pi >= 0) { q[pi].set.notes = nt; q[pi].set.gym = id === 'home' ? g.name : 'trip:' + id + ' (' + g.name + ')'; setQ(q); } else enqueue({ action: 'edit', set_id: r.set_id, fields: { notes: nt } }); });
 }
 $('gchy').onclick = () => { const id = gymAsk; gymAsk = null; $('gchw').classList.remove('open'); popLayer('gch'); if (id) pickGym(id, true); };
+$('gchx').onclick = () => $('gchn').onclick();
 $('gchn').onclick = () => { gymAsk = null; $('gchw').classList.remove('open'); popLayer('gch'); render(); };
 $('tswapw').addEventListener('click', e => { if (e.target.id === 'tswapw') { $('tswapw').classList.remove('open'); popLayer('tswap'); return; } const b = e.target.closest('[data-tsv]'); if (b) setTripSwap(b.dataset.tsv); });
 $('tsok').onclick = () => { const v = $('tsi').value.trim(); if (!v) { $('tsi').focus(); return; } setTripSwap(v.slice(0, 80)); };
@@ -1112,7 +1113,7 @@ function openFilter() {
   $('rfil').classList.add('open'); pushLayer('rfil', () => $('rfil').classList.remove('open'));
 }
 const closeFilter = () => { if (!$('rfil').classList.contains('open')) return; $('rfil').classList.remove('open'); popLayer('rfil'); };
-$('rfb').onclick = openFilter; $('rfc').onclick = closeFilter;
+$('rfb').onclick = openFilter; $('rfc').onclick = closeFilter; $('rfx').onclick = closeFilter;
 $('rfil').addEventListener('click', e => {
   if (e.target.id === 'rfil') return closeFilter();
   const b = e.target.closest('.chips2 button'); if (!b) return;
@@ -1329,13 +1330,13 @@ function render() {
   if (!d) {
     $('sub').textContent = subWeek() + ' - Unplanned (' + dayKey[0].toUpperCase() + dayKey.slice(1) + ')';
     const ws = wStatus()[viewId];
-    main.innerHTML = tripBanner() + '<div id="meso">' + mesoHTML() + '</div><div class="empty"><b>Unplanned</b><br>' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet. Ask Coach to write it.' : 'No program file found for this profile yet. Ask Coach to write one.') + '</div>' +
+    main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div class="empty"><b>Unplanned</b><br>' + (S.program ? 'No session written for ' + esc(dayKey[0].toUpperCase() + dayKey.slice(1)) + ' yet. Ask Coach to write it.' : 'No program file found for this profile yet. Ask Coach to write one.') + '</div>' +
       (!ws && canLog() ? '<button class="btn sec" id="uskip">Skip this workout</button>' : '');
     gymBind(main); main.onclick = e => { if (e.target.closest('#uskip')) skipWorkout(); };
     return;
   }
-  $('sub').textContent = subWeek() + ' - ' + titleCase(d.title);
-  main.innerHTML = tripBanner() + '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + weekBoxHTML(weekNotesFor(null), true) + cardsFor().map((ex, i) => {
+  $('sub').textContent = subWeek() + ' - ' + titleGym(titleCase(d.title));
+  main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + weekBoxHTML(weekNotesFor(null), true) + cardsFor().map((ex, i) => {
     const n = ex.note, chips = [n.sets].concat(n.plan_txt || []).concat([n.failure, n.rest]).filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
@@ -1509,6 +1510,15 @@ let scrollT; window.addEventListener('scroll', () => { clearTimeout(scrollT); sc
 // Meso calendar sheet (header calendar icon), back button closes it
 const subWeek = () => { const w = viewWeek(); return isDeload(w) ? 'Deload Week' : 'Week ' + wib(w); };
 const SMALLW = new Set(['and', 'or', 'of', 'the', 'a', 'an', 'to', 'for', 'with', 'in', 'on', 'at', 'by']);
+function viewGymName() { // v110: the gym set for the viewed workout (its logged sets, else gym_day:<viewId>)
+  const r = S && viewRows(true, true).find(x => x.workout === viewId); if (r) return r.gym_name;
+  const g = gymById(gymPick()); return g ? g.name : homeGym();
+}
+function titleGym(t) { // 'Shoulders and Back at the Hotel (about 35-45 mins)' -> '... at Hotel gym (about 35-45 mins)'
+  const g = viewGymName(); if (!g) return t;
+  const m = /^([^(]*?)\s*(\(.*\))?\s*$/.exec(String(t)), head = (m[1] || '').replace(/\s+at\s+.*$/i, '').trim();
+  return head + ' at ' + g + (m[2] ? ' ' + m[2] : '');
+}
 function titleCase(t) { // 'legs and abs (about 60 min)' -> 'Legs and Abs (about 60 mins)'
   const m = /^([^(]*)(\(.*\))?\s*$/.exec(String(t)), head = (m[1] || '').trim(), par = (m[2] || '').replace(/\bmin\b/g, 'mins');
   const h = head.split(/(\s+)/).map((w, i) => /^\s+$/.test(w) || (i && SMALLW.has(w.toLowerCase())) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join('');
@@ -1526,6 +1536,7 @@ function wmItems() {
   const ws = wStatus()[viewId], next = viewId === loggableId() || (testOn() && !ws);
   return [
     { id: 'skip', label: 'Skip workout', on: !!S && next && !ws, why: ws ? 'Already ' + ws.state : 'Only the next workout (' + wLabel(loggableId()) + ') can be skipped', run: skipWorkout },
+    { id: 'gym', label: 'Modify gym (current: ' + (S ? viewGymName() : '') + ')', on: !!S, why: '', run: openGymPick },
     { id: 'prog', label: 'Progress: weekly sets', on: !!S, why: '', run: openProg },
     { id: 'add', label: 'Add exercise', on: !!S && !!days[dayKey] && !ws, why: !days[dayKey] ? 'No session planned' : 'Already ' + (ws && ws.state), run: openAdd }
   ];
@@ -1771,13 +1782,31 @@ function openGym(id) {
   $('gedhint').textContent = id === 'home' ? 'This is your home gym. It can be renamed but not deleted.' : g ? 'Deleting a gym only removes it from this list. Sets logged there are kept.' : '';
   $('gedw').classList.add('open'); pushLayer('ged', () => $('gedw').classList.remove('open'));
 }
+// v110: Modify gym from the workout menu. Changeable while the viewed workout has no logged sets (gym_day:<viewId>); locked after.
+let gPickFor = null;
+function openGymPick() {
+  const locked = workoutRows().length > 0, cur = viewGymName(), pk = gymPick();
+  $('gpkt').textContent = locked ? 'Current gym: ' + cur + '. Locked because this workout already has logged sets.' : 'Current gym: ' + cur + '. Pick the gym for ' + wLabel(viewId) + '.';
+  $('gpkl').innerHTML = locked ? '' : gymList().map(g => '<button type="button" class="gitem" data-pg="' + esc(g.id) + '"><span class="gic">' + esc(g.icon || '🏋️') + '</span><span class="gnm">' + esc(g.name) + '</span>' + (g.id === pk ? '<span class="gtag on">Current</span>' : '') + '</button>').join('');
+  $('gpkn').style.display = locked ? 'none' : '';
+  $('gpkw').classList.add('open'); pushLayer('gpk', () => $('gpkw').classList.remove('open'));
+}
+const gpkClose = () => { $('gpkw').classList.remove('open'); popLayer('gpk'); };
+function setWorkoutGym(id) {
+  if (workoutRows().length || !gymById(id)) return;
+  putSetting('profile', 'gym_day:' + (viewId || todayWid()), id); putSetting('profile', 'gym_last', id);
+  sig = ''; applyState(S, false); const g = gymById(id); toast('Gym for this workout: ' + (g ? g.name : 'home gym'), 3000);
+}
+$('gpkx').onclick = gpkClose;
+$('gpkl').onclick = e => { const b = e.target.closest('[data-pg]'); if (!b) return; gpkClose(); setWorkoutGym(b.dataset.pg); };
+$('gpkn').onclick = () => { gpkClose(); gPickFor = viewId; openGym(null); };
 const gedClose = () => { $('gedw').classList.remove('open'); popLayer('ged'); };
 $('gedi').onclick = e => { const b = e.target.closest('[data-ic]'); if (!b) return; gIcon = b.dataset.ic; $('gedi').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
-$('gedx').onclick = gedClose; $('gedc').onclick = gedClose;
+$('gedx').onclick = () => { gPickFor = null; gedClose(); }; $('gedc').onclick = () => { gPickFor = null; gedClose(); };
 $('geds').onclick = () => {
   const n = $('gedn').value.trim().replace(/[\[\]|]/g, '').slice(0, 40); if (!n) { $('gedn').focus(); return; }
-  const gl = gymList(); if (gEdit) { const g = gl.find(x => x.id === gEdit); if (g) { g.name = n; g.icon = gIcon; } } else gl.push({ id: (gl.some(g => g.id === 'home') ? 'g' + Date.now().toString(36) : 'home'), name: n, icon: gIcon });
-  saveGyms(gl); gedClose(); gymsRender(); sig = ''; toast(gEdit ? 'Gym saved' : n + ' created', 3000);
+  const gl = gymList(), nid = gl.some(g => g.id === 'home') ? 'g' + Date.now().toString(36) : 'home'; if (gEdit) { const g = gl.find(x => x.id === gEdit); if (g) { g.name = n; g.icon = gIcon; } } else gl.push({ id: nid, name: n, icon: gIcon });
+  saveGyms(gl); gedClose(); gymsRender(); sig = ''; if (!gEdit && gPickFor && gPickFor === viewId) setWorkoutGym(nid); gPickFor = null; toast(gEdit ? 'Gym saved' : n + ' created', 3000);
 };
 $('gedd').onclick = () => { const g = gymById(gEdit); if (!g) return; $('gdelh').textContent = 'Delete ' + g.name + '?'; $('gdelw').classList.add('open'); pushLayer('gdel', () => $('gdelw').classList.remove('open')); };
 const gdelClose = () => { $('gdelw').classList.remove('open'); popLayer('gdel'); };
@@ -2144,7 +2173,7 @@ function sheetTop() { // after open, layout, and keyboard: put the popup at its 
 let restSnap = null, warmNow = false;
 function closeForm(fromPop) { if (formEx && !editId && formBase) { flPlates(); const l = $('fl').value.trim(); if (l && l !== String(formBase.load)) { if (!formSug || String(formSug.load) !== l) reEstimate(); const s = formSug && String(formSug.load) === l ? formSug : null; jset('coach_draft', { k: draftKey(), load: l, reps: s ? String(s.reps) : '', why: s ? s.why : '' }); } else LS.removeItem('coach_draft'); }
   if (formEx && !editId) { const t = getT(); if (t && t.firstSide) { t.hidden = true; t.firstSide = false; setT(t); } else if (restSnap && (!t || (t.hidden && t.start === restSnap.start))) setT(restSnap); } restSnap = null; $('sheet').classList.remove('open'); stopHold(); formEx = null; editId = null; stopRec(); if (fromPop !== true) popLayer('sheet'); if (S) applyState(S, false); }
-$('fcancel').onclick = closeForm;
+$('fcancel').onclick = closeForm; $('fxc').onclick = closeForm;
 $('fdel').onclick = async () => { const id = editId; if (!(await askBox({ title: 'Delete this set?', ok: 'Delete', danger: true }))) return; closeForm(); deleteSet(id, false); };
 $('sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeForm(); });
 $('fsave').onclick = () => {
