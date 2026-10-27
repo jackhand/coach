@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 108; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 109; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -1308,6 +1308,11 @@ function tipShow(ex, force, withQuote) { // force: ignore the seen list. Both tr
   $('tiph').textContent = qt ? '' : 'Coach tip: ' + ex.canonical; $('tiph').hidden = !!qt; $('tipb').innerHTML = qh + th;
   $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); return true;
 }
+function quoteEnd() { // v108 (Jack, Oct 27): a different quote from the same Daily quotes block when the workout ends
+  const st = quoteToday(), all = [...((S && S.program) || '').matchAll(/^- \d{4}-\d{2}-\d{2} \| (.+?) \| ?(.*)$/gm)].map(m => ({ q: m[1].trim(), a: m[2].trim() })).filter(x => !st || x.q !== st.q);
+  if (!all.length) return null; const d = String((S && S.today) || '').replace(/\D/g, ''); return all[(+d || 0) % all.length];
+}
+function endQuoteShow() { const qt = quoteEnd(); if (!qt) return; $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'; $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); }
 const tipClose = () => { $('tipw').classList.remove('open'); popLayer('tip'); };
 $('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw') tipClose(); });
 function tipUpcoming(force, withQuote) { // after Start workout or after the last planned set: scroll to the next unlogged exercise; pop up only if it has a custom tip
@@ -1445,7 +1450,7 @@ async function finishWorkout(asked) {
     if (ord.join('|') !== cs.map(c => c.canonical).join('|')) putSetting('order', dayKeyOf(), JSON.stringify(ord));
   } catch (e) { console.warn('reorder', e); }
   LS.removeItem(WSK());
-  sig = ''; applyState(S, true); toast('Workout finished. Nice work.', 6000);
+  sig = ''; applyState(S, true); toast('Workout finished. Nice work.', 6000); endQuoteShow();
 }
 async function skipWorkout() {
   if (!canLog()) return toast('Only the next workout (' + wLabel(loggableId()) + ') can be skipped.');
