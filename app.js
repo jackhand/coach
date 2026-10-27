@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 107; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 108; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -333,7 +333,7 @@ function setsHTML(ex) {
 const TECH = {
   drop: { tag: 'DROP', name: 'Drop set', re: /\bdrop(?:\s*-?\s*sets?)?\b|\brun(?:ning)? the rack\b/i,
     info: 'Go to failure, then cut the weight about 20-30% (or go down the rack one step) and go to failure again right away, no rest. Repeat for each drop.',
-    log: 'Log the first (heavy) set\'s weight and reps, then set the Drop sets counter to how many drops you did (1, 2 or 3).' },
+    log: 'Log the first (heavy) set\'s weight and reps, then set the Drop sets counter to how many drops you did (up to 9).' },
   myo: { tag: 'MR', name: 'Myo-reps (standard)', re: /\bmyo[- ]?reps?\b/i, url: 'https://www.youtube.com/watch?v=sPNcufaKd3s', urlTitle: 'Myoreps - The Most Efficient Training Technique (Renaissance Periodization)',
     info: 'Activation set near failure (usually 12-20 reps), then short rests of about 3-5 deep breaths and mini-sets of 3-5 reps with the same weight. Stop when you can\'t hit 3.',
     log: 'Pick Myo-reps as the failure type. Log the activation set\'s weight and reps, and put the mini-sets in the note, like "myo 4+4+3".' },
@@ -412,6 +412,7 @@ const gymById = id => gymList().find(g => g.id === id) || null;
 const homeGym = () => { const h = gymById('home'); return h ? h.name : ((S && getSetting('profile', 'home_gym')) || HOME_DEFAULT[P] || ''); };
 function gymPick() {
   if (!S) return 'home';
+  const w = getSetting('profile', 'gym_day:' + viewId); if (viewId && w && gymById(w)) return w;
   const v = getSetting('profile', 'gym_day:' + todayWid()); if (v && gymById(v)) return v;
   const l = getSetting('profile', 'gym_last'); if (l && gymById(l)) return l;
   return 'home';
@@ -437,7 +438,8 @@ const todayWid = () => S ? 'W' + weekOf(S.today) + '-' + weekdayOf(S.today) : ''
 function tripView() { // the viewed workout is a trip gym session (today in trip range, or already logged at the trip gym)
   if (!S) return false;
   if (viewId === todayWid()) return tripToday();
-  return viewRows(true, true).some(r => isTrip(r) && r.workout === viewId);
+  const vr = viewRows(true, true).filter(r => r.workout === viewId);
+  return vr.length ? vr.some(r => isTrip(r)) : tripToday(); // v108: an unstarted past workout uses its picked gym
 }
 function tripSwapOf(ex) { const c = tripCfg(); if (!c || !tripView()) return ''; return getSetting(ex.canonical, 'tswap:' + c.id) || ''; }
 // Sensible stand-ins by movement pattern (names match the built-in list so Weekly sets can map muscles).
@@ -473,7 +475,8 @@ function tripAlts(ex) {
 function tripBanner() { // v80: gym (and the day's goal) at the top of today's workout; editable before and during the workout
   const gl = gymList(); if (!gl.length || !S) return '';
   const cur = gymById(gymPick()) || gl[0], today = viewId === todayWid() || testOn();
-  if (!today) { const r = viewRows(true, true).find(x => x.workout === viewId); return r ? '<div class="gymb">Gym: ' + esc(r.gym_name) + '</div>' : ''; }
+  const r0 = !today && viewRows(true, true).find(x => x.workout === viewId); // v108: any unstarted workout gets the dropdown; started past ones keep the label
+  if (r0) return '<div class="gymb">Gym: ' + esc(r0.gym_name) + '</div>';
   const goal = getSetting('profile', 'goal:' + viewId) || '';
   return '<div class="gymrow"><label>Gym <select id="gymsel">' + gl.map(g => '<option value="' + esc(g.id) + '"' + (g.id === cur.id ? ' selected' : '') + '>' + esc((g.icon ? g.icon + ' ' : '') + g.name) + '</option>').join('') + '</select></label>' +
     '<label>Goal <input id="goalin" maxlength="80" placeholder="e.g. 250 x 3 on bench" value="' + esc(goal) + '"></label></div>';
@@ -1025,9 +1028,9 @@ function pickGym(id, sure) {
   if (gymPick() === id) return;
   const started = workoutRows().length || manualStart();
   if (started && !sure) { gymAsk = id; $('gchw').classList.add('open'); pushLayer('gch', () => { $('gchw').classList.remove('open'); render(); }); return; }
-  putSetting('profile', 'gym_day:' + todayWid(), id); putSetting('profile', 'gym_last', id);
+  putSetting('profile', 'gym_day:' + (viewId || todayWid()), id); putSetting('profile', 'gym_last', id);
   if (started) retagDay(id);
-  sig = ''; applyState(S, false); const g = gymById(id); toast('Gym today: ' + (g ? g.name : 'home gym'), 4000);
+  sig = ''; applyState(S, false); const g = gymById(id); toast((viewId && viewId !== todayWid() ? 'Gym for this workout: ' : 'Gym today: ') + (g ? g.name : 'home gym'), 4000);
 }
 let gymAsk = null;
 function retagDay(id) { // the whole day moves to the new gym: rewrite the gym tag on today's logged sets
@@ -1899,9 +1902,9 @@ const MINI_RE = /\s*\[mini (\d+)\]\s*$/i;
 const miniOf = r => { const m = MINI_RE.exec((r && r.notes) || ''); return m ? +m[1] : 0; };
 const noteTxt = r => String((r && r.notes) || '').replace(MINI_RE, '');
 let minis = 0, formSetIdx = 0;
-function setMini(n, keep) { minis = Math.max(0, Math.min(20, n | 0)); $('fmv').textContent = String(minis); if (minis && !keep && drops) setDrops(0, true); exclUI(); }
+function setMini(n, keep) { minis = Math.max(0, Math.min(9, n | 0)); $('fmv').textContent = String(minis); if (minis && !keep && drops) setDrops(0, true); exclUI(); }
 // Last set: myo-reps (mini-sets) or a drop set, never both. Picking one clears the other.
-function exclUI() { const both = $('fmini').style.display !== 'none' && $('fdwrap').style.display !== 'none'; $('fxhint').style.display = both ? 'block' : 'none'; $('fdwrap').classList.toggle('dim', both && minis > 0); $('fmini').classList.toggle('dim', both && drops > 0); $('fxhint').textContent = !both ? '' : minis > 0 ? 'Myo-reps on. Tap a drop count to switch to a drop set.' : drops > 0 ? 'Drop set on. Tap + to switch to myo-reps.' : 'Pick one: drop sets or myo-rep mini-sets.'; }
+function exclUI() { const both = $('fmini').style.display !== 'none' && $('fdwrap').style.display !== 'none'; $('fxhint').style.display = both ? 'block' : 'none'; $('fdwrap').classList.toggle('dim', both && minis > 0); $('fmini').classList.toggle('dim', both && drops > 0); $('fxhint').textContent = !both ? '' : minis > 0 ? 'Myo-reps on. Tap + on drop sets to switch to a drop set.' : drops > 0 ? 'Drop set on. Tap + on mini-sets to switch to myo-reps.' : 'Pick one: drop sets or myo-rep mini-sets.'; }
 function setKeys(ex, i, n) { const tq = ex ? techFor(ex) : null; return tq ? tqShow(tq, i, n) : []; }
 function formLast() { const ex = formEx; if (!ex) return false; const n = Math.max(plannedCount(ex), rowsFor(ex, true).length + (editId ? 0 : 1)); return formSetIdx >= n - 1; }
 function miniUI() { const ex = formEx, last = formLast(), mrm = !!ex && methodOf(ex) === 'match'; const on = !!ex && !isStretch(ex) && (minis > 0 || (mrm ? formSetIdx >= 1 : last)); $('fmini').style.display = on ? '' : 'none'; const dOn = !!ex && !isStretch(ex) && !mrm && (last || drops > 0); $('fdwrap').style.display = dOn ? '' : 'none'; if (!dOn && drops) setDrops(0, true); exclUI(); mrmUI(); }
@@ -1918,8 +1921,8 @@ function mrmUI() {
   $('fmrmb').style.display = ex.added ? 'none' : ''; $('fmrma').style.display = ex.added ? '' : 'none';
   $('fmrmc').checked = mrmAdd; $('fmrmn').style.display = mrmAdd ? '' : 'none'; $('fmrmv').textContent = String(mrmN);
 }
-function setDrops(n, keep) { drops = n; document.querySelectorAll('#fd button').forEach(b => b.classList.toggle('on', +b.dataset.d === n)); if (n && !keep && minis) setMini(0, true); if (n && ffSel.value === 'myo-reps' && !keep) ffSel.value = FT_OPTS.includes('true') ? 'true' : ffSel.value; exclUI(); }
-document.querySelectorAll('#fd button').forEach(b => b.onclick = () => setDrops(+b.dataset.d));
+function setDrops(n, keep) { n = Math.max(0, Math.min(9, n | 0)); drops = n; $('fdv').textContent = String(n); if (n && !keep && minis) setMini(0, true); if (n && ffSel.value === 'myo-reps' && !keep) ffSel.value = FT_OPTS.includes('true') ? 'true' : ffSel.value; exclUI(); }
+$('fdm').onclick = () => setDrops(drops - 1); $('fdp').onclick = () => setDrops(drops + 1);
 $('fmm').onclick = () => setMini(minis - 1); $('fmp').onclick = () => setMini(minis + 1);
 ffSel.addEventListener('change', miniUI);
 let rowPrefill = null, warmNext = null;
@@ -1999,10 +2002,13 @@ function reEstimate() {
       formSug = { load: String(nl), reps: String(n), est: true, why: 'Get ' + n + '. A guess for ' + nl + ' lbs.' };
     }
   }
+  if (repsTyped) { $('fsug').textContent = 'Target ' + formSug.load + ' x ' + formSug.reps + '. ' + formSug.why + ' Kept the reps you typed.'; return; }
   const r = formSug.reps; if (ex.single) { $('frl').value = String(formSug.repsL || r); $('frr').value = String(formSug.repsR || r); } else $('fr').value = r;
   $('fsug').textContent = 'Target ' + formSug.load + ' x ' + r + '. ' + formSug.why;
 }
 $('fl').addEventListener('change', () => { flPlates(); reEstimate(); });
+let repsTyped = false; // v108: once Jack types reps in this logging session, weight changes never overwrite them
+['fr', 'frl', 'frr'].forEach(id => $(id).addEventListener('input', () => { repsTyped = true; }));
 function showSides(on) { $('sides').style.display = on ? 'block' : 'none'; $('repsbox').style.display = on ? 'none' : 'block'; }
 // ---------- Hold timer (stretch mode) ----------
 let hold = null; // { start, side: 'L'|'R'|'' }
@@ -2049,7 +2055,7 @@ function setStretchMode(on, ex) {
 }
 function openForm(i, ts, row) {
   const ex = row ? (exFor(row.exercise) || { canonical: row.exercise, note: {}, single: !!row.left_reps, bodyweight: !!row.added_load }) : cardsFor()[i];
-  formEx = ex; editId = row ? row.set_id : null; doneTs = ts || Date.now();
+  formEx = ex; repsTyped = false; editId = row ? row.set_id : null; doneTs = ts || Date.now();
   const today = row ? [] : rowsFor(ex, true), prev = today.length ? today[today.length - 1] : null;
   $('sh').textContent = (row ? 'Edit: ' : '') + ex.canonical;
   $('fll').textContent = ex.bodyweight ? 'Added weight (vest/belt, 0 if none)' : 'Load (lb)';

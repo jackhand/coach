@@ -317,7 +317,7 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
     <div id="pbx" hidden><div class="pbbar"><label for="pbbw">Bar weight (lb)</label><button type="button" class="wuw" id="pbbm" aria-label="Bar weight minus 5">&minus;</button><input id="pbbw" inputmode="decimal" autocomplete="off"><button type="button" class="wuw" id="pbbp" aria-label="Bar weight plus 5">+</button></div><div class="pbp" id="pbp"><button type="button" class="wuw" data-pp="45">45</button><button type="button" class="wuw" data-pp="35">35</button><button type="button" class="wuw" data-pp="25">25</button><button type="button" class="wuw" data-pp="10">10</button><button type="button" class="wuw" data-pp="5">5</button><button type="button" class="wuw" data-pp="2.5">2.5</button></div><div id="pbc" class="pbc"></div><div class="pbrow"><b id="pbtot"></b><button type="button" class="wuw" id="pbclr">Clear</button><button type="button" class="wuw" id="pbuse">Use this weight</button></div></div>
     <div id="liftxtra">
     <div id="fxrow"><div id="fdwrap"><label>Drop sets</label>
-    <div class="seg" id="fd"><button type="button" data-d="0">0</button><button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button></div></div>
+    <div class="seg" id="fd"><button type="button" id="fdm" aria-label="One fewer drop set">&minus;</button><button type="button" id="fdv" class="on" disabled>0</button><button type="button" id="fdp" aria-label="One more drop set">+</button></div></div>
     <div id="fmini" style="display:none"><label>Myo-rep mini-sets</label>
     <div class="seg" id="fms"><button type="button" id="fmm" aria-label="One fewer mini-set">&minus;</button><button type="button" id="fmv" class="on" disabled>0</button><button type="button" id="fmp" aria-label="One more mini-set">+</button></div></div></div><div class="s2" id="fxhint" style="display:none"></div>
     <div id="fmrmw" style="display:none"><button type="button" class="btn sec" id="fmrmb">Make this a myo-rep match</button>
@@ -415,8 +415,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=107"></script>
-<script src="exlist.js?v=107"></script>
-<script src="app.js?v=107"></script>
+<script src="parse.js?v=108"></script>
+<script src="exlist.js?v=108"></script>
+<script src="app.js?v=108"></script>
 </body>
 </html>
