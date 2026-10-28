@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 111; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 112; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -1787,7 +1787,8 @@ let gPickFor = null;
 function openGymPick() {
   const locked = workoutRows().length > 0, cur = viewGymName(), pk = gymPick();
   $('gpkt').textContent = locked ? 'Current gym: ' + cur + '. Locked because this workout already has logged sets.' : 'Current gym: ' + cur + '. Pick the gym for ' + wLabel(viewId) + '.';
-  $('gpkl').innerHTML = locked ? '' : gymList().map(g => '<button type="button" class="gitem" data-pg="' + esc(g.id) + '"><span class="gic">' + esc(g.icon || '🏋️') + '</span><span class="gnm">' + esc(g.name) + '</span>' + (g.id === pk ? '<span class="gtag on">Current</span>' : '') + '</button>').join('');
+  // v112: every row has an edit link that opens the same Settings gym editor (openGym); switching stays locked once sets are logged
+  $('gpkl').innerHTML = gymList().map(g => '<div class="gitem"' + (locked ? '' : ' data-pg="' + esc(g.id) + '"') + '><span class="gic">' + esc(g.icon || '🏋️') + '</span><span class="gnm">' + esc(g.name) + '</span>' + (g.id === pk ? '<span class="gtag on">Current</span>' : '') + '<span class="ed" data-pe="' + esc(g.id) + '" role="button">edit</span></div>').join('');
   $('gpkn').style.display = locked ? 'none' : '';
   $('gpkw').classList.add('open'); pushLayer('gpk', () => $('gpkw').classList.remove('open'));
 }
@@ -1798,9 +1799,16 @@ function setWorkoutGym(id) {
   sig = ''; applyState(S, false); const g = gymById(id); toast('Gym for this workout: ' + (g ? g.name : 'home gym'), 3000);
 }
 $('gpkx').onclick = gpkClose;
-$('gpkl').onclick = e => { const b = e.target.closest('[data-pg]'); if (!b) return; gpkClose(); setWorkoutGym(b.dataset.pg); };
-$('gpkn').onclick = () => { gpkClose(); gPickFor = viewId; openGym(null); };
-const gedClose = () => { $('gedw').classList.remove('open'); popLayer('ged'); };
+let gBackPick = false; // v112: reopen the Modify gym picker after the shared editor closes
+$('gpkl').onclick = e => {
+  const ed = e.target.closest('[data-pe]'); if (ed) { gpkClose(); gBackPick = true; openGym(ed.dataset.pe); return; }
+  const b = e.target.closest('[data-pg]'); if (!b) return; gpkClose();
+  if (b.dataset.pg === gymPick()) return; // same gym: close silently, no toast
+  setWorkoutGym(b.dataset.pg);
+};
+$('gpkn').onclick = () => { gpkClose(); gPickFor = viewId; gBackPick = false; openGym(null); };
+function gedBack() { if (gBackPick) { gBackPick = false; if (S) openGymPick(); } }
+const gedClose = () => { $('gedw').classList.remove('open'); popLayer('ged'); setTimeout(gedBack, 0); };
 $('gedi').onclick = e => { const b = e.target.closest('[data-ic]'); if (!b) return; gIcon = b.dataset.ic; $('gedi').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
 $('gedx').onclick = () => { gPickFor = null; gedClose(); }; $('gedc').onclick = () => { gPickFor = null; gedClose(); };
 $('geds').onclick = () => {
