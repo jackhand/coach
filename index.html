@@ -247,6 +247,13 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
 html.modal,html.modal body{overflow:hidden;overscroll-behavior:none}
 .in{overscroll-behavior:contain}
 #liftgrid{align-items:end}
+
+/* v114: compact title row so names fit on one line */
+.card h2{padding:4px 4px 4px 2px;gap:2px}
+.card h2 .grip{min-width:28px;min-height:32px;font-size:20px;border-radius:6px}
+.card h2 .ttl{flex:1;min-width:0;padding-left:4px;line-height:1.2;overflow-wrap:anywhere}
+.card h2 .ico,.card h2 .menu-btn{min-width:32px;min-height:32px;width:32px;height:32px;margin:0;padding:0;flex:0 0 32px;font-size:20px}
+.card h2 .ico svg{width:19px;height:19px}.card h2 .ico:first-of-type{margin-left:0}
 </style>
 </head>
 <body>
@@ -428,8 +435,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=113"></script>
-<script src="exlist.js?v=113"></script>
-<script src="app.js?v=113"></script>
+<script src="parse.js?v=114"></script>
+<script src="exlist.js?v=114"></script>
+<script src="app.js?v=114"></script>
 </body>
 </html>
