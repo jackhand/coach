@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 112; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 113; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -203,9 +203,11 @@ function exFor(name) { const n = P_.norm(name); for (const ex of cardsFor()) if 
 let todayCut = null; // v106: trend() sets this so the estimate for set i only sees the sets logged before it
 function rowsFor(ex, today) {
   if (today && todayCut != null) { const c = todayCut; todayCut = null; try { return rowsFor(ex, true).slice(0, c); } finally { todayCut = c; } }
-  const keys = keysOf(ex), tsw = !today && tripSwapOf(ex);
-  if (tsw) { const g = tripCfg().id; return viewRows(false, true).filter(r => isTrip(r) && tripGymOf(r) === g && P_.norm(subOf(r)) === P_.norm(tsw) && wIndex(widOf(r)) < wIndex(viewId)); }
-  return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && (today ? widOf(r) === viewId : wIndex(widOf(r)) < wIndex(viewId)));
+  const keys = keysOf(ex);
+  if (today) return viewRows().filter(r => keys.has(P_.norm(r.exercise)) && widOf(r) === viewId);
+  // v113: free weights and bodyweight moves keep one history across every gym; machines and cables stay per gym.
+  const port = portableEx(ex), gid = curGymId();
+  return viewRows(false, true).filter(r => keys.has(P_.norm(r.exercise)) && wIndex(widOf(r)) < wIndex(viewId) && (port || tripGymOf(r) === gid));
 }
 const loadOf = r => r.total_load || r.load;
 function warmRowsToday(ex) { const keys = keysOf(ex); return viewRows(true).filter(r => isWarm(r) && keys.has(P_.norm(r.exercise)) && widOf(r) === viewId); }
@@ -319,7 +321,7 @@ function setsHTML(ex) {
     const gw = angs(w), wShow = st && w ? (gw.L !== gw.R ? 'L' + gw.L + '° R' + gw.R + '°' : gw.L + '°') : w;
     const rShow = st && r ? (fmtHold(r) || r) : r;
     h += '<li class="plan"><div class="srow"><span class="sn">' + (i + 1) + (tb ? '<span class="tqs">' + tb + '</span>' : '') + '</span>' +
-      '<span class="val sug" data-f="w">' + esc(wShow) + '</span><span class="val sug"' + (ex.single ? '' : ' data-f="r"') + '>' +
+      '<span class="val sug" data-f="w">' + esc(wShow) + '</span><span class="val sug" data-f="' + (ex.single ? 'L' : 'r') + '">' +
         (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + '</span>' +
       '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +
       '<button class="lg" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' +
@@ -441,7 +443,10 @@ function tripView() { // the viewed workout is a trip gym session (today in trip
   const vr = viewRows(true, true).filter(r => r.workout === viewId);
   return vr.length ? vr.some(r => isTrip(r)) : tripToday(); // v108: an unstarted past workout uses its picked gym
 }
-function tripSwapOf(ex) { const c = tripCfg(); if (!c || !tripView()) return ''; return getSetting(ex.canonical, 'tswap:' + c.id) || ''; }
+function tripSwapOf(ex) { return ''; } // v113: Trip swap removed
+const PORTABLE_T = new Set(['barbell', 'ez', 'hexbar', 'dumbbell', 'bodyweight', 'bodyweight_loadable']);
+function portableEx(ex) { return !!ex && PORTABLE_T.has(equipType(ex)); } // same gear at any gym, so history carries across gyms
+function curGymId() { const c = tripCfg(); return tripView() && c ? c.id : 'home'; }
 // Sensible stand-ins by movement pattern (names match the built-in list so Weekly sets can map muscles).
 const TRIP_ALTS = [
   [/incline.*(press|bench)|(press|bench).*incline/, ['Incline dumbbell press', 'Smith machine incline press', 'Push-up']],
@@ -482,26 +487,6 @@ function tripBanner() { // v80: gym (and the day's goal) at the top of today's w
     '<label>Goal <input id="goalin" maxlength="80" placeholder="e.g. 250 x 3 on bench" value="' + esc(goal) + '"></label></div>';
 }
 const fmtD = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-function tripCardHTML(ex, i) {
-  if (!tripView()) return '';
-  const c = tripCfg(), s = tripSwapOf(ex);
-  return '<div class="tswp" data-ts="' + i + '"><b>Trip swap' + (c ? ' (' + esc(c.name) + ')' : '') + ':</b> ' + (s ? esc(s) : '<span class="mut">same as planned, tap to pick the ' + esc(c ? c.name : 'trip gym') + ' version</span>') + ' <span class="ed">' + (s ? 'change' : 'pick') + '</span></div>';
-}
-let tsEx = null;
-function openTripSwap(ex) {
-  const c = tripCfg(); if (!c) return; tsEx = ex;
-  const cur = tripSwapOf(ex), alts = tripAlts(ex);
-  $('tsh').textContent = 'Trip swap: ' + ex.canonical;
-  $('tss').textContent = 'What will you do at ' + c.name + ' instead? Saved for ' + c.name + ', so this exercise picks it again next time. The program does not change.';
-  $('tsl').innerHTML = alts.map(a => '<button type="button" class="btn sec' + (P_.norm(a) === P_.norm(cur) ? ' on' : '') + '" data-tsv="' + esc(a) + '">' + esc(a) + '</button>').join('');
-  $('tsi').value = cur && !alts.some(a => P_.norm(a) === P_.norm(cur)) ? cur : '';
-  $('tswapw').classList.add('open'); pushLayer('tswap', () => $('tswapw').classList.remove('open'));
-}
-function setTripSwap(v) {
-  const c = tripCfg(), ex = tsEx; if (!c || !ex) return;
-  putSetting(ex.canonical, 'tswap:' + c.id, v); $('tswapw').classList.remove('open'); popLayer('tswap');
-  sig = ''; applyState(S, false); toast(v ? 'Trip swap: ' + v : 'Back to the planned exercise');
-}
 function bodyweight() { const v = parseFloat(getSetting('profile', 'bodyweight')); return v > 0 ? v : null; }
 // Where the body weight came from: profile bodyweight_src ('mfp' from the MyFitnessPal export sync on the Coach computer, 'manual') and bodyweight_date.
 function bwSrcText() {
@@ -614,7 +599,11 @@ function catFind(name) { const n = P_.norm(name); return catalog().find(c => P_.
 function swappedEx(base, si) {
   const k = viewId + '|' + base.canonical + '|' + si.to;
   if (swapMemo[k]) return swapMemo[k];
-  const d = P_.enrich({ x: { exercises: [{ n: base.n, name: si.to, full_name: si.to, details: base.details, note: base.note }] } }, LIB), ex = d.x.exercises[0];
+  // v113: the replacement keeps only the slot's set count, effort and rest. Per-arm wording, weights, cues and tips belong to the old exercise.
+  const SIDE_RE = /\s*\b(per (arm|leg|side|hand)|each (arm|leg|side)|(single|one)[ -](arm|leg|hand)(ed)?)\b/gi;
+  const bn = base.note || {}, sets = String(bn.sets || '').replace(SIDE_RE, '').replace(/\s+at\s+[\d.]+\s*(lbs?|pounds?)?\b.*$/i, '').trim();
+  const det = [sets, bn.failure || '', bn.rest || ''].filter(Boolean).join('. ').replace(SIDE_RE, '');
+  const d = P_.enrich({ x: { exercises: [{ n: base.n, name: si.to, full_name: si.to, details: det, note: P_.parseNote(det) }] } }, LIB), ex = d.x.exercises[0];
   const c = catFind(si.to);
   if (c && !ex.muscles) { ex.canonical = c.name; ex.muscles = c.muscles; ex.rest_muscle = c.rest_muscle; ex.types = c.types; ex.equip = c.equip; ex.match_keys = [P_.norm(c.name)].concat((c.aliases || []).map(P_.norm)); ex.video = c.video || ''; }
   ex.swappedFrom = base.canonical; ex.swapScope = si.scope; ex.base = base;
@@ -642,7 +631,7 @@ function addedEx(name, i, det) {
 const slotOf = ex => ex.base ? ex.base.canonical : ex.canonical;
 function readDeletes() { try { const v = JSON.parse(getSetting('deletes', 'B' + blockOf(viewWeek()) + ':' + dayKey) || '[]'); return Array.isArray(v) ? v.filter(a => a && a.name) : []; } catch (e) { return []; } }
 function applyDeletes(list) {
-  const del = new Set(readDeletes().filter(a => !a.from || wIndex(viewId) >= wIndex(a.from)).map(a => P_.norm(a.name)));
+  const del = new Set(readDeletes().filter(a => a.only ? a.only === viewId : (!a.from || wIndex(viewId) >= wIndex(a.from))).map(a => P_.norm(a.name)));
   if (!del.size) return list;
   return list.filter(ex => !del.has(P_.norm(slotOf(ex))) || rowsFor(ex, true).length);
 }
@@ -703,7 +692,7 @@ const holdW = ex => /keep the settled weight/i.test((ex.details || '') + ' ' + (
 // Week-specific notes ('## Week N notes' in program.md) for this card in the open week: [{text, plan}]. Day-level ones have no exercise name.
 function weekNotesFor(ex) {
   const all = (RAWDAYS && RAWDAYS._weekNotes) || [], w = viewWeek(); if (!ex) return all.filter(n => n.w === w && !n.name && (!n.day || n.day === dayKey));
-  const keys = keysOf(ex); if (ex.base) keysOf(ex.base).forEach(k => keys.add(k));
+  const keys = keysOf(ex); // v113: a replaced exercise gets only its own week notes, not the old exercise's
   return all.filter(n => n.w === w && n.name && (!n.day || n.day === dayKey) && (keys.has(n.key) || keys.has(n.key2)));
 }
 // The coach's per-set plan for this week: program plan, with week-note plans ('Start at 160') filling or overriding sets.
@@ -985,23 +974,34 @@ function removePlanned(name) {
   if (extra > 0) setDayVal(ex, 'extra', extra > 1 ? String(extra - 1) : '');
   else setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + 1));
 }
-// Exercise menu
-let menuEx = null;
-function openMenu(i) {
-  menuEx = cardsFor()[i]; $('mh').textContent = menuEx.canonical;
-  const p = dayVal(menuEx, 'pain') || 'none';
-  $('mskip').textContent = +dayVal(menuEx, 'skip') > 0 ? 'Undo skip sets' : 'Skip remaining sets';
+// Exercise menu (v113): RP-style compact list anchored at the three dots. Closes on an option tap or an outside tap.
+let menuEx = null, menuBtn = null;
+function choose(o) { // small choice window: o = { title, body, options: [{ v, label, cls }] } -> chosen v or null
+  return new Promise(res => {
+    $('chh').textContent = o.title || ''; $('cht').textContent = o.body || ''; $('cht').style.display = o.body ? '' : 'none';
+    $('chl').innerHTML = o.options.map(x => '<button type="button" class="btn ' + (x.cls || 'sec') + '" data-ch="' + esc(x.v) + '">' + esc(x.label) + '</button>').join('') + '<button type="button" class="btn sec" data-ch="">Cancel</button>';
+    let done = false; const fin = v => { if (done) return; done = true; $('chw').classList.remove('open'); $('chw').onclick = null; res(v || null); };
+    $('chw').onclick = e => { if (e.target.id === 'chw') { popLayer('ch'); return; } const b = e.target.closest('[data-ch]'); if (b) { const v = b.dataset.ch; popLayer('ch'); fin(v); } };
+    $('chw').classList.add('open'); pushLayer('ch', () => fin(null));
+  });
+}
+function openMenu(i, btn) {
+  menuEx = cardsFor()[i]; menuBtn = btn || null;
+  const logged = rowsFor(menuEx, true).length, p = dayVal(menuEx, 'pain') || '';
+  $('mskip').textContent = +dayVal(menuEx, 'skip') > 0 ? 'Undo skip sets' : 'Skip sets';
   $('mrepl').style.display = canLog() || !wStatus()[viewId] ? 'block' : 'none';
-  $('mtrip').style.display = tripView() ? 'block' : 'none';
+  $('mpainb').disabled = !logged; $('mpainb').innerHTML = 'Joint pain' + (p ? ' <span class="on">' + esc(p) + '</span>' : '');
   $('mdel').disabled = !days[dayKey];
-  const mm = methodable(menuEx); $('mmbox').style.display = mm ? 'block' : 'none';
-  if (mm) { mmScope = 'workout'; setSeg('mmscope', 'ms', mmScope); setSeg('mmeth', 'mm', methodOf(menuEx)); } // done days too: applies to the remaining weeks (done workouts never change)
-  document.querySelectorAll('#mpain button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+  const mm = methodable(menuEx); $('mmatch').style.display = mm ? 'block' : 'none';
+  if (mm) $('mmatch').innerHTML = 'Myo-rep match' + (methodOf(menuEx) === 'match' ? ' <span class="on">on</span>' : '');
   $('menu').classList.add('open'); pushLayer('menu', () => $('menu').classList.remove('open'));
+  const box = $('menu').querySelector('.in'), r = btn ? btn.getBoundingClientRect() : { right: innerWidth - 8, bottom: 60, top: 60 };
+  const w = box.offsetWidth, h = box.offsetHeight;
+  box.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.right - w)) + 'px';
+  box.style.top = (r.bottom + h + 8 <= innerHeight ? r.bottom + 4 : Math.max(8, r.top - h - 4)) + 'px';
 }
 function closeMenu(keepHistory) { $('menu').classList.remove('open'); if (!keepHistory) popLayer('menu'); }
 $('menu').addEventListener('click', e => { if (e.target.id === 'menu') closeMenu(); });
-$('mclose').onclick = () => closeMenu();
 $('madd').onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'extra', String((+dayVal(ex, 'extra') || 0) + 1)); toast('Set added'); };
 $('mskip').onclick = () => {
   if (+dayVal(menuEx, 'skip') > 0) { const ex = menuEx; closeMenu(); setDayVal(ex, 'skip', ''); toast('Skipped sets restored'); return; }
@@ -1009,21 +1009,34 @@ $('mskip').onclick = () => {
   if (left <= 0) return toast('No sets left to skip');
   setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left)); toast('Skipped ' + left + (left === 1 ? ' set' : ' sets'));
 };
+$('mdset').onclick = () => { // removes one unlogged planned set; logged sets are deleted from the set itself
+  const ex = menuEx, left = plannedCount(ex) - rowsFor(ex, true).length; closeMenu();
+  if (left <= 0) return msgPop('No unlogged sets left. To delete a logged set, tap it and use Delete.');
+  removePlanned(ex.canonical); toast('Set deleted');
+};
 $('mnote').onclick = async () => { const ex = menuEx; closeMenu(); const v = await askBox({ title: 'Note for today', body: ex.canonical, input: 'How it went, machine taken, etc.', value: dayVal(ex, 'note') || '', ok: 'Save' }); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
-$('mhist').onclick = () => { const ex = menuEx; closeMenu(true); openHistory(ex, true); };
-let mmScope = 'workout';
-document.querySelectorAll('#mmscope button').forEach(b => b.onclick = () => { mmScope = b.dataset.ms; setSeg('mmscope', 'ms', mmScope); });
-document.querySelectorAll('#mmeth button').forEach(b => b.onclick = () => {
+$('mpainb').onclick = async () => {
+  const ex = menuEx; closeMenu(); const cur = dayVal(ex, 'pain') || 'none';
+  const v = await choose({ title: 'Joint pain', body: ex.canonical, options: ['none', 'mild', 'moderate', 'severe'].map(k => ({ v: k, label: k[0].toUpperCase() + k.slice(1), cls: k === cur ? '' : 'sec' })) });
+  if (!v) return; setDayVal(ex, 'pain', v === 'none' ? '' : v); toast('Joint pain: ' + v);
+};
+$('mmatch').onclick = async () => {
+  const ex = menuEx; closeMenu();
   try {
-    const ex = menuEx, sl = ex.base ? ex.base.canonical : ex.canonical, v = methodOf(ex) === 'match' ? 'standard' : 'match', blk = blockOf(viewWeek()); // v80: one toggle, normal sets or myo-rep match
-    if (mmScope === 'block') { putSetting(sl, 'bmethod:B' + blk, JSON.stringify({ v, from: viewId })); if (getSetting(sl, 'method:' + viewId)) putSetting(sl, 'method:' + viewId, ''); }
+    const sl = ex.base ? ex.base.canonical : ex.canonical, v = methodOf(ex) === 'match' ? 'standard' : 'match', blk = blockOf(viewWeek());
+    const sc = await choose({ title: v === 'match' ? 'Myo-rep match on' : 'Myo-rep match off', body: ex.canonical, options: [{ v: 'workout', label: 'This workout' }, { v: 'block', label: 'Rest of Block ' + blk }] });
+    if (!sc) return;
+    if (sc === 'block') { putSetting(sl, 'bmethod:B' + blk, JSON.stringify({ v, from: viewId })); if (getSetting(sl, 'method:' + viewId)) putSetting(sl, 'method:' + viewId, ''); }
     else putSetting(sl, 'method:' + viewId, v);
-    setSeg('mmeth', 'mm', v); sig = ''; applyState(S, false);
-    toast((v === 'match' ? 'Myo-rep match on' : 'Myo-rep match off, normal sets') + (mmScope === 'block' ? ' for the rest of Block ' + blk : ' for this workout'));
+    sig = ''; applyState(S, false);
+    toast((v === 'match' ? 'Myo-rep match on' : 'Myo-rep match off, normal sets') + (sc === 'block' ? ' for the rest of Block ' + blk : ' for this workout'));
   } catch (e) { toast('Could not set the method: ' + (e && e.message || e)); }
-});
-$('mdel').onclick = () => { const ex = menuEx; closeMenu(true); if (ex) delExercise(ex); };
-$('mtrip').onclick = () => { const ex = menuEx; closeMenu(); openTripSwap(ex); };
+};
+$('mdel').onclick = () => { const ex = menuEx; closeMenu(); if (ex) removeEx(ex); };
+async function removeEx(ex) {
+  const sc = await choose({ title: 'Remove ' + ex.canonical + '?', body: rowsFor(ex, true).length ? 'Sets you already logged today stay in your log.' : '', options: [{ v: 'workout', label: 'This workout', cls: 'danger' }, { v: 'block', label: 'Rest of Block ' + blockOf(viewWeek()), cls: 'danger' }] });
+  if (sc) doDelete(ex, sc);
+}
 function pickGym(id, sure) {
   if (gymPick() === id) return;
   const started = workoutRows().length || manualStart();
@@ -1040,10 +1053,6 @@ function retagDay(id) { // the whole day moves to the new gym: rewrite the gym t
 $('gchy').onclick = () => { const id = gymAsk; gymAsk = null; $('gchw').classList.remove('open'); popLayer('gch'); if (id) pickGym(id, true); };
 $('gchx').onclick = () => $('gchn').onclick();
 $('gchn').onclick = () => { gymAsk = null; $('gchw').classList.remove('open'); popLayer('gch'); render(); };
-$('tswapw').addEventListener('click', e => { if (e.target.id === 'tswapw') { $('tswapw').classList.remove('open'); popLayer('tswap'); return; } const b = e.target.closest('[data-tsv]'); if (b) setTripSwap(b.dataset.tsv); });
-$('tsok').onclick = () => { const v = $('tsi').value.trim(); if (!v) { $('tsi').focus(); return; } setTripSwap(v.slice(0, 80)); };
-$('tsclr').onclick = () => setTripSwap('');
-$('tsx').onclick = () => { $('tswapw').classList.remove('open'); popLayer('tswap'); };
 $('mrepl').onclick = () => { const ex = menuEx; closeMenu(true); openReplace(ex); };
 // ---------- Replace sheet ----------
 let rEx = null, rScope = 'workout', rReason = '', rMode = 'replace';
@@ -1055,6 +1064,8 @@ function related(a, b) {
 }
 const baseOf = ex => ex.base || ex;
 function swapLog() { const s = (S && S.settings && S.settings.swaps) || {}, pq = pendingSet().swaps || {}, l = localSet().swaps || {}; return Object.values(Object.assign({}, s, pq, l)).map(v => { try { return JSON.parse(v); } catch (e) { return null; } }).filter(Boolean).sort((a, b) => (b.at || '').localeCompare(a.at || '')); }
+const ICO_V = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor"/></svg>';
+const ICO_H = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 function demoLink(c) { const u = c.video || 'https://www.youtube.com/results?search_query=' + encodeURIComponent(c.name + ' exercise demo'); return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + (c.video ? 'Demo' : 'Find a demo') + '</a>'; }
 // RP style picker: rows with muscle tag + equipment + last done, filter sheet, multi-select then Add.
 let rSel = [], rF = { mg: [], eq: [], done: false }, rDraft = null;
@@ -1099,7 +1110,7 @@ function rRender() {
     (q ? resItem({ name: q }, cur, true) : '');
   rGo();
 }
-function rGo() { const n = rSel.length; $('rgo').classList.toggle('on', n > 0); $('rgob').textContent = rMode === 'add' ? 'Add' + (n > 1 ? ' ' + n + ' exercises' : '') : 'Replace with ' + (rSel[0] ? rSel[0].name : ''); }
+function rGo() { const n = rSel.length; $('rgo').classList.toggle('on', n > 0 || rMode !== 'add'); $('rgob').classList.toggle('dim', !n); $('rgob').textContent = rMode === 'add' ? 'Add' + (n > 1 ? ' ' + n + ' exercises' : '') : rSel[0] ? 'Replace with ' + rSel[0].name : 'Replace'; }
 function rToggle(name, custom) {
   const i = rSel.findIndex(x => P_.norm(x.name) === P_.norm(name));
   if (i >= 0) rSel.splice(i, 1); else if (rMode === 'add') rSel.push({ name, custom }); else rSel = [{ name, custom }];
@@ -1122,7 +1133,7 @@ $('rfil').addEventListener('click', e => {
 });
 $('rfa').onclick = () => { rDraft.done = $('rfdone').checked; rF = rDraft; closeFilter(); rRender(); };
 $('rpills').addEventListener('click', e => { const b = e.target.closest('[data-clr]'); if (!b) return; const k = b.dataset.clr; if (k === 'done') rF.done = false; else rF[k] = []; rRender(); });
-$('rgob').onclick = () => { if (!rSel.length) return; if (rMode === 'add') addMany(rSel.slice()); else pickReplace(rSel[0].name, !!rSel[0].custom); };
+$('rgob').onclick = () => { if (!rSel.length) return msgPop(rMode === 'add' ? 'Pick an exercise first. Tap one in the list, then tap Add.' : 'Pick an exercise first. Tap one in the list, then tap Replace.'); if (rMode === 'add') addMany(rSel.slice()); else pickReplace(rSel[0].name, !!rSel[0].custom); };
 function curInfo(ex) { return { canonical: ex.canonical, name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle, types: ex.types }; }
 function replMode(add) {
   rMode = add ? 'add' : 'replace';
@@ -1204,7 +1215,7 @@ $('repl').addEventListener('click', e => {
 const closeRepl = () => { $('repl').classList.remove('open'); popLayer('repl'); };
 $('rclose').onclick = closeRepl;
 async function pickReplace(name, custom) {
-  if (!rReason) { toast('Pick a reason first: equipment busy, pain or preference.', 4000); $('rreason').scrollIntoView({ block: 'center' }); return; }
+  if (!rReason) { $('rreason').scrollIntoView({ block: 'center' }); msgPop('Pick a reason first: Equipment busy, Pain or Preference. Then tap Replace again.'); return; }
   const ex = rEx, b = baseOf(ex), c = catFind(name) || { name: custom ? name.replace(/^./, x => x.toUpperCase()) : name, muscles: '' }, to = c.name;
   if (P_.norm(to) === P_.norm(ex.canonical)) return toast('That is the current exercise.');
   if (!related(c, curInfo(ex)) && !(await askBox({ title: 'Replace anyway?', body: to + (c.muscles ? ' works ' + c.muscles.toLowerCase() : ' has no muscle info') + ', not the same muscles as ' + ex.canonical + '.', ok: 'Replace' }))) return;
@@ -1234,7 +1245,6 @@ $('rundo').onclick = async () => {
   putSetting('swaps', 's' + Date.now().toString(36), JSON.stringify({ at: new Date().toISOString(), wid: viewId, block: blockOf(viewWeek()), from: b.canonical, was: ex.canonical, to: b.canonical, scope: ex.swapScope, reason: 'undo' }));
   closeRepl(); swapMemo = {}; sig = ''; applyState(S, true); toast('Back to ' + b.canonical);
 };
-document.querySelectorAll('#mpain button').forEach(b => b.onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'pain', b.dataset.p === 'none' ? '' : b.dataset.p); toast('Joint pain: ' + b.dataset.p); });
 function histLine(rs) { // RP style: '160 lbs x 12, 12, 7' or '190 x 11, 180 x 8, 8 +1D'
   const ld = r => String(r.total_load || r.load || ''), rp = r => (r.left_reps || r.right_reps) ? (r.left_reps || '-') + '/' + (r.right_reps || '-') : String(r.reps || '');
   const tag = r => (+r.drops ? ' +' + r.drops + 'D' : '') + (miniOf(r) ? ' +' + miniOf(r) + 'M' : '');
@@ -1246,8 +1256,8 @@ let histEx = null, histMonths = 2;
 const HIST_CHUNK = 2; // months per load; the first load stops 2 months back, Load older goes further
 function openHistory(ex, fromMenu, keep) {
   if (!keep) histMonths = HIST_CHUNK; histEx = ex;
-  const c = tripCfg(), gid = tripView() && c ? c.id : 'home', gname = gid === 'home' ? (homeGym() || 'Home gym') : c.name;
-  const all = viewRows(false, true).filter(r => tripGymOf(r) === gid && keysOf(ex).has(P_.norm(r.exercise))).sort((a, b) => tsOf(a) - tsOf(b));
+  const c = tripCfg(), gid = curGymId(), port = portableEx(ex), gname = port ? 'All gyms' : gid === 'home' ? (homeGym() || 'Home gym') : c.name;
+  const all = viewRows(false, true).filter(r => (port || tripGymOf(r) === gid) && keysOf(ex).has(P_.norm(r.exercise))).sort((a, b) => tsOf(a) - tsOf(b));
   const cut = new Date(S.today + 'T12:00:00'); cut.setMonth(cut.getMonth() - histMonths); const cutIso = cut.toISOString().slice(0, 10);
   const rs = all.filter(r => (r.date || '') >= cutIso), older = all.length - rs.length;
   $('hgym').textContent = 'Gym: ' + gname + ' · newest first · ' + (older ? 'since ' + cut.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'all sets');
@@ -1340,28 +1350,29 @@ function render() {
     const n = ex.note, chips = [n.sets].concat(n.plan_txt || []).concat([n.failure, n.rest]).filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
-    return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span>' + (i + 1) + '. ' + esc(ex.canonical) + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
+    return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span>' + (i + 1) + '. ' + esc(ex.canonical) + (ex.video ? '<a class="ico" href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer" aria-label="Demo video">' + ICO_V + '</a>' : '<span class="ico off" aria-label="No demo video">' + ICO_V + '</span>') + '<button type="button" class="ico" data-hi="' + i + '" aria-label="History">' + ICO_H + '</button>' + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
       (ex.swappedFrom ? '<div class="swp">Replaces ' + esc(ex.swappedFrom) + (ex.swapScope === 'block' ? ' for the rest of this block' : ' in this workout') + '</div>' : '') +
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
-      '<div class="meta">' + esc(ex.muscles || '') + (ex.video ? (ex.muscles ? ' · ' : '') + '<a href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer">Demo video</a>' : '') + '</div>' +
+      '<div class="meta">' + esc(ex.muscles || '') + '</div>' +
       '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnClosed().includes(ex.canonical) ? '' : ' open') + '><summary><b>Coach (default)</b><span class="cnbtn" role="img" aria-label="' + (cnClosed().includes(ex.canonical) ? 'Expand coach notes' : 'Collapse coach notes') + '"><span class="circ"><span class="chev"></span></span></span></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML(weekNotesFor(ex)) +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + ')' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
-      tripCardHTML(ex, i) + warmHTML(ex, i, cardsFor()) +
+      warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
       '</div></div>';
   }).join('') + (d.footer && d.footer.length ? '<div class="note">' + d.footer.map(esc).join('<br>') + '</div>' : '') +
     '<div id="finwrap"></div>';
   main.querySelectorAll('[data-su]').forEach(el => el.onclick = () => editSetup(+el.dataset.su));
-  main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m); });
+  main.querySelectorAll('[data-hi]').forEach(b => b.onclick = e => { e.stopPropagation(); const ex = cardsFor()[+b.dataset.hi]; if (ex) openHistory(ex); });
+  main.querySelectorAll('.card h2 .ico.off').forEach(b => b.onclick = e => { e.stopPropagation(); toast('No demo video for this exercise yet'); });
+  main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m, b); });
   enableDrag(main);
   main.querySelectorAll('details.cn').forEach(d => d.addEventListener('toggle', () => { const cb = d.querySelector('.cnbtn'); if (cb) cb.setAttribute('aria-label', d.open ? 'Collapse coach notes' : 'Expand coach notes'); const l = cnClosed().filter(x => x !== d.dataset.cn); if (!d.open) l.push(d.dataset.cn); jset('coach_cn_closed', l); }));
   gymBind(main);
   main.onclick = e => {
     const plb = e.target.closest('[data-pl]'); if (plb) { const d = plb.parentElement.querySelector('.wup'); if (d) d.hidden = !d.hidden; return; }
     if (e.target.closest('details.wu') || e.target.closest('details.cn > summary') || e.target.closest('.gymrow')) return;
-    const tsb = e.target.closest('[data-ts]'); if (tsb) { openTripSwap(cardsFor()[+tsb.dataset.ts]); return; }
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
     if (e.target.closest('#wstartb')) { askNotifyOnTap(); startWorkout(false); return; }
     if (e.target.closest('#wreset')) { openReset(); return; }
@@ -1705,20 +1716,20 @@ const closeDel = () => { if (!$('delw').classList.contains('open')) return; $('d
 $('delx').onclick = closeDel; $('deln').onclick = closeDel;
 $('delw').addEventListener('click', e => { if (e.target.id === 'delw') closeDel(); });
 $('dely').onclick = () => { const ex = delPending; closeDel(); if (ex) doDelete(ex); };
-function doDelete(ex) {
+function doDelete(ex, scope) {
   try {
     const k = 'B' + blockOf(viewWeek()) + ':' + dayKey, list = readDeletes().filter(a => P_.norm(a.name) !== P_.norm(slotOf(ex)));
-    list.push({ name: slotOf(ex), shown: ex.canonical, from: viewId, at: new Date().toISOString() });
+    list.push(Object.assign({ name: slotOf(ex), shown: ex.canonical, from: viewId, at: new Date().toISOString() }, scope === 'workout' ? { only: viewId } : {}));
     putSetting('deletes', k, JSON.stringify(list));
     swapMemo = {}; sig = ''; applyState(S, true);
-    toast('Deleted ' + ex.canonical + ' for the rest of Block ' + blockOf(viewWeek()) + (rowsFor(ex, true).length ? '. Its logged sets today stay on the card.' : ''), 6000);
+    toast('Removed ' + ex.canonical + (scope === 'workout' ? ' from this workout' : ' for the rest of Block ' + blockOf(viewWeek())) + (rowsFor(ex, true).length ? '. Its logged sets today stay on the card.' : ''), 6000);
   } catch (e) { toast('Could not delete: ' + (e && e.message || e), 6000); }
 }
 const closeWm = () => { $('wmw').classList.remove('open'); popLayer('wm'); };
 $('wmenu').onclick = openWm; $('wmclose').onclick = closeWm;
 $('wmw').addEventListener('click', e => {
   if (e.target.id === 'wmw') return closeWm();
-  const d = e.target.closest('[data-del]'); if (d) { const ex = cardsFor()[+d.dataset.del]; closeWm(); if (ex) setTimeout(() => delExercise(ex), 60); return; }
+  const d = e.target.closest('[data-del]'); if (d) { const ex = cardsFor()[+d.dataset.del]; closeWm(); if (ex) setTimeout(() => removeEx(ex), 60); return; }
   const b = e.target.closest('[data-wi]'); if (!b || b.disabled) return;
   const it = wmItems()[+b.dataset.wi]; closeWm(); if (it && it.on) setTimeout(it.run, 60);
 });
@@ -2031,9 +2042,23 @@ function reEstimate() {
   const b = formBase, ex = formEx; if (!b || !ex || editId || isStretch(ex) || ex.bodyweight || warmNow) return;
   const nl = parseFloat($('fl').value), bl = parseFloat(b.load), br = parseInt(String(b.reps).split(/[^\d]+/).filter(Boolean).pop(), 10);
   if (!(nl > 0) || !(bl > 0) || !(br > 0)) return;
-  if (nl === bl) { formSug = b; } else {
+  // v113 (Jack, Oct 28): on the first set, the estimate starts from last session's first set plus the reps left in the tank by its effort:
+  // Not to failure = about 2 more, Technical failure = about 1 more, True failure (or a drop set / myo-reps) = none.
+  const lastS = formSetIdx === 0 && !rowsFor(ex, true).length ? lastFirstSet(ex) : null;
+  let fsDone = false;
+  if (lastS && nl !== bl) {
+    const ll = parseFloat(loadOf(lastS)), lr = repN(lastS), ft = lastS.failure_type || '', adj = ft === 'not to failure' ? 2 : ft === 'technical' ? 1 : 0;
+    if (ll > 0 && lr > 0) {
+      const r0 = Math.min(lr + adj, 30), eE = ll * (1 + r0 / 30), eB = ll * 36 / (37 - Math.min(r0, 36)), rE = 30 * (eE / nl - 1), rB = 37 - 36 * nl / eB;
+      const n = Math.max(1, Math.min(30, Math.round((rE + rB) / 2)));
+      const ftw = ft === 'not to failure' ? 'not to failure, so you had more in the tank' : ft === 'technical' ? 'to technical failure' : 'to failure';
+      formSug = { load: String(nl), reps: String(n), est: true, why: 'Get ' + n + '. Last time ' + ll + ' x ' + lr + ' was ' + ftw + '.' }; fsDone = true;
+    }
+  }
+  if (fsDone) { /* first-set estimate set above */ }
+  else if (nl === bl) { formSug = b; } else {
     // 1) Jack's own history at this exact weight (most recent day, best set). 2) Else the average of Epley and Brzycki reps, 1 to 30.
-    const keys = keysOf(ex), hist = viewRows().filter(r => keys.has(P_.norm(r.exercise)) && !isWarm(r) && parseFloat(loadOf(r)) === nl && repN(r) > 0);
+    const hist = rowsFor(ex, false).filter(r => !isWarm(r) && parseFloat(loadOf(r)) === nl && repN(r) > 0); // v113: same gym rules as history
     if (hist.length) {
       const day = hist.map(r => r.date || '').sort().pop(), best = Math.max(...hist.filter(r => (r.date || '') === day).map(r => repN(r)));
       formSug = { load: String(nl), reps: String(best), est: true, why: 'Get ' + best + '. That is what you did last time at ' + nl + ' lbs.' };
@@ -2049,6 +2074,13 @@ function reEstimate() {
   $('fsug').textContent = 'Target ' + formSug.load + ' x ' + r + '. ' + formSug.why;
 }
 $('fl').addEventListener('change', () => { flPlates(); reEstimate(); });
+function lastFirstSet(ex) { // set 1 of the most recent earlier session of this exercise (gym rules from rowsFor)
+  const past = rowsFor(ex, false).filter(r => !isWarm(r) && repN(r) > 0); if (!past.length) return null;
+  const w = widOf(past[past.length - 1]); return past.find(r => widOf(r) === w) || null;
+}
+// v113 (Jack): Load and Reps take digits and at most one period; anything else (commas, letters, a second period) is dropped as it is typed.
+function numOnly(el) { const v = el.value, c = v.replace(/[^\d.]/g, ''), i = c.indexOf('.'), o = i < 0 ? c : c.slice(0, i + 1) + c.slice(i + 1).replace(/\./g, ''); if (o !== v) { const p = Math.max(0, (el.selectionStart || o.length) - (v.length - o.length)); el.value = o; try { el.setSelectionRange(p, p); } catch (e) {} } }
+['fl', 'fr', 'frl', 'frr'].forEach(id => $(id).addEventListener('input', e => { if (formEx && isStretch(formEx) && id !== 'fl') return; numOnly(e.target); }, true));
 let repsTyped = false; // v108: once Jack types reps in this logging session, weight changes never overwrite them
 ['fr', 'frl', 'frr'].forEach(id => $(id).addEventListener('input', () => { repsTyped = true; }));
 function showSides(on) { $('sides').style.display = on ? 'block' : 'none'; $('repsbox').style.display = on ? 'none' : 'block'; }
@@ -2100,7 +2132,7 @@ function openForm(i, ts, row) {
   formEx = ex; repsTyped = false; editId = row ? row.set_id : null; doneTs = ts || Date.now();
   const today = row ? [] : rowsFor(ex, true), prev = today.length ? today[today.length - 1] : null;
   $('sh').textContent = (row ? 'Edit: ' : '') + ex.canonical;
-  $('fll').textContent = ex.bodyweight ? 'Added weight (vest/belt, 0 if none)' : 'Load (lb)';
+  $('fll').textContent = ex.bodyweight ? 'Added lb (0 if none)' : 'Load (lb)';
   stopHold(); const stx = isStretch(ex);
   const sg = row ? null : suggest(ex, today.length); formSug = sg;
   $('fl').value = row ? (row.load || '') : sg && sg.load ? sg.load : prev ? prev.load : (ex.bodyweight ? '0' : '');
@@ -2324,4 +2356,17 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 if (testOn()) window.CoachT = { viewRows, rowsFor, cardsFor, tripView, tripToday, tripSwapOf, weekSets, openForm, tripAlts, openWorkout, addMany, gymList, tipShow, openMenu, msgPop, plannedCount, techFor, tqShow, openProg, phase, getSetting, get viewId() { return viewId; } }; // test mode only
 window.coachReady = true;
 } catch (err) { if (window.coachFatal) window.coachFatal((err && err.message) || err); throw err; }
+})();
+// v113: lock background scrolling while any window or menu is open.
+(function scrollLock() {
+  const isOpen = () => !!document.querySelector('body > div.open, #sheet.open, #menu.open, #chw.open');
+  const sync = () => document.documentElement.classList.toggle('modal', isOpen());
+  new MutationObserver(sync).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  document.addEventListener('touchmove', e => {
+    if (!document.documentElement.classList.contains('modal')) return;
+    let n = e.target;
+    while (n && n !== document.body) { if (n.scrollHeight > n.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) return; n = n.parentElement; }
+    e.preventDefault();
+  }, { passive: false });
+  sync();
 })();

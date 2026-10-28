@@ -235,6 +235,18 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
 .in>h3{margin-right:40px}
 .xc,#delx,#gdelx,#tipx,#gedx,#rstx,#redox,#askx{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--mut);font-size:28px;line-height:1;padding:6px 10px;z-index:2}
 #gpkl .gitem{width:100%}
+
+/* v113: RP-style compact exercise menu anchored at the three dots; choice window; title icons; scroll lock */
+#menu.pop{background:rgba(0,0,0,.25);align-items:flex-start;justify-content:flex-start}
+#menu.pop .in{position:fixed;width:auto;min-width:210px;max-width:min(270px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;border-radius:14px;padding:6px 0;box-shadow:0 8px 28px rgba(0,0,0,.55);background:var(--card);border:1px solid rgba(255,255,255,.12)}
+#menu .mi{display:block;width:100%;text-align:left;background:none;border:0;color:inherit;font:inherit;font-size:17px;padding:12px 18px;min-height:44px}
+#menu .mi:active{background:rgba(255,255,255,.08)}#menu .mi:disabled{opacity:.4}#menu .mi.dng{color:#e57373}#menu .mi .on{float:right;color:var(--mut);font-size:14px}
+#chw{position:fixed;inset:0;z-index:48;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center}#chw.open{display:flex}
+#chw .in{background:var(--card);width:calc(100% - 24px);max-width:420px;border-radius:16px;padding:16px 14px;border:1px solid rgba(255,255,255,.12)}#chw h3{margin:0 0 4px}#chw #chl .btn{margin-top:8px}
+.card h2 .ico{background:none;border:0;color:inherit;min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;padding:0;text-decoration:none}.card h2 .ico.off{opacity:.35}.card h2 .ico:first-of-type{margin-left:auto}.card h2 .ico~.menu-btn{margin-left:0}
+html.modal,html.modal body{overflow:hidden;overscroll-behavior:none}
+.in{overscroll-behavior:contain}
+#liftgrid{align-items:end}
 </style>
 </head>
 <body>
@@ -345,21 +357,18 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
     <button class="btn red" id="fdel" style="display:none">Delete set</button>
   </div>
 </div>
-<div id="menu"><div class="in"><button type="button" class="xc" id="mclose" aria-label="Close">&times;</button>
-  <h3 id="mh"></h3>
-  <button class="btn sec" id="madd">Add a set</button>
-  <button class="btn sec" id="mskip">Skip remaining sets</button>
-  <button class="btn sec" id="mnote">Note for today</button>
-  <button class="btn sec" id="mhist">History</button>
-  <button class="btn sec" id="mrepl">Replace exercise</button>
-  <button class="btn sec" id="mtrip" style="display:none">Trip swap</button>
-  <label>Joint pain today</label>
-  <div class="seg" id="mpain"><button type="button" data-p="none">None</button><button type="button" data-p="mild">Mild</button><button type="button" data-p="moderate">Moderate</button><button type="button" data-p="severe">Severe</button></div>
-  <div id="mmbox"><label>Set method</label>
-  <div class="seg" id="mmscope"><button type="button" data-ms="workout">This workout</button><button type="button" data-ms="block">Rest of block</button></div>
-  <div class="seg" id="mmeth" style="margin-top:6px"><button type="button" data-mm="match">Myo-rep match</button></div><div class="s2">Tap to turn myo-rep match on or off. Off means normal sets.</div></div>
-  <button class="btn sec" id="mdel" style="color:#e57373">Delete exercise</button>
+<div id="menu" class="pop"><div class="in" role="menu">
+  <h3 id="mh" hidden></h3>
+  <button type="button" class="mi" id="mnote">New note</button>
+  <button type="button" class="mi" id="mrepl">Replace</button>
+  <button type="button" class="mi" id="mpainb">Joint pain</button>
+  <button type="button" class="mi" id="madd">Add set</button>
+  <button type="button" class="mi" id="mskip">Skip sets</button>
+  <button type="button" class="mi" id="mdset">Delete a set</button>
+  <button type="button" class="mi" id="mmatch">Myo-rep match</button>
+  <button type="button" class="mi dng" id="mdel">Remove exercise</button>
 </div></div>
+<div id="chw"><div class="in"><h3 id="chh"></h3><p id="cht" class="sub"></p><div id="chl"></div></div></div>
 <div id="tech"><div class="in"><button type="button" class="xc" id="tqclose" aria-label="Close">&times;</button><h3 id="tqh"></h3><div id="tqb"></div></div></div>
 <div id="repl"><div class="in"><button type="button" class="xc" id="rclose" aria-label="Close">&times;</button>
   <h3 id="rh"></h3>
@@ -388,9 +397,6 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
 </div></div>
 <div id="prog"><div class="in"><button type="button" class="xc" id="pgclose" aria-label="Close">&times;</button><h3 id="pgh"></h3><div id="pgb"></div></div></div>
 <div id="hist"><div class="in"><button type="button" class="xc" id="hclose" aria-label="Close">&times;</button><h3 id="hh"></h3><div id="hgym" class="sub" style="margin:-4px 0 8px"></div><div id="hb"></div><button class="btn sec" id="hmore" style="display:none">Load older</button></div></div>
-<div id="tswapw" role="dialog" aria-modal="true"><div class="in"><button type="button" class="xc" id="tsx" aria-label="Close">&times;</button><h3 id="tsh"></h3><div id="tss" class="sub" style="margin-bottom:8px"></div><div id="tsl"></div>
-<label for="tsi">Or type what they have</label><input id="tsi" maxlength="80" autocomplete="off" placeholder="e.g. Cybex chest press">
-<button type="button" class="btn" id="tsok">Use this</button><button type="button" class="btn sec" id="tsclr">Do the planned exercise</button></div></div>
 <div id="gdelw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="gdelx" aria-label="Close">&times;</button><h3 id="gdelh">Delete gym?</h3><p>Are you sure? This removes the gym from your list. Sets you logged there are kept and still show the gym name in past workouts.</p><button type="button" class="btn" id="gdely" style="background:#e57373;color:#2a0b0b">Delete gym</button><button type="button" class="btn sec" id="gdeln">Cancel</button></div></div>
 <div id="msgw" role="dialog" aria-modal="true"><div class="in"><p id="msgt"></p></div></div>
 <div id="tipw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="tipx" aria-label="Close">&times;</button><h3 id="tiph"></h3><div id="tipb"></div><button type="button" class="btn" id="tipok">Got it</button></div></div>
@@ -422,8 +428,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=112"></script>
-<script src="exlist.js?v=112"></script>
-<script src="app.js?v=112"></script>
+<script src="parse.js?v=113"></script>
+<script src="exlist.js?v=113"></script>
+<script src="app.js?v=113"></script>
 </body>
 </html>
