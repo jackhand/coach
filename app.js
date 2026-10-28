@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 110; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 111; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
