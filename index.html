@@ -267,6 +267,9 @@ html.modal,html.modal body{overscroll-behavior:none}
 .card h2 .ico,.card h2 .menu-btn{min-width:32px;min-height:32px;width:32px;height:32px;margin:0;padding:0;flex:0 0 32px;font-size:20px}
 .card h2 .ico svg{width:19px;height:19px}.card h2 .ico:first-of-type{margin-left:0}
 #cexw{position:fixed;inset:0;z-index:142;background:rgba(0,0,0,.6);display:none;align-items:flex-end}#cexw.open{display:flex}#cexw .in{position:relative;background:var(--card);width:100%;border-radius:18px 18px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto}
+
+/* v118 bridge backdrop: below every window (120+), above the top bar (30) */
+#bdrop{position:fixed;inset:0;z-index:119;background:rgba(0,0,0,.6);display:none;pointer-events:none;opacity:1;transition:opacity .15s ease}#bdrop.on{display:block}#bdrop.out{opacity:0}
 </style>
 </head>
 <body>
@@ -451,8 +454,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=117"></script>
-<script src="exlist.js?v=117"></script>
-<script src="app.js?v=117"></script>
+<script src="parse.js?v=118"></script>
+<script src="exlist.js?v=118"></script>
+<script src="app.js?v=118"></script>
 </body>
 </html>
