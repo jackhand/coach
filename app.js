@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 115; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 116; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -1936,7 +1936,7 @@ function beep(final) {
   g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(final ? 0.09 : 0.05, now + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, now + (final ? 0.25 : 0.09));
   o.connect(g).connect(a.destination); o.start(now); o.stop(now + 0.3);
 }
-function muteLbl() { $('tmute').textContent = LS.getItem('coach_mute') === '1' ? 'Sound is off' : 'Sound is on'; }
+function muteLbl() { const off = LS.getItem('coach_mute') === '1', b = $('tmute'), l = off ? 'Sound is off' : 'Sound is on'; b.classList.toggle('off', off); b.setAttribute('aria-label', l); b.title = l; }
 $('tmute').onclick = () => { LS.setItem('coach_mute', LS.getItem('coach_mute') === '1' ? '0' : '1'); muteLbl(); audio(); };
 muteLbl();
 let thPx = -1;
@@ -1944,13 +1944,26 @@ function timerBar(on) { // reserve space so the fixed top timer never covers the
   const h = on ? $('timer').offsetHeight : 0;
   if (h !== thPx) { thPx = h; document.documentElement.style.setProperty('--th', h + 'px'); document.body.classList.toggle('timer-on', !!h); }
 }
+// v116: 'next: X set 3' -> 'Next: X, set 3'; '(new muscle)' kept short.
+function nextLine(n) { n = String(n || ''); if (!n) return ''; return n.replace(/^next: /, 'Next: ').replace(/ set (\d+)$/, ', set $1').replace(/^last exercise done$/, 'Last exercise done'); }
+// v116: workout menu and settings live in the timer bar while it shows; else in the header, or a floating pill once the header scrolls away.
+let pinAway = false, lastSY = 0;
+function placeBtns() {
+  const on = $('timer').style.display === 'block', hdr = document.querySelector('header'), row = hdr.querySelector('.row');
+  const hdrGone = hdr.getBoundingClientRect().bottom < 0;
+  const dest = on ? $('tslot') : hdrGone ? $('hpin') : row;
+  if ($('wmenu').parentNode !== dest) { dest.appendChild($('wmenu')); dest.appendChild($('gear')); }
+  $('hpin').classList.toggle('away', pinAway);
+}
+addEventListener('scroll', () => { const y = scrollY; if (Math.abs(y - lastSY) > 6) { pinAway = y > lastSY; lastSY = y; } placeBtns(); }, { passive: true });
+let pinRest = null; addEventListener('scroll', () => { clearTimeout(pinRest); pinRest = setTimeout(() => { pinAway = false; placeBtns(); }, 700); }, { passive: true });
 function tick() {
   const t = getT(), el = $('timer');
-  if (!t || t.hidden || $('app').style.display === 'none') { el.style.display = 'none'; timerBar(false); return; }
+  if (!t || t.hidden || $('app').style.display === 'none') { el.style.display = 'none'; timerBar(false); placeBtns(); return; }
   const sec = (Date.now() - t.start) / 1000;
   if (sec * 1000 > TIMER_MAX) { LS.removeItem(TKEY()); el.style.display = 'none'; timerBar(false); return; }
-  el.style.display = 'block'; timerBar(true); $('tt').textContent = fmt(sec); $('ttg').textContent = fmt(t.target);
-  $('tex').textContent = (t.firstSide ? 'since first side of ' : 'after ') + t.exercise + (t.next ? ' · ' + t.next : '');
+  el.style.display = 'block'; timerBar(true); placeBtns(); $('tt').textContent = fmt(sec); $('ttg').textContent = fmt(t.target);
+  $('tex').textContent = t.firstSide ? 'Since first side of ' + t.exercise : nextLine(t.next);
   const left = t.target - sec, whole = Math.floor(sec), fl = left > 0 && left <= 10 ? ' flash' : '';
   el.className = (sec <= t.target ? 'under' : 'over') + fl;
   const fs = $('ftimer'); if (fs) { fs.textContent = 'Rest ' + fmt(sec) + ' / ' + fmt(t.target); fs.className = (sec <= t.target ? 'under' : 'over') + fl; }
