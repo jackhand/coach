@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 116; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 117; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -1946,23 +1946,21 @@ function timerBar(on) { // reserve space so the fixed top timer never covers the
 }
 // v116: 'next: X set 3' -> 'Next: X, set 3'; '(new muscle)' kept short.
 function nextLine(n) { n = String(n || ''); if (!n) return ''; return n.replace(/^next: /, 'Next: ').replace(/ set (\d+)$/, ', set $1').replace(/^last exercise done$/, 'Last exercise done'); }
-// v116: workout menu and settings live in the timer bar while it shows; else in the header, or a floating pill once the header scrolls away.
-let pinAway = false, lastSY = 0;
-function placeBtns() {
-  const on = $('timer').style.display === 'block', hdr = document.querySelector('header'), row = hdr.querySelector('.row');
-  const hdrGone = hdr.getBoundingClientRect().bottom < 0;
-  const dest = on ? $('tslot') : hdrGone ? $('hpin') : row;
-  if ($('wmenu').parentNode !== dest) { dest.appendChild($('wmenu')); dest.appendChild($('gear')); }
-  $('hpin').classList.toggle('away', pinAway);
+// v117: one always-pinned top bar. No timer: workout name and week, plus workout menu and settings. Timer: the same bar shows the rest timer.
+function placeBtns() { const d = $('tslot'); if ($('wmenu').parentNode !== d) { d.appendChild($('wmenu')); d.appendChild($('gear')); } }
+function idleBar() {
+  const s = $('sub').textContent || '', m = s.match(/^(Week \d+)\s*-\s*(.*)$/), rest = m ? m[2] : s;
+  $('tname').textContent = rest.replace(/\s*\(about[^)]*\)\s*$/, '').replace(/\s+at\s+.*$/, '') || 'Coach';
+  $('twk').textContent = m ? m[1] + (/\sat\s(.+?)(\s*\(|$)/.test(rest) ? ' at ' + rest.match(/\sat\s(.+?)(\s*\(|$)/)[1] : '') : '';
 }
-addEventListener('scroll', () => { const y = scrollY; if (Math.abs(y - lastSY) > 6) { pinAway = y > lastSY; lastSY = y; } placeBtns(); }, { passive: true });
-let pinRest = null; addEventListener('scroll', () => { clearTimeout(pinRest); pinRest = setTimeout(() => { pinAway = false; placeBtns(); }, 700); }, { passive: true });
 function tick() {
   const t = getT(), el = $('timer');
-  if (!t || t.hidden || $('app').style.display === 'none') { el.style.display = 'none'; timerBar(false); placeBtns(); return; }
-  const sec = (Date.now() - t.start) / 1000;
-  if (sec * 1000 > TIMER_MAX) { LS.removeItem(TKEY()); el.style.display = 'none'; timerBar(false); return; }
-  el.style.display = 'block'; timerBar(true); placeBtns(); $('tt').textContent = fmt(sec); $('ttg').textContent = fmt(t.target);
+  if ($('app').style.display === 'none') { el.style.display = 'none'; timerBar(false); return; }
+  el.style.display = 'block'; placeBtns();
+  const sec = t ? (Date.now() - t.start) / 1000 : 0;
+  if (t && sec * 1000 > TIMER_MAX) LS.removeItem(TKEY());
+  if (!t || t.hidden || sec * 1000 > TIMER_MAX) { idleBar(); el.className = 'idle'; timerBar(true); return; }
+  timerBar(true); $('tt').textContent = fmt(sec); $('ttg').textContent = fmt(t.target);
   $('tex').textContent = t.firstSide ? 'Since first side of ' + t.exercise : nextLine(t.next);
   const left = t.target - sec, whole = Math.floor(sec), fl = left > 0 && left <= 10 ? ' flash' : '';
   el.className = (sec <= t.target ? 'under' : 'over') + fl;
