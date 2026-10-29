@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 114; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 115; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -56,7 +56,7 @@ function askOpen(o, res) {
     const fin = v => { if (done) return; done = true; w.classList.remove('open'); popLayer('ask'); res(v); };
     $('asky').onclick = () => fin(inp.hidden ? true : inp.value); $('askn').onclick = $('askx').onclick = () => fin(inp.hidden ? false : null);
     w.classList.add('open'); pushLayer('ask', () => { if (!done) { done = true; w.classList.remove('open'); res(inp.hidden ? false : null); } });
-    if (!inp.hidden) setTimeout(() => inp.focus(), 50);
+    if (!inp.hidden) setTimeout(() => inp.focus({ preventScroll: true }), 50);
   }
 }
 function popLayer(name) { // closed from the UI: drop the matching history entry
@@ -589,10 +589,13 @@ function swapInfo(base) {
   if (v && v.to && v.to !== base.canonical && wIndex(viewId) >= wIndex(v.from)) return { to: v.to, scope: 'block', from: v.from };
   return null;
 }
-function catalog() { // his library first, then the built-in list
+// v115: exercises Jack creates in the app, classified by equipment and body part. Settings scope 'custom_ex', key = normalized name -> JSON {name, equip, muscles, rest_muscle, types}.
+function customDefs() { const s = (S && S.settings && S.settings.custom_ex) || {}, pq = pendingSet().custom_ex || {}, l = localSet().custom_ex || {}; return Object.values(Object.assign({}, s, pq, l)).map(v => { try { return JSON.parse(v); } catch (e) { return null; } }).filter(c => c && c.name); }
+function catalog() { // his library first, then the built-in list, then his own created exercises
   const out = [], seen = new Set();
   LIB.forEach(e => { seen.add(P_.norm(e.name)); out.push({ name: e.name, aliases: e.aliases, muscles: e.muscles, rest_muscle: e.rest_muscle, equip: e.equip || '', types: e.types, video: e.video, mine: true }); });
-  (window.CoachExList || []).forEach(e => { if (!seen.has(P_.norm(e.name)) && !P_.lookup(LIB, e.name)) out.push(Object.assign({ video: '' }, e)); });
+  (window.CoachExList || []).forEach(e => { if (!seen.has(P_.norm(e.name)) && !P_.lookup(LIB, e.name)) { seen.add(P_.norm(e.name)); out.push(Object.assign({ video: '' }, e)); } });
+  customDefs().forEach(e => { if (!seen.has(P_.norm(e.name)) && !P_.lookup(LIB, e.name)) { seen.add(P_.norm(e.name)); out.push({ name: e.name, aliases: [], muscles: e.muscles || '', rest_muscle: e.rest_muscle || '', equip: e.equip || '', types: e.types || [], video: '', mine: true, created: true }); } });
   return out;
 }
 function catFind(name) { const n = P_.norm(name); return catalog().find(c => P_.norm(c.name) === n || (c.aliases || []).some(a => P_.norm(a) === n)) || null; }
@@ -1012,7 +1015,7 @@ $('mskip').onclick = () => {
 $('mdset').onclick = () => { // removes one unlogged planned set; logged sets are deleted from the set itself
   const ex = menuEx, left = plannedCount(ex) - rowsFor(ex, true).length; closeMenu();
   if (left <= 0) return msgPop('No unlogged sets left. To delete a logged set, tap it and use Delete.');
-  removePlanned(ex.canonical); toast('Set deleted');
+  removePlanned(ex.canonical);
 };
 $('mnote').onclick = async () => { const ex = menuEx; closeMenu(); const v = await askBox({ title: 'Note for today', body: ex.canonical, input: 'How it went, machine taken, etc.', value: dayVal(ex, 'note') || '', ok: 'Save' }); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
 $('mpainb').onclick = async () => {
@@ -1133,7 +1136,35 @@ $('rfil').addEventListener('click', e => {
 });
 $('rfa').onclick = () => { rDraft.done = $('rfdone').checked; rF = rDraft; closeFilter(); rRender(); };
 $('rpills').addEventListener('click', e => { const b = e.target.closest('[data-clr]'); if (!b) return; const k = b.dataset.clr; if (k === 'done') rF.done = false; else rF[k] = []; rRender(); });
-$('rgob').onclick = () => { if (!rSel.length) return msgPop(rMode === 'add' ? 'Pick an exercise first. Tap one in the list, then tap Add.' : 'Pick an exercise first. Tap one in the list, then tap Replace.'); if (rMode === 'add') addMany(rSel.slice()); else pickReplace(rSel[0].name, !!rSel[0].custom); };
+// v115 (Jack, Oct 29): creating a new exercise asks for its equipment and body part first.
+const CEX_EQ = [['machine', 'Machine'], ['cable', 'Cable'], ['smith', 'Smith machine'], ['barbell', 'Barbell'], ['ez', 'EZ bar'], ['hexbar', 'Hex bar'], ['dumbbell', 'Dumbbell'], ['bodyweight', 'Bodyweight'], ['bodyweight_loadable', 'Weighted bodyweight'], ['band', 'Band'], ['other', 'Other']];
+let cexDone = null, cexName = '', cexEq = '', cexMg = [];
+function cexRender() {
+  $('cexeq').innerHTML = CEX_EQ.map(x => '<button type="button" data-v="' + x[0] + '" class="' + (cexEq === x[0] ? 'on' : '') + '">' + esc(x[1]) + '</button>').join('');
+  $('cexmg').innerHTML = (window.CoachMG || []).map(v => '<button type="button" data-v="' + esc(v) + '" class="' + (cexMg.includes(v) ? 'on' : '') + '">' + esc(v) + (cexMg[0] === v && cexMg.length > 1 ? ' (primary)' : '') + '</button>').join('');
+}
+function classifyNew(name, done) {
+  cexName = name.replace(/^./, x => x.toUpperCase()); cexDone = done; cexMg = []; cexEq = '';
+  try { const t = window.CoachEquipType({ name: cexName }); if (t && t !== 'other') cexEq = t === 'machine_plate' ? 'machine' : t === 'machine_assisted' ? 'machine' : t; } catch (e) {}
+  $('cexh').textContent = 'New exercise: ' + cexName; cexRender();
+  $('cexw').classList.add('open'); pushLayer('cex', () => $('cexw').classList.remove('open'));
+}
+const cexClose = () => { $('cexw').classList.remove('open'); popLayer('cex'); };
+$('cexeq').onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; cexEq = b.dataset.v; cexRender(); };
+$('cexmg').onclick = e => { const b = e.target.closest('[data-v]'); if (!b) return; const v = b.dataset.v, i = cexMg.indexOf(v); if (i >= 0) cexMg.splice(i, 1); else if (cexMg.length < 3) cexMg.push(v); cexRender(); };
+$('cexx').onclick = $('cexc').onclick = () => { cexDone = null; cexClose(); };
+$('cexs').onclick = () => {
+  if (!cexEq) return msgPop('Pick the equipment first.');
+  if (!cexMg.length) return msgPop('Pick at least one body part.');
+  const muscles = cexMg.join(', '), rm = cexMg[0].toLowerCase(), def = { name: cexName, equip: cexEq, muscles, rest_muscle: rm, types: ['isolation'], at: new Date().toISOString() };
+  putSetting('custom_ex', P_.norm(cexName), JSON.stringify(def));
+  putSetting('pending_exercises', P_.norm(cexName), JSON.stringify({ name: cexName, at: def.at, wid: viewId, equip: cexEq, muscles, created: true }));
+  const d = cexDone; cexDone = null; cexClose(); if (d) d(cexName);
+};
+$('rgob').onclick = () => {
+  const nc = rSel.find(x => x.custom && !catFind(x.name));
+  if (nc) return classifyNew(nc.name, nm => { nc.name = nm; $('rgob').onclick(); });
+  if (!rSel.length) return msgPop(rMode === 'add' ? 'Pick an exercise first. Tap one in the list, then tap Add.' : 'Pick an exercise first. Tap one in the list, then tap Replace.'); if (rMode === 'add') addMany(rSel.slice()); else pickReplace(rSel[0].name, !!rSel[0].custom); };
 function curInfo(ex) { return { canonical: ex.canonical, name: ex.canonical, muscles: ex.muscles, rest_muscle: ex.rest_muscle, types: ex.types }; }
 function replMode(add) {
   rMode = add ? 'add' : 'replace';
@@ -1378,6 +1409,9 @@ function render() {
     if (e.target.closest('#wreset')) { openReset(); return; }
     const tf = e.target.closest('li.plan:not(.wrm) [data-f]');
     if (tf) { const lb = tf.closest('li').querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, tf.dataset.f); return; }
+    // v115: tapping anywhere else in a planned row (even with no estimate) opens the log window.
+    const pr = !e.target.closest('button') && e.target.closest('li.plan:not(.wrm)');
+    if (pr) { const lb = pr.querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, 'w'); return; }
     const wb = e.target.closest('[data-wu]'); if (wb) { if (!wb.disabled) { warmNext = +wb.dataset.wu; logRow(wb.dataset.ex, 0, wb.closest('li')); } return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
     const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
@@ -1987,7 +2021,7 @@ function tapValue(name, idx, f) {
     logRow(name, idx);
     if (!$('sheet').classList.contains('open')) return;
     const id = f === 'w' ? (st ? (ex.single ? 'fangl' : 'fang') : 'fl') : f === 'R' ? 'frr' : f === 'L' ? 'frl' : 'fr';
-    const el = $(id); if (el) { el.focus(); try { el.select(); } catch (e) {} }
+    const el = $(id); if (el) { el.focus({ preventScroll: true }); try { el.select(); } catch (e) {} }
   } catch (e) { console.warn('tapValue', e); }
 }
 function logRow(name, idx, li) {
@@ -2240,7 +2274,7 @@ $('fsave').onclick = () => {
     const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === editId);
     if (pi >= 0) { const tg = (String(q[pi].set.notes || '').match(GYM_RE) || [])[0]; Object.assign(q[pi].set, fields); if (tg && !String(q[pi].set.notes).includes(tg.trim())) q[pi].set.notes = ((q[pi].set.notes || '') + ' ' + tg.trim()).trim(); setQ(q); if (!testOn()) flush(); }
     else enqueue({ action: 'edit', set_id: editId, fields });
-    closeForm(); toast('Set updated'); return;
+    closeForm(); return;
   }
   const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical, workout: viewId }, fields);
   const before = viewRows();
@@ -2285,7 +2319,7 @@ function saveStretch(ex) {
     const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === editId);
     if (pi >= 0) { const tg = (String(q[pi].set.notes || '').match(GYM_RE) || [])[0]; Object.assign(q[pi].set, fields); if (tg && !String(q[pi].set.notes).includes(tg.trim())) q[pi].set.notes = ((q[pi].set.notes || '') + ' ' + tg.trim()).trim(); setQ(q); if (!testOn()) flush(); }
     else enqueue({ action: 'edit', set_id: editId, fields });
-    closeForm(); toast('Hold updated'); return;
+    closeForm(); return;
   }
   const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical, workout: viewId }, fields);
   if (!workoutRows().length && !manualStart()) jset(WSK(), { wid: viewId, ts: doneTs });
@@ -2293,7 +2327,7 @@ function saveStretch(ex) {
   const nt = nextTarget(ex.canonical);
   setT({ start: Date.now(), exercise: ex.canonical, target: nt.target || 60, next: nt.next, hidden: !!nt.last });
   $('sheet').classList.remove('open'); formEx = null; restSnap = null; LS.removeItem('coach_draft'); stopRec(); popLayer('sheet');
-  update(); toast('Hold saved: ' + setTxt(set), 4000); if (nt.last) finishPrompt();
+  update(); if (nt.last) finishPrompt();
 }
 // ---------- Feedback toasts ----------
 const JOKES = [
@@ -2326,7 +2360,7 @@ function feedback(ex, set, before, rest, target, sg) {
   if (pr) { if (beat) msgs[0] += ' ' + beatTxt; if (funOk()) msgs[0] += ' ' + pick(PR_CHEERS); }
   else if (beat) msgs.push(beatTxt + (funOk() ? ' ' + pick(BEAT_CHEERS) : '')); // v84: always show the numbers
   else if (rest != null && target && rest > target * 1.25 && rest > target + 30 && funOk()) msgs.push(pick(REST_NUDGES) + ' (' + fmt(rest) + ' vs ' + fmt(target) + ')');
-  if (msgs.length) toast(msgs[0]); // v106: no 'Saved' toast
+  // v115: no toast after logging a set (Jack, Oct 29).
 }
 
 // ---------- Voice (hidden when unsupported, e.g. iOS) ----------
@@ -2360,7 +2394,17 @@ window.coachReady = true;
 // v113: lock background scrolling while any window or menu is open.
 (function scrollLock() {
   const isOpen = () => !!document.querySelector('body > div.open, #sheet.open, #menu.open, #chw.open');
-  const sync = () => document.documentElement.classList.toggle('modal', isOpen());
+  // v115: no overflow:hidden (it made the page jump). Keep the scroll offset fixed while a window is open and after it closes.
+  let lockY = null;
+  const sync = () => {
+    const o = isOpen(), h = document.documentElement;
+    if (o && lockY == null) lockY = window.scrollY;
+    h.classList.toggle('modal', o);
+    if (lockY != null && Math.abs(window.scrollY - lockY) > 1) window.scrollTo(0, lockY);
+    if (!o && lockY != null) { const y = lockY; lockY = null; requestAnimationFrame(() => { if (Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y); }); }
+  };
+  window.addEventListener('scroll', () => { if (lockY != null && document.documentElement.classList.contains('modal') && Math.abs(window.scrollY - lockY) > 1) window.scrollTo(0, lockY); }, { passive: true });
+  document.addEventListener('wheel', e => { if (!document.documentElement.classList.contains('modal')) return; let n = e.target; while (n && n !== document.body) { if (n.scrollHeight > n.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) return; n = n.parentElement; } e.preventDefault(); }, { passive: false });
   new MutationObserver(sync).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
   document.addEventListener('touchmove', e => {
     if (!document.documentElement.classList.contains('modal')) return;
