@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 123; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 124; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -320,7 +320,7 @@ function setsHTML(ex) {
     const isNext = i === rs.length;
     const gw = angs(w), wShow = st && w ? (gw.L !== gw.R ? 'L' + gw.L + '° R' + gw.R + '°' : gw.L + '°') : w;
     const rShow = st && r ? (fmtHold(r) || r) : r;
-    h += '<li class="plan"><div class="srow"><span class="sn">' + (i + 1) + (tb ? '<span class="tqs">' + tb + '</span>' : '') + '</span>' +
+    h += '<li class="plan' + (tb ? ' hasq' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + (tb ? '<span class="tqs">' + tb + '</span>' : '') + '</span>' +
       '<span class="val sug" data-f="w">' + esc(wShow) + '</span><span class="val sug" data-f="' + (ex.single ? 'L' : 'r') + '">' +
         (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + '</span>' +
       '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +

@@ -284,6 +284,14 @@ main.collapsed{padding-bottom:100vh}
 #timer .ttgl{color:var(--mut)}#timer .ttgl #ttg{color:var(--mut)}
 .pinb #cal{width:42px;height:42px;min-width:42px;min-height:42px;padding:0;display:grid;place-items:center;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--txt);flex:none}
 .pinb #cal svg{width:24px;height:24px}
+/* v124 */
+details.cn:not([open]){padding-top:6px;padding-bottom:6px}
+.sets li.plan.hasq .sn .tqs{bottom:2px}
+.sets li.plan.hasq>.s2{margin-top:3px}
+.sets li.plan.hasq{padding-bottom:5px}
+details.cn:not([open])>summary{margin-bottom:-2px}
+.cnbtn .circ{width:28px;height:28px}
+.cnbtn{justify-content:flex-end;margin-right:-12px}
 </style>
 </head>
 <body>
@@ -468,8 +476,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=123"></script>
-<script src="exlist.js?v=123"></script>
-<script src="app.js?v=123"></script>
+<script src="parse.js?v=124"></script>
+<script src="exlist.js?v=124"></script>
+<script src="app.js?v=124"></script>
 </body>
 </html>
