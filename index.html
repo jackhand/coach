@@ -272,6 +272,18 @@ html.modal,html.modal body{overscroll-behavior:none}
 #bdrop{position:fixed;inset:0;z-index:119;background:rgba(0,0,0,.6);display:none;pointer-events:none;opacity:1;transition:opacity .15s ease}#bdrop.on{display:block}#bdrop.out{opacity:0}
 #chw .in{position:relative}#chw h3{padding-right:36px}
 #tipb .fin{font-weight:700;font-size:17px;margin:0 0 10px}
+/* v121 */
+main{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+main.collapsed{padding-bottom:100vh}
+#prof{margin-left:auto}
+.card h2 .ttl{font-size:16.7px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.card h2.two{padding-top:9px;padding-bottom:9px}
+#timer .tnx{color:var(--mut)}
+#timer .tnx b{color:#fff;font-weight:700}
+#timer #tex{color:var(--mut);font-weight:400}
+#timer .ttgl{color:var(--mut)}#timer .ttgl #ttg{color:var(--mut)}
+.pinb #cal{width:42px;height:42px;min-width:42px;min-height:42px;padding:0;display:grid;place-items:center;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--txt);flex:none}
+.pinb #cal svg{width:24px;height:24px}
 </style>
 </head>
 <body>
@@ -320,7 +332,7 @@ html.modal,html.modal body{overscroll-behavior:none}
     <span class="tsep" aria-hidden="true"></span>
     <span id="tslot" class="pinb"></span>
   </div>
-  <div class="tnx"><span id="twk"></span><span id="tex"></span><span class="ttgl">Target <b id="ttg">-</b></span></div>
+  <div class="tnx"><span id="twk"></span><span class="ttgl"><b>Target:</b> <span id="ttg">-</span></span><span id="tex"></span></div>
 </div>
 
 <div id="sheet">
@@ -456,8 +468,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=120"></script>
-<script src="exlist.js?v=120"></script>
-<script src="app.js?v=120"></script>
+<script src="parse.js?v=121"></script>
+<script src="exlist.js?v=121"></script>
+<script src="app.js?v=121"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 120; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 121; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -1403,6 +1403,12 @@ function btnLabel(ex) {
   return ex.single ? (isStretch(ex) ? 'First side done' : 'First side done') : (isStretch(ex) ? 'Hold done' : 'Set done');
 }
 const cnClosed = () => jget('coach_cn_closed', []);
+// v121: two-line exercise names get extra header padding so they look balanced.
+function markTwo() { document.querySelectorAll('.card h2 .ttl').forEach(t => { const lh = parseFloat(getComputedStyle(t).lineHeight) || 20; t.parentNode.classList.toggle('two', t.offsetHeight > lh * 1.5); }); }
+window.addEventListener('resize', () => markTwo());
+// v121: Instructions box. Open by default only for a first-time exercise (no earlier sets); otherwise closed at the start of every workout. Taps are remembered for this workout only.
+const cnKey = () => 'coach_cn_wk_' + P + '_' + viewId;
+const cnOpen = ex => { const m = jget(cnKey(), {}); if (Object.prototype.hasOwnProperty.call(m, ex.canonical)) return !!m[ex.canonical]; return !lastSession(ex); };
 function gymBind(main) {
   const sel = main.querySelector('#gymsel'); if (sel) sel.onchange = () => pickGym(sel.value);
   const gi = main.querySelector('#goalin'); if (gi) gi.onchange = () => { putSetting('profile', 'goal:' + viewId, gi.value.trim()); toast('Goal saved', 2500); };
@@ -1474,7 +1480,7 @@ function render() {
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + '</div>' +
-      '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnClosed().includes(ex.canonical) ? '' : ' open') + '><summary><b>Coach (default)</b><span class="cnbtn" role="img" aria-label="' + (cnClosed().includes(ex.canonical) ? 'Expand coach notes' : 'Collapse coach notes') + '"><span class="circ"><span class="chev"></span></span></span></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML(weekNotesFor(ex)) +
+      '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnOpen(ex) ? ' open' : '') + '><summary><b>Instructions</b><span class="cnbtn" role="img" aria-label="' + (cnOpen(ex) ? 'Collapse instructions' : 'Expand instructions') + '"><span class="circ"><span class="chev"></span></span></span></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML(weekNotesFor(ex)) +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + ')' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
       warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
@@ -1487,7 +1493,8 @@ function render() {
   main.querySelectorAll('.card h2 .ico.off').forEach(b => b.onclick = e => { e.stopPropagation(); toast('No demo video for this exercise yet'); });
   main.querySelectorAll('[data-m]').forEach(b => b.onclick = e => { e.stopPropagation(); openMenu(+b.dataset.m, b); });
   enableDrag(main);
-  main.querySelectorAll('details.cn').forEach(d => d.addEventListener('toggle', () => { const cb = d.querySelector('.cnbtn'); if (cb) cb.setAttribute('aria-label', d.open ? 'Collapse coach notes' : 'Expand coach notes'); const l = cnClosed().filter(x => x !== d.dataset.cn); if (!d.open) l.push(d.dataset.cn); jset('coach_cn_closed', l); }));
+  markTwo();
+  main.querySelectorAll('details.cn').forEach(d => d.addEventListener('toggle', () => { const cb = d.querySelector('.cnbtn'); if (cb) cb.setAttribute('aria-label', d.open ? 'Collapse instructions' : 'Expand instructions'); const m = jget(cnKey(), {}); m[d.dataset.cn] = d.open; jset(cnKey(), m); }));
   gymBind(main);
   main.onclick = e => {
     const plb = e.target.closest('[data-pl]'); if (plb) { const d = plb.parentElement.querySelector('.wup'); if (d) d.hidden = !d.hidden; return; }
@@ -2032,10 +2039,12 @@ function timerBar(on) { // reserve space so the fixed top timer never covers the
   const h = on ? $('timer').offsetHeight : 0;
   if (h !== thPx) { thPx = h; document.documentElement.style.setProperty('--th', h + 'px'); document.body.classList.toggle('timer-on', !!h); }
 }
+// v121: rest target as words, short form: '2 min', '1 min 30 sec', '45 sec'.
+function tgtTxt(s) { s = Math.round(+s || 0); const m = Math.floor(s / 60), r = s % 60; return !s ? '-' : (m ? m + ' min' : '') + (m && r ? ' ' : '') + (r ? r + ' sec' : ''); }
 // v116: 'next: X set 3' -> 'Next: X, set 3'; '(new muscle)' kept short.
 function nextLine(n) { n = String(n || ''); if (!n) return ''; return n.replace(/^next: /, 'Next: ').replace(/ set (\d+)$/, ', set $1').replace(/^last exercise done$/, 'Last exercise done'); }
 // v117: one always-pinned top bar. No timer: workout name and week, plus workout menu and settings. Timer: the same bar shows the rest timer.
-function placeBtns() { const d = $('tslot'); if ($('wmenu').parentNode !== d) { d.appendChild($('wmenu')); d.appendChild($('gear')); } }
+function placeBtns() { const d = $('tslot'); if ($('wmenu').parentNode !== d) { d.appendChild($('cal')); d.appendChild($('wmenu')); d.appendChild($('gear')); } }
 function idleBar() {
   const s = $('sub').textContent || '', m = s.match(/^(Week \d+)\s*-\s*(.*)$/), rest = m ? m[2] : s;
   $('tname').textContent = rest.replace(/\s*\(about[^)]*\)\s*$/, '').replace(/\s+at\s+.*$/, '') || 'Coach';
@@ -2048,8 +2057,8 @@ function tick() {
   const sec = t ? (Date.now() - t.start) / 1000 : 0;
   if (t && sec * 1000 > TIMER_MAX) LS.removeItem(TKEY());
   if (!t || t.hidden || sec * 1000 > TIMER_MAX) { idleBar(); el.className = 'idle'; timerBar(true); return; }
-  timerBar(true); $('tt').textContent = fmt(sec); $('ttg').textContent = fmt(t.target);
-  $('tex').textContent = t.firstSide ? 'Since first side of ' + t.exercise : nextLine(t.next);
+  timerBar(true); $('tt').textContent = fmt(sec); $('ttg').textContent = tgtTxt(t.target);
+  { const nl = t.firstSide ? 'Since first side of ' + t.exercise : nextLine(t.next), m = /^Next: (.*)$/.exec(nl); const k = m ? '<b>Next:</b> ' + esc(m[1]) : esc(nl); if ($('tex').innerHTML !== k) $('tex').innerHTML = k; }
   const left = t.target - sec, whole = Math.floor(sec), fl = left > 0 && left <= 10 ? ' flash' : '';
   el.className = (sec <= t.target ? 'under' : 'over') + fl;
   const fs = $('ftimer'); if (fs) { fs.textContent = 'Rest ' + fmt(sec) + ' / ' + fmt(t.target); fs.className = (sec <= t.target ? 'under' : 'over') + fl; }
