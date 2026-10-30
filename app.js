@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 127; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 128; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -323,7 +323,7 @@ function setsHTML(ex) {
     h += '<li class="plan' + (tb ? ' hasq' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + (tb ? '<span class="tqs">' + tb + '</span>' : '') + '</span>' +
       '<span class="val sug" data-f="w">' + esc(wShow) + '</span><span class="val sug" data-f="' + (ex.single ? 'L' : 'r') + '">' +
         (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + '</span>' +
-      '<button class="rm" data-rm="' + name + '" aria-label="Remove this set">&#10005;</button>' +
+      '<span></span>' +
       '<button class="lg" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' +
       (plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '') +
       (sg ? '<div class="s2">' + (sg.coach ? '<b class="cplan">Coach plan</b> ' : '') + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.coach ? sg.why.replace(/^Coach plan: /, '') : sg.why) + (ex.single ? (st ? ' · per side' : ' · reps per side') : '') + '</div>' : '') + '</li>';
@@ -1515,7 +1515,7 @@ function render() {
     if (pr) { const lb = pr.querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, 'w'); return; }
     const wb = e.target.closest('[data-wu]'); if (wb) { if (!wb.disabled) { warmNext = +wb.dataset.wu; logRow(wb.dataset.ex, 0, wb.closest('li')); } return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
-    const rm = e.target.closest('[data-rm]'); if (rm) { removePlanned(rm.dataset.rm); return; } const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
+    const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
   renderFinish(); markActive();
 }
 function update() {
