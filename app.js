@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 119; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 120; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -2520,13 +2520,17 @@ window.coachReady = true;
   const els = ids.map(i => document.getElementById(i)).filter(Boolean);
   const br = document.createElement('div'); br.id = 'bdrop'; document.body.appendChild(br);
   const anyOpen = () => els.some(e => e.classList.contains('open'));
-  let was = anyOpen(), h1, h2;
+  let was = anyOpen(), h1, h2, lastA = 0.6;
   const set = c => { if (br.className !== c) br.className = c; };
+  // v120: the hand-off layer matches the closing window's own dim, so a close only ever lightens.
+  const alphaOf = e => { const m = /rgba?\(([^)]+)\)/.exec(getComputedStyle(e).backgroundColor || ''); if (!m) return 0; const p = m[1].split(',').map(Number); return p.length > 3 ? p[3] : 1; };
+  const curA = () => els.reduce((a, e) => e.classList.contains('open') ? Math.max(a, alphaOf(e)) : a, 0);
+  if (was) lastA = curA();
   new MutationObserver(recs => {
     if (recs.every(r => r.target === br)) return;
     const now = anyOpen();
-    if (now) { clearTimeout(h1); clearTimeout(h2); set(''); }
-    else if (was) { clearTimeout(h1); clearTimeout(h2); set('on'); h1 = setTimeout(() => { set('on out'); h2 = setTimeout(() => { set(''); }, 160); }, 220); }
+    if (now) { clearTimeout(h1); clearTimeout(h2); set(''); lastA = curA(); }
+    else if (was) { clearTimeout(h1); clearTimeout(h2); br.style.background = 'rgba(0,0,0,' + Math.min(0.6, lastA) + ')'; set('on'); h1 = setTimeout(() => { set('on out'); h2 = setTimeout(() => { set(''); }, 160); }, 220); }
     was = now;
   }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
 })();
