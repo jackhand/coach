@@ -301,6 +301,12 @@ details.cn:not([open])>summary{margin-bottom:-2px}
 .sets li.shead>span:last-child{text-align:right}
 .sets li.plan{padding-top:9px;padding-bottom:9px}
 .sets li.plan.hasq{padding-bottom:6px}
+/* v126: no warm-up box, rows like working sets + gutter bar */
+.sets li.wgrp{background:transparent;border:0;border-radius:0;padding:0;margin-bottom:0}
+.sets li.wgrp li.wrm,.sets li.wgrp li.wrm:first-child,.sets li.wgrp li.wrm.pend{border:0;border-radius:0;margin:0 0 6px -7px;padding:9px 0 9px 4px;border-left:3px solid #e0a030;border-radius:0}
+.card .cbody{padding-left:8px;margin-left:-8px}
+.sets li.wgrp .wgh{margin:4px 0 2px}
+.sets li.wgrp li.wrm.pend{outline:1px dashed #ffd666;outline-offset:2px}
 </style>
 </head>
 <body>
@@ -485,8 +491,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=125"></script>
-<script src="exlist.js?v=125"></script>
-<script src="app.js?v=125"></script>
+<script src="parse.js?v=126"></script>
+<script src="exlist.js?v=126"></script>
+<script src="app.js?v=126"></script>
 </body>
 </html>
