@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 122; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 123; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -2045,8 +2045,8 @@ function timerBar(on) { // reserve space so the fixed top timer never covers the
   const h = on ? $('timer').offsetHeight : 0;
   if (h !== thPx) { thPx = h; document.documentElement.style.setProperty('--th', h + 'px'); document.body.classList.toggle('timer-on', !!h); }
 }
-// v121: rest target as words, short form: '2 min', '1 min 30 sec', '45 sec'.
-function tgtTxt(s) { s = Math.round(+s || 0); const m = Math.floor(s / 60), r = s % 60; return !s ? '-' : (m ? m + ' min' : '') + (m && r ? ' ' : '') + (r ? r + ' sec' : ''); }
+// v122: rest target in m:ss, e.g. '2:00', '1:30', '0:45'.
+function tgtTxt(s) { s = Math.round(+s || 0); return s ? fmt(s) : '-'; }
 // v116: 'next: X set 3' -> 'Next: X, set 3'; '(new muscle)' kept short.
 function nextLine(n) { n = String(n || ''); if (!n) return ''; return n.replace(/^next: /, 'Next: ').replace(/ set (\d+)$/, ', set $1').replace(/^last exercise done$/, 'Last exercise done'); }
 // v117: one always-pinned top bar. No timer: workout name and week, plus workout menu and settings. Timer: the same bar shows the rest timer.
