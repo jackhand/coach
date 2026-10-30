@@ -292,6 +292,15 @@ details.cn:not([open]){padding-top:6px;padding-bottom:6px}
 details.cn:not([open])>summary{margin-bottom:-2px}
 .cnbtn .circ{width:28px;height:28px}
 .cnbtn{justify-content:flex-end;margin-right:-12px}
+/* v125: borderless set list, flush columns */
+.sets li.plan,.sets li.shead{border:0;padding-left:0;padding-right:0}
+.sets li.plan.pend{outline:1px dashed #ffd666;outline-offset:2px}
+.sets li.plan .srow>.sn,.sets li.shead>span:first-child{align-items:flex-start;text-align:left}
+.sets li.plan .sn .tqs{left:0;transform:none}
+.sets li.plan .srow>:last-child{justify-self:end}
+.sets li.shead>span:last-child{text-align:right}
+.sets li.plan{padding-top:9px;padding-bottom:9px}
+.sets li.plan.hasq{padding-bottom:6px}
 </style>
 </head>
 <body>
@@ -476,8 +485,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=124"></script>
-<script src="exlist.js?v=124"></script>
-<script src="app.js?v=124"></script>
+<script src="parse.js?v=125"></script>
+<script src="exlist.js?v=125"></script>
+<script src="app.js?v=125"></script>
 </body>
 </html>
