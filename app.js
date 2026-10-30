@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 126; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 127; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -283,11 +283,11 @@ function coachWarm(ex) { const b = ex && ex.note && ex.note.warmups; if (!b || !
 function warmRowsHTML(ex, worked) {
   const done = warmRowsToday(ex), plan = coachWarm(ex), name = esc(ex.canonical);
   const pl = w => plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '';
-  let h = done.map(r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn"></span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span><span></span><span class="lg on">&#10003;</span></div>' + pl(r.load) +
+  let h = done.map(r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">W</span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span><span></span><span class="lg on">&#10003;</span></div>' + pl(r.load) +
     (r.pending || noteTxt(r) ? '<div class="s2">' + [r.pending ? 'pending sync' : '', esc(noteTxt(r))].filter(Boolean).join(' · ') + '</div>' : '') + '</li>').join('');
   if (!worked) for (let k = done.length; k < plan.length; k++) {
     const w = plan[k];
-    h += '<li class="plan wrm"><div class="srow"><span class="sn"></span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.n) + '</span><span></span>' +
+    h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.n) + '</span><span></span>' +
       '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log warm-up ' + (k + 1) + ' of ' + plan.length + '"' + ((k === done.length || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' + pl(w.w) + '</li>';
   }
   return h ? '<li class="wgrp"><div class="wgh"><b>WARM-UP</b> <span>Coach plan. Not counted in suggestions or weekly sets.</span></div><ul class="wl">' + h + '</ul></li>' : '';
