@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 118; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 119; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -346,7 +346,7 @@ const TECH = {
 // Set method per exercise: settings scope = slot name, key 'method:<wid>' (this workout) or 'bmethod:B<n>' = {v, from} (rest of block). Default standard.
 function methodOf(ex) {
   const sl = ex.base ? ex.base.canonical : ex.canonical, w = getSetting(sl, 'method:' + viewId); if (w) return w;
-  let v = null; try { v = JSON.parse(getSetting(sl, 'bmethod:B' + blockOf(viewWeek())) || 'null'); } catch (e) {}
+  let v = sJSON(sl, 'bmethod:B' + blockOf(viewWeek()), null);
   return v && v.v && (!v.from || wIndex(viewId) >= wIndex(v.from)) ? v.v : (/\bmyo[- ]?rep match\b/i.test(String(ex.details || '')) ? 'match' : 'standard');
 }
 const methodable = ex => !isStretch(ex) && (/\bmyo[- ]?reps?\b/i.test(String(ex.details || '')) || (ex.types || []).includes('isolation'));
@@ -382,6 +382,34 @@ const SK = () => 'coach_settings_test_' + P;
 const localSet = () => testOn() ? jget(SK(), {}) : {};
 LS.removeItem('coach_settings_jack'); LS.removeItem('coach_settings_jacky'); // v16 and older local copies (could hide server cleanups)
 function pendingSet() { const m = {}; getRQ().forEach(x => { if (x.action === 'setting' && x.profile === P && !x.test) (m[x.scope] = m[x.scope] || {})[x.key] = x.value; }); return m; }
+// v119: JSON settings are read tolerantly (a value cut off by the backend still yields its complete entries) and written only after a damage and size check.
+function jsonRecover(s) { // -> { v, ok }. ok false = the stored text is damaged; v holds whatever complete list entries could be recovered
+  if (s == null || s === '') return { v: null, ok: true };
+  try { return { v: JSON.parse(s), ok: true }; } catch (e) {}
+  s = String(s).trim(); if (s[0] !== '[') return { v: null, ok: false };
+  const out = []; let d = 0, q = false, bs = false, st = -1;
+  const take = i => { if (st >= 0) { try { out.push(JSON.parse(s.slice(st, i + 1))); } catch (e) {} } st = -1; };
+  for (let i = 1; i < s.length; i++) { const c = s[i];
+    if (q) { if (bs) bs = false; else if (c === '\\') bs = true; else if (c === '"') { q = false; if (d === 0) take(i); } continue; }
+    if (c === '"') { q = true; if (d === 0) st = i; continue; }
+    if (c === '{' || c === '[') { if (d === 0) st = i; d++; continue; }
+    if (c === '}' || c === ']') { d--; if (d === 0) take(i); if (d < 0) break; continue; }
+    if (d === 0 && /[-\d.tfn]/.test(c) && st < 0) { const m = /^(-?[\d.eE+]+|true|false|null)/.exec(s.slice(i)); if (m && /[,\]]/.test(s[i + m[0].length] || '')) { out.push(JSON.parse(m[0])); i += m[0].length - 1; } }
+  }
+  return { v: out, ok: false };
+}
+function sJSON(scope, key, fb) { const r = jsonRecover(getSetting(scope, key)); if (r.v == null) return fb; if (Array.isArray(fb) !== Array.isArray(r.v) || typeof r.v !== 'object') return fb; return r.v; }
+const setMax = () => (S && +S.max_setting) || 500; // the live backend keeps 500 characters until change A is deployed; it then reports max_setting
+const sameEnt = (a, b) => a && b && typeof a === 'object' && typeof b === 'object' && (a.name || a.id) ? P_.norm(String(a.name || a.id)) === P_.norm(String(b.name || b.id)) && (a.only || '') === (b.only || '') : JSON.stringify(a) === JSON.stringify(b);
+function putJSON(scope, key, val, o) { // o.shrink: an explicit removal may write a shorter list. Returns true when queued.
+  o = o || {}; const cur = jsonRecover(getSetting(scope, key)), what = o.what || (scope === 'profile' ? key : scope);
+  if (!cur.ok) { toast('Not saved: your stored ' + what + ' is damaged, so I left it alone. Coach can repair it.', 7000); return false; }
+  if (!o.shrink && Array.isArray(val) && Array.isArray(cur.v)) { const miss = cur.v.filter(x => !val.some(y => sameEnt(x, y))); if (miss.length) val = val.concat(miss); }
+  const txt = JSON.stringify(val);
+  if (txt.length > setMax()) { toast('Not saved: ' + what + ' is too long for the sheet (' + txt.length + ' of ' + setMax() + ' characters). Nothing was changed.', 7000); return false; }
+  putSetting(scope, key, txt); return true;
+}
+function settingKeys(scope) { const ks = new Set(), add = o => { if (o && o[scope]) Object.keys(o[scope]).forEach(k => ks.add(k)); }; add(S && S.settings); add(pendingSet()); add(localSet()); return [...ks]; }
 function getSetting(scope, key) {
   const l = localSet(); if (l[scope] && l[scope][key] != null) return l[scope][key];
   const pq = pendingSet(); if (pq[scope] && pq[scope][key] != null) return pq[scope][key];
@@ -400,7 +428,7 @@ const TRIP_DEFAULT = { jack: { id: 'hotel1', name: 'Hotel gym' } };
 const HOME_DEFAULT = { jack: 'Lifetime' };
 const GYM_ICONS = ['🏋️', '🏠', '🏨', '💪', '🏢', '🏫', '🌴', '✈️'];
 function gymList() {
-  let v = null; try { v = JSON.parse(getSetting('profile', 'gyms') || 'null'); } catch (e) {}
+  let v = sJSON('profile', 'gyms', []);
   if (Array.isArray(v) && v.length) return v.filter(g => g && g.id && g.name);
   const out = [], hn = (S && getSetting('profile', 'home_gym')) || HOME_DEFAULT[P];
   if (hn) out.push({ id: 'home', name: hn, icon: '🏋️' });
@@ -409,7 +437,7 @@ function gymList() {
   if (tg && tg.id) out.push({ id: tg.id, name: tg.name, icon: '🏨' });
   return out;
 }
-function saveGyms(list) { putSetting('profile', 'gyms', JSON.stringify(list)); const h = list.find(g => g.id === 'home'); if (h) putSetting('profile', 'home_gym', h.name); const nm = gymNames(); list.forEach(g => nm[g.id] = g.name); putSetting('profile', 'gym_names', JSON.stringify(nm)); }
+function saveGyms(list, shrink) { if (!putJSON('profile', 'gyms', list, { shrink: true, what: 'gym list' })) return false; const h = list.find(g => g.id === 'home'); if (h) putSetting('profile', 'home_gym', h.name); const nm = gymNames(); list.forEach(g => nm[g.id] = g.name); putJSON('profile', 'gym_names', nm, { what: 'gym names' }); }
 const gymById = id => gymList().find(g => g.id === id) || null;
 const homeGym = () => { const h = gymById('home'); return h ? h.name : ((S && getSetting('profile', 'home_gym')) || HOME_DEFAULT[P] || ''); };
 function gymPick() {
@@ -424,7 +452,7 @@ function tripToday() { return !!tripCfg(); }
 const TRIP_RE = /\s*\[trip ([^\]\s]+)(?: did ([^\]]+))?\]/; // v78 tag (id only)
 const GYM_RE = /\s*\[gym ([^|\]]+?) \| (home|trip:[^|\]\s]+)(?: \| did ([^\]]+))?\]/;
 // Gym names by id, kept even after a gym is deleted (profile.gym_names), so old tags still resolve to a name.
-function gymNames() { let m = {}; try { m = JSON.parse(getSetting('profile', 'gym_names') || '{}') || {}; } catch (e) {} let gl = []; try { gl = JSON.parse(getSetting('profile', 'gyms') || '[]') || []; } catch (e) {} gl.forEach(g => { if (g && g.id) m[g.id] = g.name; }); const d = TRIP_DEFAULT[P]; if (d && !m[d.id]) m[d.id] = d.name; return m; }
+function gymNames() { let m = Object.assign({}, sJSON('profile', 'gym_names', {})); let gl = sJSON('profile', 'gyms', []); gl.forEach(g => { if (g && g.id) m[g.id] = g.name; }); const d = TRIP_DEFAULT[P]; if (d && !m[d.id]) m[d.id] = d.name; return m; }
 function gymParse(r) { // adds gym_id ('home' or trip id), gym_name, sub, _gtag; strips the tag from notes for display
   if (!r || r._gp) return r;
   const n = String(r.notes || ''); let m = n.match(GYM_RE), o = null;
@@ -585,7 +613,7 @@ let LIB = [], swapMemo = {};
 function swapInfo(base) {
   const w = getSetting(base.canonical, 'swap:' + viewId);
   if (w) return w === base.canonical ? null : { to: w, scope: 'workout' };
-  let v = null; try { v = JSON.parse(getSetting(base.canonical, 'bswap:B' + blockOf(viewWeek())) || 'null'); } catch (e) {}
+  let v = sJSON(base.canonical, 'bswap:B' + blockOf(viewWeek()), null);
   if (v && v.to && v.to !== base.canonical && wIndex(viewId) >= wIndex(v.from)) return { to: v.to, scope: 'block', from: v.from };
   return null;
 }
@@ -613,7 +641,7 @@ function swappedEx(base, si) {
   return (swapMemo[k] = ex);
 }
 // Added exercises: settings scope 'adds', key 'w:<wid>' (this workout) or 'b:B<n>:<day>' (rest of block from 'from') -> JSON [{name, at, from}]
-function readAdds(k) { try { const v = JSON.parse(getSetting('adds', k) || '[]'); return Array.isArray(v) ? v.filter(a => a && a.name) : []; } catch (e) { return []; } }
+function readAdds(k) { return sJSON('adds', k, []).filter(a => a && a.name); }
 const addKey = scope => scope === 'block' ? 'b:B' + blockOf(viewWeek()) + ':' + dayKey : 'w:' + viewId;
 function addsFor() {
   if (!days[dayKey]) return [];
@@ -632,7 +660,22 @@ function addedEx(name, i, det) {
 // Deleted exercises: settings scope 'deletes', key 'B<n>:<day>' -> JSON [{name: slot name, from: wid, at}].
 // Hidden from 'from' onward in the block (done workouts included). A card with sets logged in that workout stays.
 const slotOf = ex => ex.base ? ex.base.canonical : ex.canonical;
-function readDeletes() { try { const v = JSON.parse(getSetting('deletes', 'B' + blockOf(viewWeek()) + ':' + dayKey) || '[]'); return Array.isArray(v) ? v.filter(a => a && a.name) : []; } catch (e) { return []; } }
+// v119 (B): one row per removal, key 'B<n>:<day>|<slot>' (rest of block) or 'B<n>:<day>|<slot>|<wid>' (this workout only), merged with the legacy list cell.
+// A row {name, off: true} cancels a legacy entry. Removals are never rewritten as a list again.
+const delPrefix = () => 'B' + blockOf(viewWeek()) + ':' + dayKey;
+const h36 = t => { let h = 2166136261; for (const c of String(t)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
+const delKey = (slot, only) => delPrefix() + '|' + h36(P_.norm(slot)) + (only ? '|' + only : ''); // the backend keeps keys to 40 characters, so the slot is hashed; the name lives in the value
+function readDeletes() {
+  const p = delPrefix(), m = new Map(), id = a => P_.norm(a.name) + '|' + (a.only || '');
+  sJSON('deletes', p, []).filter(a => a && a.name).forEach(a => m.set(id(a), a));
+  settingKeys('deletes').filter(k => k.indexOf(p + '|') === 0).sort().forEach(k => { const r = jsonRecover(getSetting('deletes', k)); const a = r.v; if (!a || !a.name) return; if (a.off) m.delete(id(a)); else m.set(id(a), a); });
+  return [...m.values()];
+}
+function unDelete(slot, only) { // explicit un-remove: clears just that one row (or cancels a legacy entry with an off row)
+  const k = delKey(slot, only), inLegacy = sJSON('deletes', delPrefix(), []).some(a => a && P_.norm(a.name) === P_.norm(slot) && (a.only || '') === (only || ''));
+  if (inLegacy) return putJSON('deletes', k, { name: slot, off: true, only: only || undefined, at: new Date().toISOString() }, { what: 'removals' });
+  putSetting('deletes', k, ''); return true;
+}
 function applyDeletes(list) {
   const del = new Set(readDeletes().filter(a => a.only ? a.only === viewId : (!a.from || wIndex(viewId) >= wIndex(a.from))).map(a => P_.norm(a.name)));
   if (!del.size) return list;
@@ -642,7 +685,7 @@ function cardsFor() {
   let added = []; try { added = addsFor().map((a, i) => { const b = addedEx(a.name, i, a.details), si = swapInfo(b); return si ? swappedEx(b, si) : b; }); } catch (e) { console.warn('adds', e); }
   let base = baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }).concat(added); let ord = null;
   try { base = applyDeletes(base); } catch (e) { console.warn('deletes', e); }
-  try { ord = JSON.parse(getSetting('order', dayKeyOf()) || 'null'); } catch (e) {}
+  ord = sJSON('order', dayKeyOf(), null);
   if (!Array.isArray(ord)) return base;
   const pos = ex => { let i = ord.indexOf(ex.canonical); if (i < 0 && ex.swappedFrom) i = ord.indexOf(ex.swappedFrom); return i < 0 ? 999 + base.indexOf(ex) : i; };
   return base.slice().sort((a, b) => pos(a) - pos(b));
@@ -800,25 +843,57 @@ function suggestRaw(ex, idx) {
     if (small && top >= hi) return { load: String(sw), reps: String(Math.min(hi + 2, reps + 1)), why: 'Use ' + sw + ' lbs. The next weight is a big jump, so add a rep first.' };
     return Object.assign({ load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'Use ' + sw + ' lbs. Same weight, so add a rep.' }, ex.single && sr.L != null && sr.R != null && sr.L !== sr.R ? { repsL: plus1(sr.L, hi), repsR: plus1(sr.R, hi) } : {});
   }
-  if (ex.bodyweight) return null;
-  // Never done: estimate from the best e1RM on a similar exercise (same rest muscle), scaled by equipment.
-  let best = null;
-  const others = Object.values(days).reduce((a, d) => a.concat(d.exercises), []).concat(ex.base ? [ex.base] : []);
-  for (const o of others) {
-    if (o === ex || o.canonical === ex.canonical || o.rest_muscle !== ex.rest_muscle || o.bodyweight) continue;
-    if (!(ex.types || []).includes('isolation') && (o.types || []).includes('isolation')) continue; // presses are not estimated from flyes
-    for (const r of viewRows().filter(x => keysOf(o).has(P_.norm(x.exercise)))) {
-      const w = num(loadOf(r)), n = repN(r); if (!(w > 0) || !(n >= 1 && n <= 20)) continue;
-      const e = n <= 10 ? P_.e1rm(w, n) : { ep: Math.round(w * (1 + n / 30)), br: Math.round(w * (1 + n / 30)) };
-      const v = (e.ep + e.br) / 2 * eqFactor(ex) / eqFactor(o)
-        * ((ex.types || []).includes('isolation') && !(o.types || []).includes('isolation') ? 0.6 : 1);
-      if (!best || v > best.v) best = { v, from: o.canonical };
-    }
+  return firstGuess(ex, lo, hi, dl, st);
+}
+// v119 first-time estimate (Jack, Oct 29: Cable lateral raise got 60 from the cable OHP). Order: own history (handled above by lastSession),
+// the same movement on other equipment, the coach tip weight, the lowest ratio from the most similar logged lift, then a bodyweight default.
+// Everything is compared per arm, set 1 aims for 2-3 reps in reserve, isolation is capped at 25% of the related compound per arm and at 1.5x the tip weight.
+const EQ_WORDS = /\b(cable|dumbbell|db|barbell|bb|machine|smith|plate[- ]loaded|seated|standing|kneeling|incline|single[- ]arm|one[- ]arm|ez[- ]bar|ez)\b/gi;
+const moveKey = n => P_.norm(String(n || '').replace(EQ_WORDS, ' '));
+const perArm = (o, w) => o.single ? w : (equipType(o) === 'dumbbell' ? w : w / 2); // dumbbell loads are already per hand
+const fromPerArm = (ex, w) => ex.single || equipType(ex) === 'dumbbell' ? w : w * 2;
+const isIso = o => (o.types || []).includes('isolation');
+function bestE1(o) { // best estimated 1RM and best working load from this exercise's logged sets (any gym)
+  let e1 = 0, top = 0; const rs = viewRows(false, true);
+  if (bestE1.n !== rs.length || bestE1.s !== S || bestE1.v !== viewId) { bestE1.v = viewId; bestE1.n = rs.length; bestE1.s = S; bestE1.ix = {}; rs.filter(r => wIndex(widOf(r)) < wIndex(viewId)).forEach(r => { const k = P_.norm(r.exercise); (bestE1.ix[k] = bestE1.ix[k] || []).push(r); }); }
+  const ks = keysOf(o);
+  for (const r of [...ks].reduce((a, k) => a.concat(bestE1.ix[k] || []), [])) {
+    const w = num(loadOf(r)), n = repN(r); if (!(w > 0) || !(n >= 1 && n <= 30)) continue;
+    const e = (w * (1 + n / 30) + (n < 37 ? w * 36 / (37 - n) : w * 2)) / 2; if (e > e1) e1 = e; if (w > top) top = w;
   }
-  if (!best) return null;
-  const reps = Math.round((lo + hi) / 2), u = Math.max(5, st.step || 5);
-  let load = r5(best.v / (1 + reps / 30), u); if (dl) load = r5(load * 0.85, u);
-  return { load: String(load), reps: String(dl ? lo : reps), why: 'Use ' + load + ' lbs. A first guess from your ' + best.from + '.', est: true };
+  return e1 ? { e1, top } : null;
+}
+function tipWeight(ex) {
+  const txt = [].concat(tipsFor(ex) || [], ex.note && ex.note.sets || '', ex.details || '').join(' ');
+  const m = /(\d+(?:\.\d+)?)\s*(?:lbs?|pounds)\b/i.exec(txt); return m ? +m[1] : null;
+}
+function firstGuess(ex, lo, hi, dl, st) {
+  if (ex.bodyweight) return null;
+  const reps = Math.round((lo + hi) / 2), aim = reps + 2.5, u = st.unit || 5, iso = isIso(ex);
+  const fromE1 = e1 => (e1 / (1 + aim / 30) + e1 * (37 - aim) / 36) / 2; // per-arm working load for the target reps at 2-3 RIR
+  const others = []; const seen = new Set();
+  Object.values(days).reduce((a, d) => a.concat(d.exercises), []).concat(ex.base ? [ex.base] : []).concat(catalog().map(c => ({ canonical: c.name, muscles: c.muscles, rest_muscle: c.rest_muscle, types: c.types, equip: c.equip, name: c.name, single: (c.types || []).includes('single'), match_keys: [P_.norm(c.name)].concat((c.aliases || []).map(P_.norm)) })))
+    .forEach(o => { const k = P_.norm(o.canonical); if (o === ex || k === P_.norm(ex.canonical) || seen.has(k) || o.bodyweight) return; seen.add(k); others.push(o); });
+  const hist = others.map(o => { let b = null; try { b = bestE1(o); } catch (e) {} return b ? { o, b } : null; }).filter(Boolean);
+  let pa = null, why = '';
+  const own = bestE1(ex); if (own) { pa = fromE1(perArm(ex, own.e1)); why = 'from your own sets at another gym'; }
+  const same = hist.filter(h => moveKey(h.o.canonical) === moveKey(ex.canonical));
+  if (pa == null && same.length) { const h = same.reduce((m, x) => x.b.e1 > m.b.e1 ? x : m); pa = fromE1(perArm(h.o, h.b.e1)) * Math.min(1, eqFactor(ex) / eqFactor(h.o)); why = 'converted from your ' + h.o.canonical; }
+  const tw = tipWeight(ex);
+  if (pa == null && tw) { pa = ex.single || equipType(ex) === 'dumbbell' ? tw : tw / 2; why = 'from the coach tip'; }
+  const rel = hist.filter(h => h.o.rest_muscle === ex.rest_muscle);
+  if (pa == null && rel.length) { // most similar: same rest muscle and same type first; lowest ratio wins
+    const sim = rel.filter(h => isIso(h.o) === iso), pool = sim.length ? sim : rel;
+    const cands = pool.map(h => fromE1(perArm(h.o, h.b.e1)) * eqFactor(ex) / eqFactor(h.o) * (iso && !isIso(h.o) ? 0.2 : 0.8));
+    pa = Math.min.apply(null, cands); why = 'a cautious ratio from your ' + pool[cands.indexOf(pa)].o.canonical;
+  }
+  if (pa == null) { pa = iso ? 10 : 25; why = 'a light default'; }
+  const comp = rel.filter(h => !isIso(h.o));
+  if (!own && iso && comp.length) { const cap = Math.max.apply(null, comp.map(h => perArm(h.o, h.b.top))) * 0.25; if (pa > cap) pa = cap; }
+  if (!own && iso && tw) { const cap = (ex.single || equipType(ex) === 'dumbbell' ? tw : tw / 2) * 1.5; if (pa > cap) pa = cap; }
+  let load = fromPerArm(ex, pa); if (dl) load *= 0.85;
+  load = Math.max(u, Math.floor(load / u + 0.25) * u); // round to a real increment, leaning lighter
+  return { load: String(load), reps: String(dl ? lo : reps), why: 'Use ' + load + ' lbs. First time, ' + why + '. Stop 2 to 3 reps short.', est: true };
 }
 // Arrows next to logged reps (Jack, Oct 20, 2026): compare to Coach's target for that set (coach plan, else suggestNext after the set rule), not last week.
 // Same weight: reps vs target reps (each side on one-arm sets, any side short = down). Different weight: estimated 1RM vs the target's. No target = no arrow.
@@ -893,7 +968,7 @@ const winOn = (t, f, o) => { window.addEventListener(t, f, o); dragCleanup.push(
 let drag = null;
 function saveOrder(main, moved) {
   const names = [...main.querySelectorAll('.card')].map(c => c.dataset.name);
-  putSetting('order', dayKeyOf(), JSON.stringify(names));
+  putJSON('order', dayKeyOf(), names, { shrink: true, what: 'exercise order' });
   setTimeout(() => {
     sig = ''; render();
     const c = [...$('main').querySelectorAll('.card')].find(x => x.dataset.name === moved);
@@ -979,14 +1054,20 @@ function removePlanned(name) {
 }
 // Exercise menu (v113): RP-style compact list anchored at the three dots. Closes on an option tap or an outside tap.
 let menuEx = null, menuBtn = null;
-function choose(o) { // small choice window: o = { title, body, options: [{ v, label, cls }] } -> chosen v or null
-  return new Promise(res => {
-    $('chh').textContent = o.title || ''; $('cht').textContent = o.body || ''; $('cht').style.display = o.body ? '' : 'none';
-    $('chl').innerHTML = o.options.map(x => '<button type="button" class="btn ' + (x.cls || 'sec') + '" data-ch="' + esc(x.v) + '">' + esc(x.label) + '</button>').join('') + '<button type="button" class="btn sec" data-ch="">Cancel</button>';
-    let done = false; const fin = v => { if (done) return; done = true; $('chw').classList.remove('open'); $('chw').onclick = null; res(v || null); };
-    $('chw').onclick = e => { if (e.target.id === 'chw') { popLayer('ch'); return; } const b = e.target.closest('[data-ch]'); if (b) { const v = b.dataset.ch; popLayer('ch'); fin(v); } };
-    $('chw').classList.add('open'); pushLayer('ch', () => fin(null));
-  });
+function choose(o) { // small choice window: o = { title, body, options: [{ v, label, cls }], keep } -> chosen v or null. v119: X or an outside tap closes; keep(v) saves a pick and stays open
+  return new Promise(res => { let tries = 0; const go = () => { if (ignorePop && tries++ < 20) return setTimeout(go, 30); chooseOpen(o, res); }; go(); });
+}
+function chooseOpen(o, res) {
+  $('chh').textContent = o.title || ''; $('cht').textContent = o.body || ''; $('cht').style.display = o.body ? '' : 'none';
+  $('chl').innerHTML = o.options.map(x => '<button type="button" class="btn ' + (x.cls || 'sec') + '" data-ch="' + esc(x.v) + '">' + esc(x.label) + '</button>').join('');
+  let done = false; const fin = v => { if (done) return; done = true; $('chw').classList.remove('open'); $('chw').onclick = null; res(v || null); };
+  $('chw').onclick = e => {
+    if (e.target.id === 'chw' || e.target.closest('#chx')) { popLayer('ch'); fin(null); return; }
+    const b = e.target.closest('[data-ch]'); if (!b) return; const v = b.dataset.ch;
+    if (o.keep) { o.keep(v); $('chl').querySelectorAll('[data-ch]').forEach(x => x.className = 'btn' + (x === b ? '' : ' sec')); return; }
+    popLayer('ch'); fin(v);
+  };
+  $('chw').classList.add('open'); pushLayer('ch', () => fin(null));
 }
 function openMenu(i, btn) {
   menuEx = cardsFor()[i]; menuBtn = btn || null;
@@ -1010,7 +1091,7 @@ $('mskip').onclick = () => {
   if (+dayVal(menuEx, 'skip') > 0) { const ex = menuEx; closeMenu(); setDayVal(ex, 'skip', ''); toast('Skipped sets restored'); return; }
   const ex = menuEx, left = plannedCount(ex) - rowsFor(ex, true).length; closeMenu();
   if (left <= 0) return toast('No sets left to skip');
-  setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left)); toast('Skipped ' + left + (left === 1 ? ' set' : ' sets'));
+  setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left));
 };
 $('mdset').onclick = () => { // removes one unlogged planned set; logged sets are deleted from the set itself
   const ex = menuEx, left = plannedCount(ex) - rowsFor(ex, true).length; closeMenu();
@@ -1020,8 +1101,8 @@ $('mdset').onclick = () => { // removes one unlogged planned set; logged sets ar
 $('mnote').onclick = async () => { const ex = menuEx; closeMenu(); const v = await askBox({ title: 'Note for today', body: ex.canonical, input: 'How it went, machine taken, etc.', value: dayVal(ex, 'note') || '', ok: 'Save' }); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
 $('mpainb').onclick = async () => {
   const ex = menuEx; closeMenu(); const cur = dayVal(ex, 'pain') || 'none';
-  const v = await choose({ title: 'Joint pain', body: ex.canonical, options: ['none', 'mild', 'moderate', 'severe'].map(k => ({ v: k, label: k[0].toUpperCase() + k.slice(1), cls: k === cur ? '' : 'sec' })) });
-  if (!v) return; setDayVal(ex, 'pain', v === 'none' ? '' : v); toast('Joint pain: ' + v);
+  // v119: a tap highlights and saves the level; the window stays open until the X or an outside tap
+  await choose({ title: 'Joint pain', body: ex.canonical, keep: v => setDayVal(ex, 'pain', v === 'none' ? '' : v), options: ['none', 'mild', 'moderate', 'severe'].map(k => ({ v: k, label: k[0].toUpperCase() + k.slice(1), cls: k === cur ? '' : 'sec' })) });
 };
 $('mmatch').onclick = async () => {
   const ex = menuEx; closeMenu();
@@ -1037,7 +1118,7 @@ $('mmatch').onclick = async () => {
 };
 $('mdel').onclick = () => { const ex = menuEx; closeMenu(); if (ex) removeEx(ex); };
 async function removeEx(ex) {
-  const sc = await choose({ title: 'Remove ' + ex.canonical + '?', body: rowsFor(ex, true).length ? 'Sets you already logged today stay in your log.' : '', options: [{ v: 'workout', label: 'This workout', cls: 'danger' }, { v: 'block', label: 'Rest of Block ' + blockOf(viewWeek()), cls: 'danger' }] });
+  const sc = await choose({ title: 'Remove ' + ex.canonical + '?', body: rowsFor(ex, true).length ? 'Sets you already logged today stay in your log.' : '', options: [{ v: 'workout', label: 'This workout', cls: 'sec' }, { v: 'block', label: 'Rest of Block ' + blockOf(viewWeek()), cls: 'sec' }] });
   if (sc) doDelete(ex, sc);
 }
 function pickGym(id, sure) {
@@ -1157,7 +1238,7 @@ $('cexs').onclick = () => {
   if (!cexEq) return msgPop('Pick the equipment first.');
   if (!cexMg.length) return msgPop('Pick at least one body part.');
   const muscles = cexMg.join(', '), rm = cexMg[0].toLowerCase(), def = { name: cexName, equip: cexEq, muscles, rest_muscle: rm, types: ['isolation'], at: new Date().toISOString() };
-  putSetting('custom_ex', P_.norm(cexName), JSON.stringify(def));
+  if (!putJSON('custom_ex', P_.norm(cexName), def, { what: 'custom exercise' })) return;
   putSetting('pending_exercises', P_.norm(cexName), JSON.stringify({ name: cexName, at: def.at, wid: viewId, equip: cexEq, muscles, created: true }));
   const d = cexDone; cexDone = null; cexClose(); if (d) d(cexName);
 };
@@ -1188,7 +1269,7 @@ function addMany(items) {
       if (!c) { unknown.push(to); putSetting('pending_exercises', P_.norm(to), JSON.stringify({ name: to, at: new Date().toISOString(), wid: viewId, added: true, scope: rScope })); }
     });
     if (!added.length) return toast('Already in this workout.');
-    putSetting('adds', k, JSON.stringify(list));
+    if (!putJSON('adds', k, list, { what: 'added exercises' })) return;
     closeRepl(); swapMemo = {}; sig = ''; applyState(S, true);
     toast(unknown.length ? "Added it for now. I'll look it up and add the info, like a demo, later." : 'Added ' + (added.length === 1 ? added[0] : added.length + ' exercises') + (rScope === 'block' ? ' for the rest of Block ' + blockOf(viewWeek()) : ' to this workout'), unknown.length ? 7000 : 5000);
   } catch (e) { closeRepl(); toast('Could not add: ' + (e && e.message || e), 6000); }
@@ -1198,7 +1279,7 @@ function pickAdd(name, custom) {
     const c = catFind(name), to = c ? c.name : name.replace(/^./, x => x.toUpperCase());
     if (cardsFor().some(x => P_.norm(x.canonical) === P_.norm(to))) return toast(to + ' is already in this workout.');
     const k = addKey(rScope), list = readAdds(k).concat([Object.assign({ name: to, at: new Date().toISOString() }, rScope === 'block' ? { from: viewId } : {})]);
-    putSetting('adds', k, JSON.stringify(list));
+    if (!putJSON('adds', k, list, { what: 'added exercises' })) return;
     if (!c) putSetting('pending_exercises', P_.norm(to), JSON.stringify({ name: to, at: new Date().toISOString(), wid: viewId, added: true, scope: rScope }));
     closeRepl(); swapMemo = {}; sig = ''; applyState(S, true);
     toast(!c ? "Added it for now. I'll look it up and add the info, like a demo, later." : 'Added ' + to + (rScope === 'block' ? ' for the rest of Block ' + blockOf(viewWeek()) : ' to this workout'), !c ? 7000 : 5000);
@@ -1264,16 +1345,16 @@ async function pickReplace(name, custom) {
 }
 function applySwap(b, to, scope, reason, was, custom) {
   const blk = blockOf(viewWeek()), back = P_.norm(to) === P_.norm(b.canonical);
-  if (scope === 'block') { putSetting(b.canonical, 'bswap:B' + blk, back ? '' : JSON.stringify({ to, from: viewId })); if (getSetting(b.canonical, 'swap:' + viewId)) putSetting(b.canonical, 'swap:' + viewId, ''); }
+  if (scope === 'block') { if (back) putSetting(b.canonical, 'bswap:B' + blk, ''); else if (!putJSON(b.canonical, 'bswap:B' + blk, { to, from: viewId }, { what: 'swap' })) return; if (getSetting(b.canonical, 'swap:' + viewId)) putSetting(b.canonical, 'swap:' + viewId, ''); }
   else putSetting(b.canonical, 'swap:' + viewId, back && !swapInfo(b) ? '' : to);
-  putSetting('swaps', 's' + Date.now().toString(36), JSON.stringify(Object.assign({ at: new Date().toISOString(), wid: viewId, block: blk, from: b.canonical, was, to, scope, reason }, custom ? { custom: true, pending: 'pending_exercises' } : {})));
+  putJSON('swaps', 's' + Date.now().toString(36), (Object.assign({ at: new Date().toISOString(), wid: viewId, block: blk, from: b.canonical, was, to, scope, reason }, custom ? { custom: true, pending: 'pending_exercises' } : {})));
   swapMemo = {}; sig = ''; applyState(S, true);
 }
 $('rundo').onclick = async () => {
   const ex = rEx, b = baseOf(ex); if (!ex.swappedFrom) return;
   if (ex.swapScope === 'workout') { putSetting(b.canonical, 'swap:' + viewId, ''); if (swapInfo(b)) putSetting(b.canonical, 'swap:' + viewId, b.canonical); }
-  else { if (!(await askBox({ title: 'Go back?', body: 'Go back to ' + b.canonical + ' for the rest of Block ' + blockOf(viewWeek()) + '?', ok: 'Go back' }))) return; const v = JSON.parse(getSetting(b.canonical, 'bswap:B' + blockOf(viewWeek())) || '{}'); putSetting(b.canonical, 'bswap:B' + blockOf(viewWeek()), v.from === viewId ? '' : JSON.stringify({ to: b.canonical, from: viewId })); }
-  putSetting('swaps', 's' + Date.now().toString(36), JSON.stringify({ at: new Date().toISOString(), wid: viewId, block: blockOf(viewWeek()), from: b.canonical, was: ex.canonical, to: b.canonical, scope: ex.swapScope, reason: 'undo' }));
+  else { if (!(await askBox({ title: 'Go back?', body: 'Go back to ' + b.canonical + ' for the rest of Block ' + blockOf(viewWeek()) + '?', ok: 'Go back' }))) return; const v = sJSON(b.canonical, 'bswap:B' + blockOf(viewWeek()), {}); putSetting(b.canonical, 'bswap:B' + blockOf(viewWeek()), v.from === viewId ? '' : JSON.stringify({ to: b.canonical, from: viewId })); }
+  putJSON('swaps', 's' + Date.now().toString(36), ({ at: new Date().toISOString(), wid: viewId, block: blockOf(viewWeek()), from: b.canonical, was: ex.canonical, to: b.canonical, scope: ex.swapScope, reason: 'undo' }));
   closeRepl(); swapMemo = {}; sig = ''; applyState(S, true); toast('Back to ' + b.canonical);
 };
 function histLine(rs) { // RP style: '160 lbs x 12, 12, 7' or '190 x 11, 180 x 8, 8 +1D'
@@ -1354,16 +1435,23 @@ function quoteEnd() { // v108 (Jack, Oct 27): a different quote from the same Da
   const st = quoteToday(), all = [...((S && S.program) || '').matchAll(/^- \d{4}-\d{2}-\d{2} \| (.+?) \| ?(.*)$/gm)].map(m => ({ q: m[1].trim(), a: m[2].trim() })).filter(x => !st || x.q !== st.q);
   if (!all.length) return null; const d = String((S && S.today) || '').replace(/\D/g, ''); return all[(+d || 0) % all.length];
 }
-function endQuoteShow() { const qt = quoteEnd(); if (!qt) return; $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'; $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); }
+function endQuoteShow() { const qt = quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">Workout finished. Nice work.</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); }
 const tipClose = () => { $('tipw').classList.remove('open'); popLayer('tip'); };
 $('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw') tipClose(); });
-function tipUpcoming(force, withQuote) { // after Start workout or after the last planned set: scroll to the next unlogged exercise; pop up only if it has a custom tip
-  const list = cardsFor(), i = list.findIndex(x => rowsFor(x, true).length < plannedCount(x)); if (i < 0) { if (withQuote) tipShow(null, force, true); return; }
-  const c = $('c' + i); if (c) { const h = document.querySelector('header'), off = h ? h.getBoundingClientRect().bottom : 0; scrollTo({ top: Math.max(0, scrollY + c.getBoundingClientRect().top - off - 8), behavior: 'smooth' }); }
+// v119: the next exercise = the first one after the current card (wrapping to the top) with no logged and no skipped sets; else the first with sets left.
+function nextUp(cur) {
+  const list = cardsFor(), cn = cur ? cur.canonical : null, i = list.findIndex(x => x.canonical === cn), ring = list.slice(i + 1).concat(list.slice(0, i + 1)).filter(x => x.canonical !== cn);
+  const left = x => rowsFor(x, true).length < plannedCount(x);
+  return ring.find(x => left(x) && !rowsFor(x, true).length && !(+dayVal(x, 'skip') > 0)) || ring.find(left) || null;
+}
+const barH = () => { const t = $('timer'); return t && getComputedStyle(t).position === 'fixed' ? t.getBoundingClientRect().bottom : 0; };
+function tipUpcoming(force, withQuote, cur) { // after Start workout or after the last planned set: scroll to the next unlogged exercise; pop up only if it has a custom tip
+  const list = cardsFor(), nx = nextUp(cur), i = nx ? list.findIndex(x => x.canonical === nx.canonical) : -1; if (i < 0) { if (withQuote) tipShow(null, force, true); return; }
+  const c = $('c' + i); if (c) { const off = Math.max(barH(), 0); scrollTo({ top: Math.max(0, scrollY + c.getBoundingClientRect().top - off - 8), behavior: 'smooth' }); }
   setTimeout(() => tipShow(list[i], force, withQuote), 500);
 }
 // Rule 2 (intended): after the last planned set of an exercise, the next unlogged exercise's tip pops up even if it was seen before.
-function tipNext(ex) { if (rowsFor(ex, true).length >= plannedCount(ex)) tipUpcoming(true); }
+function tipNext(ex) { if (rowsFor(ex, true).length >= plannedCount(ex)) tipUpcoming(true, false, ex); }
 function render() {
   const main = $('main'), d = days[dayKey];
   const nx = loggableId();
@@ -1493,10 +1581,10 @@ async function finishWorkout(asked) {
   try { // show this workout in the order it was actually done (first logged set of each exercise); this workout only
     const cs = cardsFor(), first = ex => { const t = rowsFor(ex, true).map(tsOf).filter(Boolean); return t.length ? Math.min.apply(null, t) : Infinity; };
     const ord = cs.map((c, i) => ({ n: c.canonical, f: first(c), i })).sort((a, b) => a.f - b.f || a.i - b.i).map(x => x.n);
-    if (ord.join('|') !== cs.map(c => c.canonical).join('|')) putSetting('order', dayKeyOf(), JSON.stringify(ord));
+    if (ord.join('|') !== cs.map(c => c.canonical).join('|')) putJSON('order', dayKeyOf(), ord, { shrink: true, what: 'exercise order' });
   } catch (e) { console.warn('reorder', e); }
   LS.removeItem(WSK());
-  sig = ''; applyState(S, true); toast('Workout finished. Nice work.', 6000); endQuoteShow();
+  sig = ''; applyState(S, true); endQuoteShow();
 }
 async function skipWorkout() {
   if (!canLog()) return toast('Only the next workout (' + wLabel(loggableId()) + ') can be skipped.');
@@ -1752,9 +1840,9 @@ $('delw').addEventListener('click', e => { if (e.target.id === 'delw') closeDel(
 $('dely').onclick = () => { const ex = delPending; closeDel(); if (ex) doDelete(ex); };
 function doDelete(ex, scope) {
   try {
-    const k = 'B' + blockOf(viewWeek()) + ':' + dayKey, list = readDeletes().filter(a => P_.norm(a.name) !== P_.norm(slotOf(ex)));
-    list.push(Object.assign({ name: slotOf(ex), shown: ex.canonical, from: viewId, at: new Date().toISOString() }, scope === 'workout' ? { only: viewId } : {}));
-    putSetting('deletes', k, JSON.stringify(list));
+    const only = scope === 'workout' ? viewId : '', ent = Object.assign({ name: slotOf(ex), shown: ex.canonical, from: viewId, at: new Date().toISOString() }, only ? { only } : {});
+    if (!putJSON('deletes', delKey(slotOf(ex), only), ent, { what: 'removal' })) return; // the row is new or replaces the same removal; the legacy list cell is never overwritten
+    if (!jsonRecover(getSetting('deletes', delPrefix())).ok) console.warn('legacy removals cell is damaged; complete entries recovered');
     swapMemo = {}; sig = ''; applyState(S, true);
     toast('Removed ' + ex.canonical + (scope === 'workout' ? ' from this workout' : ' for the rest of Block ' + blockOf(viewWeek())) + (rowsFor(ex, true).length ? '. Its logged sets today stay on the card.' : ''), 6000);
   } catch (e) { toast('Could not delete: ' + (e && e.message || e), 6000); }
@@ -1864,7 +1952,7 @@ $('geds').onclick = () => {
 $('gedd').onclick = () => { const g = gymById(gEdit); if (!g) return; $('gdelh').textContent = 'Delete ' + g.name + '?'; $('gdelw').classList.add('open'); pushLayer('gdel', () => $('gdelw').classList.remove('open')); };
 const gdelClose = () => { $('gdelw').classList.remove('open'); popLayer('gdel'); };
 $('gdeln').onclick = gdelClose; $('gdelx').onclick = gdelClose;
-$('gdely').onclick = () => { const g = gymById(gEdit); gdelClose(); if (!g || g.id === 'home') return; const nm = gymNames(); nm[g.id] = g.name; putSetting('profile', 'gym_names', JSON.stringify(nm)); saveGyms(gymList().filter(x => x.id !== g.id)); if (getSetting('profile', 'gym_last') === g.id) putSetting('profile', 'gym_last', 'home'); gedClose(); gymsRender(); sig = ''; toast(g.name + ' deleted. Its logged sets are kept.'); };
+$('gdely').onclick = () => { const g = gymById(gEdit); gdelClose(); if (!g || g.id === 'home') return; const nm = gymNames(); nm[g.id] = g.name; putJSON('profile', 'gym_names', nm, { what: 'gym names' }); saveGyms(gymList().filter(x => x.id !== g.id)); if (getSetting('profile', 'gym_last') === g.id) putSetting('profile', 'gym_last', 'home'); gedClose(); gymsRender(); sig = ''; toast(g.name + ' deleted. Its logged sets are kept.'); };
 
 // ---------- Rest timer ----------
 // Target depends on what comes next: same muscle = that exercise's normal rest, different muscle = 75 s.
@@ -1905,7 +1993,7 @@ function nextTarget(name) {
   const list = cardsFor(), idx = list.indexOf(ex);
   const done = idx >= 0 ? rowsFor(ex, true).length : 0;
   if (idx < 0 || done < plannedCount(ex)) return { target: normal, next: idx < 0 ? '' : 'next: ' + ex.canonical + ' set ' + (done + 1) };
-  const nx = list.slice(idx + 1).concat(list.slice(0, idx)).find(x => rowsFor(x, true).length < plannedCount(x));
+  const nx = nextUp(ex);
   if (!nx) return { target: normal, next: 'last exercise done', last: true }; // v86: no rest timer after the final set; Finish workout is offered instead
   if (nx.rest_muscle && nx.rest_muscle === ex.rest_muscle) return { target: nx.note.rest_target_sec || normal, next: 'next: ' + nx.canonical + ' (same muscle)' };
   return { target: SWITCH_REST, next: 'next: ' + nx.canonical + ' (new muscle)' };
