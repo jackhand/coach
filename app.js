@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 121; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 122; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -1406,9 +1406,15 @@ const cnClosed = () => jget('coach_cn_closed', []);
 // v121: two-line exercise names get extra header padding so they look balanced.
 function markTwo() { document.querySelectorAll('.card h2 .ttl').forEach(t => { const lh = parseFloat(getComputedStyle(t).lineHeight) || 20; t.parentNode.classList.toggle('two', t.offsetHeight > lh * 1.5); }); }
 window.addEventListener('resize', () => markTwo());
-// v121: Instructions box. Open by default only for a first-time exercise (no earlier sets); otherwise closed at the start of every workout. Taps are remembered for this workout only.
+// v121: Instructions box. Open by default only for a first-time exercise (no earlier sets at any gym); otherwise closed at the start of every workout. Taps are remembered for this workout only.
 const cnKey = () => 'coach_cn_wk_' + P + '_' + viewId;
-const cnOpen = ex => { const m = jget(cnKey(), {}); if (Object.prototype.hasOwnProperty.call(m, ex.canonical)) return !!m[ex.canonical]; return !lastSession(ex); };
+const cnOpen = ex => { const m = jget(cnKey(), {}); if (Object.prototype.hasOwnProperty.call(m, ex.canonical)) return !!m[ex.canonical]; return !everDone(ex); };
+// v122: 'first time' = no logged sets at ANY gym before this workout (ignores the per-gym machine history rule), matched by the library name, aliases, and the replaced base.
+function everDone(ex) {
+  const ks = new Set(keysOf(ex)); const add = n => { if (!n) return; ks.add(P_.norm(n)); const c = catFind(n); if (c) { ks.add(P_.norm(c.name)); (c.aliases || []).forEach(x => ks.add(P_.norm(x))); } };
+  add(ex.canonical); add(ex.name); add(ex.swappedFrom); if (ex.base) { add(ex.base.canonical); add(ex.base.name); (ex.base.match_keys || []).forEach(k => ks.add(k)); }
+  return viewRows(false, true).some(r => ks.has(P_.norm(r.exercise)) && widOf(r) !== viewId);
+}
 function gymBind(main) {
   const sel = main.querySelector('#gymsel'); if (sel) sel.onchange = () => pickGym(sel.value);
   const gi = main.querySelector('#goalin'); if (gi) gi.onchange = () => { putSetting('profile', 'goal:' + viewId, gi.value.trim()); toast('Goal saved', 2500); };
