@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 128; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 129; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -853,6 +853,17 @@ const moveKey = n => P_.norm(String(n || '').replace(EQ_WORDS, ' '));
 const perArm = (o, w) => o.single ? w : (equipType(o) === 'dumbbell' ? w : w / 2); // dumbbell loads are already per hand
 const fromPerArm = (ex, w) => ex.single || equipType(ex) === 'dumbbell' ? w : w * 2;
 const isIso = o => (o.types || []).includes('isolation');
+// v129 (Jack, Nov 2: Dumbbell bench press got 30 from a 255 barbell bench). Per-arm strength factor: EQ_F compares whole-implement loads,
+// so a per-hand load (dumbbell, single arm) needs twice the factor. Barbell 1, dumbbell 0.76 per hand vs half the bar.
+const paF = o => (o.single || equipType(o) === 'dumbbell' ? 2 : 1) * eqFactor(o);
+// Related free-weight movements: incline and flat pressing are one family, an incline press is about 88% of the flat press.
+const FREE_T = new Set(['barbell', 'dumbbell', 'smith', 'ez', 'hexbar']);
+function famOf(o) {
+  const n = String(o.canonical || o.name || '').toLowerCase(); if (!FREE_T.has(equipType(o)) || isIso(o)) return null;
+  if (/overhead|shoulder|military/.test(n) && /press/.test(n)) return { f: 'ohp', a: /seated/.test(n) ? 1 : 0.95 };
+  if (/bench|chest press|(incline|decline|flat)\b.*press/.test(n)) return { f: 'hpress', a: /incline/.test(n) ? 0.88 : 1 };
+  return null;
+}
 function bestE1(o) { // best estimated 1RM and best working load from this exercise's logged sets (any gym)
   let e1 = 0, top = 0; const rs = viewRows(false, true);
   if (bestE1.n !== rs.length || bestE1.s !== S || bestE1.v !== viewId) { bestE1.v = viewId; bestE1.n = rs.length; bestE1.s = S; bestE1.ix = {}; rs.filter(r => wIndex(widOf(r)) < wIndex(viewId)).forEach(r => { const k = P_.norm(r.exercise); (bestE1.ix[k] = bestE1.ix[k] || []).push(r); }); }
@@ -877,14 +888,17 @@ function firstGuess(ex, lo, hi, dl, st) {
   const hist = others.map(o => { let b = null; try { b = bestE1(o); } catch (e) {} return b ? { o, b } : null; }).filter(Boolean);
   let pa = null, why = '';
   const own = bestE1(ex); if (own) { pa = fromE1(perArm(ex, own.e1)); why = 'from your own sets at another gym'; }
-  const same = hist.filter(h => moveKey(h.o.canonical) === moveKey(ex.canonical));
-  if (pa == null && same.length) { const h = same.reduce((m, x) => x.b.e1 > m.b.e1 ? x : m); pa = fromE1(perArm(h.o, h.b.e1)) * Math.min(1, eqFactor(ex) / eqFactor(h.o)); why = 'converted from your ' + h.o.canonical; }
+  const fx = famOf(ex), same = hist.filter(h => moveKey(h.o.canonical) === moveKey(ex.canonical) || (fx && famOf(h.o) && famOf(h.o).f === fx.f));
+  if (pa == null && same.length) { // v129: average the conversions from every logged version of the movement (other equipment or angle), per arm
+    const cv = same.map(h => { const fh = famOf(h.o); return { h, v: fromE1(perArm(h.o, h.b.e1)) * paF(ex) / paF(h.o) * (fx && fh ? fx.a / fh.a : 1) }; });
+    pa = cv.reduce((a, c) => a + c.v, 0) / cv.length; why = 'converted from your ' + cv.map(c => c.h.o.canonical).join(' and ');
+  }
   const tw = tipWeight(ex);
   if (pa == null && tw) { pa = ex.single || equipType(ex) === 'dumbbell' ? tw : tw / 2; why = 'from the coach tip'; }
   const rel = hist.filter(h => h.o.rest_muscle === ex.rest_muscle);
   if (pa == null && rel.length) { // most similar: same rest muscle and same type first; lowest ratio wins
     const sim = rel.filter(h => isIso(h.o) === iso), pool = sim.length ? sim : rel;
-    const cands = pool.map(h => fromE1(perArm(h.o, h.b.e1)) * eqFactor(ex) / eqFactor(h.o) * (iso && !isIso(h.o) ? 0.2 : 0.8));
+    const cands = pool.map(h => fromE1(perArm(h.o, h.b.e1)) * paF(ex) / paF(h.o) * (iso && !isIso(h.o) ? 0.2 : 0.8));
     pa = Math.min.apply(null, cands); why = 'a cautious ratio from your ' + pool[cands.indexOf(pa)].o.canonical;
   }
   if (pa == null) { pa = iso ? 10 : 25; why = 'a light default'; }
@@ -1450,11 +1464,12 @@ function quoteEnd() { // v108 (Jack, Oct 27): a different quote from the same Da
 function endQuoteShow() { const qt = quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">Workout finished. Nice work.</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); }
 const tipClose = () => { $('tipw').classList.remove('open'); popLayer('tip'); };
 $('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw') tipClose(); });
-// v119: the next exercise = the first one after the current card (wrapping to the top) with no logged and no skipped sets; else the first with sets left.
+// v129 (Jack, Nov 2): the next exercise = the first card from the top (not after the current one) that still has unlogged sets and is not marked skipped,
+// e.g. dips passed over earlier come before the card below the one just finished. Scroll, rest bar Next, and coach tip all use this.
 function nextUp(cur) {
-  const list = cardsFor(), cn = cur ? cur.canonical : null, i = list.findIndex(x => x.canonical === cn), ring = list.slice(i + 1).concat(list.slice(0, i + 1)).filter(x => x.canonical !== cn);
+  const cn = cur ? cur.canonical : null, list = cardsFor().filter(x => x.canonical !== cn);
   const left = x => rowsFor(x, true).length < plannedCount(x);
-  return ring.find(x => left(x) && !rowsFor(x, true).length && !(+dayVal(x, 'skip') > 0)) || ring.find(left) || null;
+  return list.find(x => left(x) && !(+dayVal(x, 'skip') > 0)) || list.find(left) || null;
 }
 const barH = () => { const t = $('timer'); return t && getComputedStyle(t).position === 'fixed' ? t.getBoundingClientRect().bottom : 0; };
 function tipUpcoming(force, withQuote, cur) { // after Start workout or after the last planned set: scroll to the next unlogged exercise; pop up only if it has a custom tip
@@ -1579,14 +1594,19 @@ function durText() { // workout timer: first logged set -> Finish
 }
 function tickDur() { const d = $('wdur'); if (d && S) { const t = durText(); if (d.textContent !== t) d.textContent = t; } const e = $('wstt'); if (e && S) { const st = workoutStart(), t = st ? fmtHMS((Date.now() - st) / 1000) : ''; if (e.textContent !== t) e.textContent = t; } }
 setInterval(tickDur, 1000);
-function workoutRows() { return viewRows(true).filter(r => widOf(r) === viewId); }
+function workoutRows() { return viewRows(true, true).filter(r => widOf(r) === viewId); }
 async function finishPrompt() { // v86: after the final set of the final exercise
   if (!canLog() || finishedToday()) return;
   if (await askBox({ title: 'That was your last set', body: 'Finish ' + wLabel(viewId) + ' now? ' + workoutRows().length + ' sets logged.', ok: 'Finish workout', cancel: 'Not yet' })) finishWorkout(true);
 }
 async function finishWorkout(asked) {
   const rs = workoutRows();
-  if (asked !== true && !(await askBox({ title: 'Finish ' + wLabel(viewId) + '?', body: rs.length + ' sets logged.', ok: 'Finish workout' }))) return;
+  // v129 (Jack, Nov 2): unlogged sets left = one Yes/No question. Yes skips those exercises' remaining sets for this workout only.
+  const pend = cardsFor().filter(x => rowsFor(x, true).length < plannedCount(x)), np = pend.length;
+  if (np) {
+    if (!(await askBox({ title: 'Finish ' + wLabel(viewId) + '?', body: 'You still have ' + np + (np === 1 ? ' exercise' : ' exercises') + ' with unlogged sets. Finish the workout anyway?', ok: 'Yes', cancel: 'No' }))) return;
+    pend.forEach(x => { const left = plannedCount(x) - rowsFor(x, true).length; putSetting(x.canonical, 'skip:' + viewId, String((+dayVal(x, 'skip') || 0) + left)); });
+  } else if (asked !== true && !(await askBox({ title: 'Finish ' + wLabel(viewId) + '?', body: rs.length + ' sets logged.', ok: 'Finish workout' }))) return;
   const ex = new Set(rs.map(r => P_.norm(r.exercise)));
   const now = Date.now(), st = workoutStart(), dur = st ? Math.max(0, Math.round((now - st) / 60000)) : null;
   enqueue({ action: 'finish', session: { session_id: uid(), client_ts: now, date: S.today, day: viewId, sets: String(rs.length), exercises: String(ex.size), notes: dur != null ? 'duration_min=' + dur : '' } });
@@ -1928,28 +1948,30 @@ function openGym(id) {
   $('gedhint').textContent = id === 'home' ? 'This is your home gym. It can be renamed but not deleted.' : g ? 'Deleting a gym only removes it from this list. Sets logged there are kept.' : '';
   $('gedw').classList.add('open'); pushLayer('ged', () => $('gedw').classList.remove('open'));
 }
-// v110: Modify gym from the workout menu. Changeable while the viewed workout has no logged sets (gym_day:<viewId>); locked after.
+// v110: Modify gym from the workout menu. v129 (Jack, Nov 2): tapping a gym always switches the viewed workout, even with logged sets (their gym tags are rewritten).
 let gPickFor = null;
 function openGymPick() {
-  const locked = workoutRows().length > 0, cur = viewGymName(), pk = gymPick();
-  $('gpkt').textContent = locked ? 'Current gym: ' + cur + '. Locked because this workout already has logged sets.' : 'Current gym: ' + cur + '. Pick the gym for ' + wLabel(viewId) + '.';
+  const locked = false, cur = viewGymName(), pk = viewGymId();
+  $('gpkt').textContent = 'Current gym: ' + cur + '. Pick the gym for ' + wLabel(viewId) + '.';
   // v112: every row has an edit link that opens the same Settings gym editor (openGym); switching stays locked once sets are logged
   $('gpkl').innerHTML = gymList().map(g => '<div class="gitem"' + (locked ? '' : ' data-pg="' + esc(g.id) + '"') + '><span class="gic">' + esc(g.icon || '🏋️') + '</span><span class="gnm">' + esc(g.name) + '</span>' + (g.id === pk ? '<span class="gtag on">Current</span>' : '') + '<span class="ed" data-pe="' + esc(g.id) + '" role="button">edit</span></div>').join('');
   $('gpkn').style.display = locked ? 'none' : '';
   $('gpkw').classList.add('open'); pushLayer('gpk', () => $('gpkw').classList.remove('open'));
 }
+function viewGymId() { const r = S && viewRows(true, true).find(x => widOf(x) === viewId); return r ? r.gym_id : gymPick(); }
 const gpkClose = () => { $('gpkw').classList.remove('open'); popLayer('gpk'); };
 function setWorkoutGym(id) {
-  if (workoutRows().length || !gymById(id)) return;
+  if (!gymById(id)) return;
   putSetting('profile', 'gym_day:' + (viewId || todayWid()), id); putSetting('profile', 'gym_last', id);
-  sig = ''; applyState(S, false); const g = gymById(id); toast('Gym for this workout: ' + (g ? g.name : 'home gym'), 3000);
+  if (workoutRows().length) retagDay(id);
+  sig = ''; applyState(S, false); // v129: no toast, the header shows the new gym
 }
 $('gpkx').onclick = gpkClose;
 let gBackPick = false; // v112: reopen the Modify gym picker after the shared editor closes
 $('gpkl').onclick = e => {
   const ed = e.target.closest('[data-pe]'); if (ed) { gpkClose(); gBackPick = true; openGym(ed.dataset.pe); return; }
   const b = e.target.closest('[data-pg]'); if (!b) return; gpkClose();
-  if (b.dataset.pg === gymPick()) return; // same gym: close silently, no toast
+  if (b.dataset.pg === viewGymId()) return; // same gym: close silently, no toast
   setWorkoutGym(b.dataset.pg);
 };
 $('gpkn').onclick = () => { gpkClose(); gPickFor = viewId; gBackPick = false; openGym(null); };

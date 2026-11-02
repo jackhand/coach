@@ -310,6 +310,10 @@ details.cn:not([open])>summary{margin-bottom:-2px}
 .sets li.wgrp li.wrm,.sets li.wgrp li.wrm:first-child,.sets li.wgrp li.wrm.pend{border:0;margin:0;padding:9px 0;background:transparent}
 .sets li.wgrp li.wrm .sn{color:#f2c14e}
 .sets li.wgrp li.wrm.pend{outline-offset:-1px}
+/* v129: set boxes wider (closer to the card edge), contents stay on the SET/LOG columns; unlogged sets boxed like logged ones */
+.sets li:not(.shead):not(.wgrp):not(.wrm){margin-left:-8px;margin-right:-8px;padding-left:8px;padding-right:8px}
+.sets li.plan{background:var(--card2);border-radius:10px;color:var(--mut)}
+.sets li .srow>.sn{align-items:flex-start;text-align:left}
 </style>
 </head>
 <body>
@@ -494,8 +498,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=128"></script>
-<script src="exlist.js?v=128"></script>
-<script src="app.js?v=128"></script>
+<script src="parse.js?v=129"></script>
+<script src="exlist.js?v=129"></script>
+<script src="app.js?v=129"></script>
 </body>
 </html>
