@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 132; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 133; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -862,8 +862,8 @@ function suggestRaw(ex, idx) {
     if (top > 0 && top < lo && lo - top < 3 && sw > 0) // v87 (Jack, Oct 21): heavier is preferred. 1-2 reps under the range: keep the weight, aim for the bottom, finish with a drop set
       return { load: String(sw), reps: String(lo), firm: true, why: 'Use ' + sw + ' lbs. Reps were a bit low, so stay and drop set at the end.' };
     if (top > 0 && top < lo && sw > 0) { // v86: 3 or more reps under the range = one firm call to a lighter weight. Pick the weight whose estimated reps land mid-range (Epley and Brzycki average), rounded to the machine's increments.
-      const best = at.reduce((m, r) => (repN(r) || 0) > (repN(m) || 0) ? r : m, at[0]), br = Math.min(repN(best) || top, 30), e = (sw * (1 + br / 30) + sw * 36 / (37 - br)) / 2;
-      const mid = Math.round((lo + hi) / 2), u = st.unit || 5, raw = (e / (1 + mid / 30) + e * (37 - mid) / 36) / 2, nl = Math.max(u, Math.round(raw / u) * u);
+      const best = at.reduce((m, r) => (repN(r) || 0) > (repN(m) || 0) ? r : m, at[0]), br = Math.min(repN(best) || top, 30), e = e1Of(sw, br);
+      const mid = Math.round((lo + hi) / 2), rm = repModel(ex), raw = (rm && rm.loadFor(mid)) || loadFromE1(e, mid), nl = snapW(ex, raw); // v133: cumulative model, snapped
       if (nl < sw) return { load: String(nl), reps: String(mid), firm: true, why: 'Use ' + nl + ' lbs. Reps were too low, so go lighter.' };
     }
     const small = iso && sw > 0 && st.step / sw > 0.12;
@@ -959,14 +959,68 @@ function trend(ex, r, i) {
   const n = repN(r);
   return n < tr ? DN : n > tr ? UP : EQ;
 }
-// Target reps at a weight other than the planned one: last session at that weight (same set index, else its last set), else the planned set's estimate moved to that weight.
+// v133 (Jack, Nov 3): cumulative rep model. Replaces the single-prior-set estimate. One shared model for the set editor, the arrows and the lighter-weight call.
+// Sets: last 6 sessions or 8 weeks of this exercise (rowsFor gym rules: machines per gym, free weights shared), plus today's sets. Older than 8 weeks gets little weight, older than 16 is ignored.
+// Effective reps = reps + reps left by effort (not to failure 2, technical 1, true / drop / myo 0); only sets of 15 or fewer effective reps count. Drop sets count only the logged top set.
+// One-arm sets use the weaker side (repN). Session weight halves every 2 sessions back; today's sets count 2.5x.
+// 3 or more distinct weights: fit his own load-to-reps line (kept when its slope is within 0.5x to 2x of the e1RM curve). Else a weighted Epley/Brzycki e1RM. Estimates clamp to 2 to 20; outside the data it is a rough guess.
+const RIR_OF = ft => ft === 'not to failure' ? 2 : ft === 'technical' ? 1 : 0;
+const e1Of = (w, n) => (w * (1 + n / 30) + w * 36 / (37 - Math.min(n, 36))) / 2;
+const repsFromE1 = (e, w) => ((e / w - 1) * 30 + 37 - 36 * w / e) / 2;
+const loadFromE1 = (e, n) => (e / (1 + n / 30) + e * (37 - n) / 36) / 2;
+function repModel(ex) {
+  if (!ex || ex.bodyweight || isStretch(ex) || /^bodyweight/.test(equipType(ex))) return null;
+  let past = [], today = [];
+  try { past = rowsFor(ex, false); } catch (e) {}
+  try { today = rowsFor(ex, true); } catch (e) {}
+  const nowT = Date.parse((S.today || new Date().toISOString().slice(0, 10)) + 'T12:00:00Z'), wk = 7 * 864e5;
+  const sess = [...new Set(past.map(widOf))].sort((a, b) => wIndex(b) - wIndex(a));
+  const pts = [];
+  const add = (r, wt) => {
+    if (isWarm(r)) return; const w = num(loadOf(r)), n = repN(r); if (!(w > 0) || !(n > 0)) return;
+    const eff = n + RIR_OF(r.failure_type || ''); if (eff > 15) return; pts.push({ w, n: eff, wt });
+  };
+  sess.forEach((id, k) => {
+    const rs = past.filter(r => widOf(r) === id), d = Date.parse((rs[0].date || '') + 'T12:00:00Z'), age = isFinite(d) ? (nowT - d) / wk : 0;
+    if (age > 16) return; let wt = Math.pow(0.5, k / 2); if (age > 8) wt *= 0.15; else if (k >= 6) return;
+    rs.forEach(r => add(r, wt));
+  });
+  today.forEach(r => add(r, 2.5));
+  if (!pts.length) return null;
+  const W = pts.reduce((a, p) => a + p.wt, 0), ws = [...new Set(pts.map(p => p.w))], lo = Math.min(...ws), hi = Math.max(...ws);
+  let fit = null;
+  if (ws.length >= 3) { // weighted least squares: reps = a + b * load
+    const mw = pts.reduce((a, p) => a + p.wt * p.w, 0) / W, mn = pts.reduce((a, p) => a + p.wt * p.n, 0) / W;
+    const sxx = pts.reduce((a, p) => a + p.wt * (p.w - mw) ** 2, 0), sxy = pts.reduce((a, p) => a + p.wt * (p.w - mw) * (p.n - mn), 0);
+    const b = sxx > 0 ? sxy / sxx : 0; fit = b < 0 ? { a: mn - b * mw, b, mw } : null;
+  }
+  const e1 = pts.reduce((a, p) => a + p.wt * e1Of(p.w, p.n), 0) / W;
+  if (fit) { const k = (repsFromE1(e1, fit.mw * 1.05) - repsFromE1(e1, fit.mw * 0.95)) / (fit.mw * 0.1), q = fit.b / k; if (!(q >= 0.5 && q <= 2)) fit = null; } // his own curve only when its slope is plausible (noisy or fatigue-flattened data falls back to the e1RM blend)
+  const raw = w => fit ? fit.a + fit.b * w : repsFromE1(e1, w);
+  return {
+    e1, fit: !!fit, lo, hi, n: pts.length,
+    at(w) { // { reps, rough } at a load
+      if (!(w > 0)) return null; const r = raw(w), rough = w < lo * 0.85 || w > hi * 1.15 || r < 2 || r > 20;
+      return { reps: Math.max(2, Math.min(20, Math.round(r))), rough };
+    },
+    loadFor(n) { const w = fit ? (n - fit.a) / fit.b : loadFromE1(e1, n); return w > 0 ? w : null; }
+  };
+}
+// Estimate for a load in the editor or the arrows: the model when there is history, else the planned target moved by the e1RM blend. Rough guesses carry a snapped weight that lands mid-range.
+function estAt(ex, w, tw, treps) {
+  const m = repModel(ex); let o = m ? m.at(w) : null, src = 'model';
+  if (!o && tw > 0 && treps > 0) { const e = e1Of(tw, treps), r = repsFromE1(e, w); o = { reps: Math.max(2, Math.min(20, Math.round(r))), rough: w < tw * 0.85 || w > tw * 1.15 || r < 2 || r > 20 }; src = 'target'; }
+  if (!o) return null;
+  if (o.rough) {
+    const [lo, hi] = repRange(ex), mid = Math.round((lo + hi) / 2), e = m ? null : e1Of(tw, treps);
+    const lw = m ? m.loadFor(mid) : loadFromE1(e, mid), sw = lw > 0 ? snapW(ex, lw) : null;
+    if (sw > 0 && sw !== w) o.better = { load: sw, reps: mid };
+  }
+  o.src = src; return o;
+}
+// Target reps at a weight other than the planned one (arrows): v133 cumulative model, else the planned set moved to that weight.
 function repsAtLoad(ex, lw, i, tw, treps) {
-  let ls = null; try { ls = lastSession(ex); } catch (e) {}
-  const at = ls ? ls.rows.filter(x => num(x.load) === lw && x.failure_type !== 'warm-up') : [];
-  if (at.length) return repN(at[Math.min(i, at.length - 1)]) || null;
-  if (!(lw > 0) || !(tw > 0) || !(treps > 0)) return null;
-  const e = (tw * (1 + treps / 30) + tw * 36 / (37 - Math.min(treps, 30))) / 2;
-  return Math.max(1, Math.round(((e / lw - 1) * 30 + 37 - 36 * lw / e) / 2));
+  if (!(lw > 0)) return null; const o = estAt(ex, lw, tw, treps); return o ? o.reps : null;
 }
 // Mesocycle grid: settings profile.meso = {"start":"YYYY-MM-DD","weeks":N,"deload":N} (written by Coach), else Week 1 only.
 function mesoCfg() {
@@ -2240,32 +2294,13 @@ function reEstimate() {
   const b = formBase, ex = formEx; if (!b || !ex || editId || isStretch(ex) || ex.bodyweight || warmNow) return;
   const nl = parseFloat($('fl').value), bl = parseFloat(b.load), br = parseInt(String(b.reps).split(/[^\d]+/).filter(Boolean).pop(), 10);
   if (!(nl > 0) || !(bl > 0) || !(br > 0)) return;
-  // v113 (Jack, Oct 28): on the first set, the estimate starts from last session's first set plus the reps left in the tank by its effort:
-  // Not to failure = about 2 more, Technical failure = about 1 more, True failure (or a drop set / myo-reps) = none.
-  const lastS = formSetIdx === 0 && !rowsFor(ex, true).length ? lastFirstSet(ex) : null;
-  let fsDone = false;
-  if (lastS && nl !== bl) {
-    const ll = parseFloat(loadOf(lastS)), lr = repN(lastS), ft = lastS.failure_type || '', adj = ft === 'not to failure' ? 2 : ft === 'technical' ? 1 : 0;
-    if (ll > 0 && lr > 0) {
-      const r0 = Math.min(lr + adj, 30), eE = ll * (1 + r0 / 30), eB = ll * 36 / (37 - Math.min(r0, 36)), rE = 30 * (eE / nl - 1), rB = 37 - 36 * nl / eB;
-      const n = Math.max(1, Math.min(30, Math.round((rE + rB) / 2)));
-      const ftw = ft === 'not to failure' ? 'not to failure, so you had more in the tank' : ft === 'technical' ? 'to technical failure' : 'to failure';
-      formSug = { load: String(nl), reps: String(n), est: true, why: 'Get ' + n + '. Last time ' + ll + ' x ' + lr + ' was ' + ftw + '.' }; fsDone = true;
-    }
-  }
-  if (fsDone) { /* first-set estimate set above */ }
-  else if (nl === bl) { formSug = b; } else {
-    // 1) Jack's own history at this exact weight (most recent day, best set). 2) Else the average of Epley and Brzycki reps, 1 to 30.
-    const hist = rowsFor(ex, false).filter(r => !isWarm(r) && parseFloat(loadOf(r)) === nl && repN(r) > 0); // v113: same gym rules as history
-    if (hist.length) {
-      const day = hist.map(r => r.date || '').sort().pop(), best = Math.max(...hist.filter(r => (r.date || '') === day).map(r => repN(r)));
-      formSug = { load: String(nl), reps: String(best), est: true, why: 'Get ' + best + '. That is what you did last time at ' + nl + ' lbs.' };
-    } else {
-      const r0 = Math.min(br, 30), eE = bl * (1 + r0 / 30), eB = bl * 36 / (37 - r0);
-      const rE = 30 * (eE / nl - 1), rB = 37 - 36 * nl / eB;
-      const n = Math.max(1, Math.min(30, Math.round((rE + rB) / 2)));
-      formSug = { load: String(nl), reps: String(n), est: true, why: 'Get ' + n + '. A guess for ' + nl + ' lbs.' };
-    }
+  // v133: one cumulative model (recent sessions plus today's sets, effort-adjusted). Same weight as the target keeps the target.
+  if (nl === bl) formSug = b;
+  else {
+    const o = estAt(ex, nl, bl, br);
+    if (!o) return;
+    const why = o.rough ? 'Rough guess, ' + nl + ' lbs is far from your logged weights.' + (o.better ? ' Try ' + o.better.load + ' lbs for about ' + o.better.reps + '.' : '') : o.src === 'model' ? 'From your recent sets.' : 'A guess from the target.';
+    formSug = { load: String(nl), reps: String(o.reps), est: true, rough: o.rough, why: 'Get ' + o.reps + '. ' + why };
   }
   if (repsTyped) { $('fsug').textContent = 'Target ' + formSug.load + ' x ' + formSug.reps + '. ' + formSug.why + ' Kept the reps you typed.'; return; }
   const r = formSug.reps; if (ex.single) { $('frl').value = String(formSug.repsL || r); $('frr').value = String(formSug.repsR || r); } else $('fr').value = r;
