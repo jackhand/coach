@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 131; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 132; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -223,7 +223,7 @@ function setTxt(r) {
   return (r.load || '-') + ' x ' + r.reps;
 }
 function lastTime(ex) {
-  const ls = lastSession(ex); if (!ls) return '';
+  const ls = lastSession(ex); if (!ls) return 'First time on this exercise. Today sets your baseline.';
   return 'Last time (' + wLabel(ls.date, true) + ', ' + ls.rows[0].date + '): ' + ls.rows.map(setTxt).join(', ');
 }
 // ---------- Warm-up ramp + plate calculator (barbell and dumbbell only, never logged) ----------
@@ -697,8 +697,8 @@ function plannedCount(ex) { const b = ex.planned_sets || 3; return Math.max(0, (
 function repRange(ex) { const m = (ex.note.sets || '').match(/x\s*(\d+)(?:\s*-\s*(\d+))?/i); if (m) return [+m[1], +(m[2] || m[1])]; const p1 = ex.note.plan && ex.note.plan[1]; return p1 && p1.lo ? [p1.lo, p1.hi] : [8, 12]; }
 const LOWER = /quad|hamstring|glute|leg|calf|calves|adductor|abductor/i;
 const FAIL = ['technical', 'true', 'drop set', 'myo-reps'];
-function lastSession(ex) {
-  let rs = rowsFor(ex, false);
+function lastSession(ex, before) {
+  let rs = rowsFor(ex, false); if (before) rs = rs.filter(r => wIndex(widOf(r)) < wIndex(before)); // v132: before = an earlier session (stall check)
   // v106: setting <exercise> nobasis = comma list of workout ids whose sets are not used as the basis for later estimates (e.g. order swapped that day).
   const nb = String(getSetting(ex.canonical, 'nobasis') || '').split(',').map(x => x.trim()).filter(Boolean);
   if (nb.length) { const k = rs.filter(r => !nb.includes(widOf(r))); if (k.length) rs = k; }
@@ -720,6 +720,27 @@ function stepFor(ex) {
   return iso ? { step: 5, unit: 5, txt: '' } : lower ? { step: 15, unit: 5, txt: '' } : { step: 10, unit: 5, txt: '' };
 }
 const num = v => { const x = parseFloat(v); return isFinite(x) ? x : null; };
+// v132 (Jack, Nov 3): weight targets snap to what the gym really has. Per-gym data: profile gyms[].steps = { dumbbell: [5, 10, 12.5, ...] or 5, machine: 5, cable: 2.5, ... }.
+// Per-exercise setup text can say 'stack 7.5' or 'steps 2.5'. Else defaults: dumbbells in 5 lb steps, plates in pairs, stacks by the type's unit.
+function weightSteps(ex) {
+  const e = equipType(ex), su = String(setupFor(ex) || ''), m = /\b(?:stack|steps?|increments?)\s*(?:of\s*)?(\d+(?:\.\d+)?)/i.exec(su);
+  if (m && +m[1] > 0) return +m[1];
+  let g = null; try { g = gymById(gymPick()); } catch (x) {}
+  const gs = g && g.steps && (g.steps[e] != null ? g.steps[e] : /^machine/.test(e) ? g.steps.machine : null);
+  if (Array.isArray(gs) && gs.length) return gs.map(Number).filter(x => x > 0).sort((a, b) => a - b);
+  if (+gs > 0) return +gs;
+  return e === 'dumbbell' ? 5 : (stepFor(ex).unit || 5);
+}
+function snapW(ex, w, dir) { // nearest real weight (ties go lighter); dir 1 = next one at or above, -1 = at or below
+  const st = weightSteps(ex); if (!(w > 0)) return w;
+  if (Array.isArray(st)) { const up = st.find(x => x >= w), dn = [...st].reverse().find(x => x <= w); if (dir > 0) return up != null ? up : st[st.length - 1]; if (dir < 0) return dn != null ? dn : st[0]; if (up == null) return dn; if (dn == null) return up; return up - w < w - dn ? up : dn; }
+  const k = w / st, r = dir > 0 ? Math.ceil(k - 1e-9) : dir < 0 ? Math.floor(k + 1e-9) : Math.ceil(k - 0.5 - 1e-9);
+  return Math.max(st, +(r * st).toFixed(2));
+}
+function smallerJump(ex, w) { // the next real weight above w when it is a smaller jump than the usual step, else null
+  const st = weightSteps(ex), nx = Array.isArray(st) ? st.find(x => x > w) : null, step = stepFor(ex).step || 5;
+  if (nx != null && nx - w < step) return nx; if (!Array.isArray(st) && st < step) return +(w + st).toFixed(2); return null;
+}
 // Test-mode only hook for the headless equipment tests (no data, no writes).
 if (testOn()) window.__coachT = { get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow };
 // Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
@@ -773,7 +794,8 @@ function coachPlan(ex, idx) {
 const fatDrop = (n, ft) => !n || ft === 'not to failure' || ft === 'warm-up' ? 0 : Math.max(1, Math.round(n * 0.1));
 // v131 (Jack, Nov 3): same weight as the last set keeps the original rep target. A short last set only adds a down arrow; the target is re-estimated only when the weight changes.
 function suggest(ex, idx) {
-  const r = suggest0(ex, idx), today = rowsFor(ex, true);
+  let r = suggest0(ex, idx); const today = rowsFor(ex, true);
+  if (r && !r.coach && !isStretch(ex) && !ex.bodyweight && num(r.load) > 0) { const w = num(r.load), sw = snapW(ex, w); if (sw !== w) r = Object.assign({}, r, { load: String(sw), why: String(r.why || '').replace('Use ' + w + ' lbs', 'Use ' + sw + ' lbs') }); }
   if (!r || isStretch(ex) || !today.length || idx < today.length) return r;
   const last = today[today.length - 1], lr = repN(last);
   if (num(r.load) == null || num(r.load) !== num(last.load) || !lr) return r;
@@ -828,6 +850,14 @@ function suggestRaw(ex, idx) {
     const ramp = num(rows[0].load) != null && num(rows[0].load) < sw ? ' · settled on ' + sw : '';
     if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'Use ' + Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw) + ' lbs. Deload week, so stop 2 to 3 reps short.' };
     if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'Get ' + (reps + 1) + ' reps. One more than last time.' };
+    { // v132 stall alert (Jack, Nov 3): same load and reps to failure two sessions in a row -> smaller jump or a rep-range change
+      const pv = lastSession(ex, ls.date), pr = pv ? pv.rows : [], psw = settled(pr), atP = pr.filter(r => num(r.load) === psw);
+      const fail = a => a.length && a.every(r => r.failure_type && r.failure_type !== 'not to failure' && r.failure_type !== 'warm-up');
+      if (psw === sw && atP.length === at.length && atP.every((r, i) => repN(r) === repN(at[i])) && fail(at) && fail(atP)) {
+        const sj = smallerJump(ex, sw), nlo = Math.max(3, lo - 2), nhi = Math.max(nlo + 2, hi - 4);
+        return { load: String(sj || sw), reps: String(sj ? Math.max(nlo, top) : Math.max(nlo, top + 1)), stall: true, why: 'Stalled at ' + sw + ' x ' + top + ' two sessions in a row. ' + (sj ? 'Try a smaller jump: ' + sj + ' lbs for ' + Math.max(nlo, top) + ', or switch to a ' + nlo + ' to ' + nhi + ' rep range.' : 'Your gym has no smaller jump, so switch to a ' + nlo + ' to ' + nhi + ' rep range at ' + sw + ' lbs and build back up.') };
+      }
+    }
     if (holdW(ex)) return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'Use ' + sw + ' lbs. Hold the weight and add a rep.' };
     if (top > 0 && top < lo && lo - top < 3 && sw > 0) // v87 (Jack, Oct 21): heavier is preferred. 1-2 reps under the range: keep the weight, aim for the bottom, finish with a drop set
       return { load: String(sw), reps: String(lo), firm: true, why: 'Use ' + sw + ' lbs. Reps were a bit low, so stay and drop set at the end.' };
@@ -910,6 +940,7 @@ function firstGuess(ex, lo, hi, dl, st) {
 // Arrows next to logged reps (Jack, Oct 20, 2026): compare to Coach's target for that set (coach plan, else suggestNext after the set rule), not last week.
 // Same weight: reps vs target reps (each side on one-arm sets, any side short = down). Different weight: estimated 1RM vs the target's. No target = no arrow.
 function trend(ex, r, i) {
+  if (!lastSession(ex)) return ''; // v132: first session on this exercise is the baseline, so no arrows against an old lift or an estimate
   // v106: compare to the set's re-estimated target, as it stood when the set was logged (earlier sets today included), not the original plan.
   let t = null; todayCut = i; try { t = suggest(ex, i); } catch (e) {} finally { todayCut = null; }
   if (!t || !t.reps || num(t.reps) == null) return '';
