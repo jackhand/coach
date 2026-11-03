@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 130; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 131; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -322,7 +322,7 @@ function setsHTML(ex) {
     const rShow = st && r ? (fmtHold(r) || r) : r;
     h += '<li class="plan' + (tb ? ' hasq' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + (tb ? '<span class="tqs">' + tb + '</span>' : '') + '</span>' +
       '<span class="val sug" data-f="w">' + esc(wShow) + '</span><span class="val sug" data-f="' + (ex.single ? 'L' : 'r') + '">' +
-        (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + '</span>' +
+        (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + (sg && sg.short ? ' <span class="tr dn" aria-label="last set came up short">&#9660;</span>' : '') + '</span>' +
       '<span></span>' +
       '<button class="lg" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' +
       (plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '') +
@@ -350,8 +350,9 @@ function methodOf(ex) {
   return v && v.v && (!v.from || wIndex(viewId) >= wIndex(v.from)) ? v.v : (/\bmyo[- ]?rep match\b/i.test(String(ex.details || '')) ? 'match' : 'standard');
 }
 const methodable = ex => !isStretch(ex) && (/\bmyo[- ]?reps?\b/i.test(String(ex.details || '')) || (ex.types || []).includes('isolation'));
-function techFor(ex) {
-  const t = String(ex.details || '').replace(/\bno\s+(?:bench\s+)?(?:drop(?:\s*-?\s*sets?)?|myo[- ]?reps?|run(?:ning)? the rack)\b[^.;]*/gi, '').replace(/\bdrop\s+\d+(?:\.\d+)?\s*(?:lbs?|pounds?)\b/gi, ''); // 'no drop set' and 'drop 10 lb' are not drop sets
+function techFor(ex) { // v131: a technique any coach tip mentions (week notes, custom tip) is scheduled into the matching set too
+  let tips = ''; try { tips = tipsFor(ex).join(' '); } catch (e) {}
+  const t = (String(ex.details || '') + ' ' + tips).replace(/\bno\s+(?:bench\s+)?(?:drop(?:\s*-?\s*sets?)?|myo[- ]?reps?|run(?:ning)? the rack)\b[^.;]*/gi, '').replace(/\bdrop\s+\d+(?:\.\d+)?\s*(?:lbs?|pounds?)\b/gi, ''); // 'no drop set' and 'drop 10 lb' are not drop sets
   let keys = Object.keys(TECH).filter(k => k !== 'match' && TECH[k].re.test(t));
   if (methodOf(ex) === 'match') { keys = ['match']; /* MRM excludes drop sets and standard myo-reps */ return { keys, all: !/\blast set\b/i.test(t), mrm: true }; }
   if (!keys.length) return null;
@@ -685,8 +686,8 @@ function cardsFor() {
   let added = []; try { added = addsFor().map((a, i) => { const b = addedEx(a.name, i, a.details), si = swapInfo(b); return si ? swappedEx(b, si) : b; }); } catch (e) { console.warn('adds', e); }
   let base = baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }).concat(added); let ord = null;
   try { base = applyDeletes(base); } catch (e) { console.warn('deletes', e); }
-  ord = sJSON('order', dayKeyOf(), null);
-  if (!Array.isArray(ord)) return base;
+  ord = sJSON('order', dayKeyOf(), []); // v131: a null fallback made sJSON reject every saved array, so a dropped card snapped back
+  if (!Array.isArray(ord) || !ord.length) return base;
   const pos = ex => { let i = ord.indexOf(ex.canonical); if (i < 0 && ex.swappedFrom) i = ord.indexOf(ex.swappedFrom); return i < 0 ? 999 + base.indexOf(ex) : i; };
   return base.slice().sort((a, b) => pos(a) - pos(b));
 }
@@ -770,16 +771,13 @@ function coachPlan(ex, idx) {
 // set-to-set drop-off when that set went to failure (about 10% of the reps, at least 1), never more than the planned target.
 // Not to failure = no drop. RP documents same load across sets, logged reps per set and no fixed formula; the 10% is the typical drop-off at 0-1 RIR with 2-3 min rest.
 const fatDrop = (n, ft) => !n || ft === 'not to failure' || ft === 'warm-up' ? 0 : Math.max(1, Math.round(n * 0.1));
+// v131 (Jack, Nov 3): same weight as the last set keeps the original rep target. A short last set only adds a down arrow; the target is re-estimated only when the weight changes.
 function suggest(ex, idx) {
   const r = suggest0(ex, idx), today = rowsFor(ex, true);
   if (!r || isStretch(ex) || !today.length || idx < today.length) return r;
   const last = today[today.length - 1], lr = repN(last);
   if (num(r.load) == null || num(r.load) !== num(last.load) || !lr) return r;
-  const ft = last.failure_type, cap = (v, plan) => { const e = Math.max(1, v - fatDrop(v, ft)); const p = num(plan); return String(p != null && p > 0 && p < e ? p : e); };
-  const sl = sideReps(last), o = Object.assign({}, r, { reps: cap(lr, r.reps) });
-  if (ex.single && sl.L != null && sl.R != null) { o.repsL = cap(sl.L, r.repsL != null ? r.repsL : r.reps); o.repsR = cap(sl.R, r.repsR != null ? r.repsR : r.reps); } else { delete o.repsL; delete o.repsR; }
-  o.why = 'Use ' + r.load + ' lbs and get ' + o.reps + '. ' + (fatDrop(lr, ft) ? 'You are a bit tired after the last set.' : 'Match your last set.');
-  return o;
+  const tgt = num(r.reps); return tgt != null && lr < tgt ? Object.assign({}, r, { short: true }) : r;
 }
 function suggest0(ex, idx) {
   const cp = coachPlan(ex, idx); if (cp) return cp;
@@ -987,7 +985,6 @@ function saveOrder(main, moved) {
     sig = ''; render();
     const c = [...$('main').querySelectorAll('.card')].find(x => x.dataset.name === moved);
     if (c) { const r = c.getBoundingClientRect(); if (r.top < 80 || r.top > innerHeight - 260) window.scrollBy(0, r.top - 90); }
-    toast('Order saved for today');
   }, DRAG_ANIM + 40);
 }
 function startDrag(main, card, y, pointerId, h) {
@@ -1100,7 +1097,7 @@ function openMenu(i, btn) {
 }
 function closeMenu(keepHistory) { $('menu').classList.remove('open'); if (!keepHistory) popLayer('menu'); }
 $('menu').addEventListener('click', e => { if (e.target.id === 'menu') closeMenu(); });
-$('madd').onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'extra', String((+dayVal(ex, 'extra') || 0) + 1)); toast('Set added'); };
+$('madd').onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'extra', String((+dayVal(ex, 'extra') || 0) + 1)); };
 $('mskip').onclick = () => {
   if (+dayVal(menuEx, 'skip') > 0) { const ex = menuEx; closeMenu(); setDayVal(ex, 'skip', ''); toast('Skipped sets restored'); return; }
   const ex = menuEx, left = plannedCount(ex) - rowsFor(ex, true).length; closeMenu();
@@ -2095,7 +2092,7 @@ function tick() {
 setInterval(tick, 250);
 function markActive() { const t = getT(); cardsFor().forEach((ex, i) => { const c = $('c' + i); if (c) c.classList.toggle('active', !!t && !t.hidden && P_.norm(ex.canonical) === P_.norm(t.exercise)); }); }
 $('tclear').onclick = () => { const t = getT(); if (t) { t.hidden = true; setT(t); } };
-$('tundo').onclick = () => {
+if ($('tundo')) $('tundo').onclick = () => { // v131: the top-bar undo button is gone (Jack, Nov 3); delete a set from its editor
   const today = viewRows().filter(r => r.date === S.today);
   if (!today.length) return toast('Nothing logged today');
   deleteSet(today[today.length - 1].set_id, true);
