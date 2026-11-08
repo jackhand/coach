@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 133; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 134; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -850,13 +850,8 @@ function suggestRaw(ex, idx) {
     const ramp = num(rows[0].load) != null && num(rows[0].load) < sw ? ' · settled on ' + sw : '';
     if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'Use ' + Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw) + ' lbs. Deload week, so stop 2 to 3 reps short.' };
     if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'Get ' + (reps + 1) + ' reps. One more than last time.' };
-    { // v132 stall alert (Jack, Nov 3): same load and reps to failure two sessions in a row -> smaller jump or a rep-range change
-      const pv = lastSession(ex, ls.date), pr = pv ? pv.rows : [], psw = settled(pr), atP = pr.filter(r => num(r.load) === psw);
-      const fail = a => a.length && a.every(r => r.failure_type && r.failure_type !== 'not to failure' && r.failure_type !== 'warm-up');
-      if (psw === sw && atP.length === at.length && atP.every((r, i) => repN(r) === repN(at[i])) && fail(at) && fail(atP)) {
-        const sj = smallerJump(ex, sw), nlo = Math.max(3, lo - 2), nhi = Math.max(nlo + 2, hi - 4);
-        return { load: String(sj || sw), reps: String(sj ? Math.max(nlo, top) : Math.max(nlo, top + 1)), stall: true, why: 'Stalled at ' + sw + ' x ' + top + ' two sessions in a row. ' + (sj ? 'Try a smaller jump: ' + sj + ' lbs for ' + Math.max(nlo, top) + ', or switch to a ' + nlo + ' to ' + nhi + ' rep range.' : 'Your gym has no smaller jump, so switch to a ' + nlo + ' to ' + nhi + ' rep range at ' + sw + ' lbs and build back up.') };
-      }
+    { // v132 stall detection, v134 copy (Jack, Nov 8): stalled lifts get a motivating push at the same weight, no range change
+      const sk = stallOf(ex, ls); if (sk) return { load: String(sw), reps: String(sk.top + 1), stall: true, why: 'Use ' + sw + ' lbs and get ' + (sk.top + 1) + ' to break the stall.' };
     }
     if (holdW(ex)) return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'Use ' + sw + ' lbs. Hold the weight and add a rep.' };
     if (top > 0 && top < lo && lo - top < 3 && sw > 0) // v87 (Jack, Oct 21): heavier is preferred. 1-2 reps under the range: keep the weight, aim for the bottom, finish with a drop set
@@ -1522,7 +1517,19 @@ $('msgw').onclick = () => { $('msgw').classList.remove('open'); popLayer('msg');
 const sentence = t => { t = String(t || '').trim(); if (!t) return ''; t = t[0].toUpperCase() + t.slice(1); return /[.!?]$/.test(t) ? t : t + '.'; };
 // Rule (Jack, Oct 20, 2026): the tip pop-up shows only day-specific custom tips, never the default library tip or other card text.
 // Custom = the program line's 'Note:' for that day plus this week's notes for this exercise on this day. None = no pop-up (the card still shows the default tips).
-function tipsFor(ex) { const n = ex.note || {}; let w = []; try { w = weekNotesFor(ex).map(x => x.text); } catch (e) {} return (n.custom ? [n.custom] : []).concat(w).map(sentence).filter(Boolean); }
+// v134 (Jack, Nov 8, 2026): stall = same settled load and same reps, every set to failure (technical counts), two sessions in a row.
+function stallOf(ex, ls) {
+  try {
+    ls = ls || lastSession(ex); if (!ls || isDeload(viewWeek())) return null;
+    const rows = ls.rows, sw = settled(rows); if (sw == null || !(sw > 0)) return null;
+    const at = rows.filter(r => num(r.load) === sw), top = Math.max(0, ...at.map(r => repN(r) || 0));
+    const pv = lastSession(ex, ls.date), pr = pv ? pv.rows : [], psw = settled(pr), atP = pr.filter(r => num(r.load) === psw);
+    const fail = a => a.length && a.every(r => r.failure_type && r.failure_type !== 'not to failure' && r.failure_type !== 'warm-up');
+    return psw === sw && atP.length === at.length && atP.every((r, i) => repN(r) === repN(at[i])) && fail(at) && fail(atP) ? { sw, top } : null;
+  } catch (e) { return null; }
+}
+const stallMsg = k => 'You have stalled at ' + k.sw + ' lbs for ' + k.top + ' reps two sessions in a row. Push for ' + (k.top + 1) + ' reps at ' + k.sw + ' today, because one more rep is how you break the stall.';
+function tipsFor(ex) { const n = ex.note || {}; let w = []; try { w = weekNotesFor(ex).map(x => x.text); } catch (e) {} const sk = ex.bodyweight || isStretch(ex) ? null : stallOf(ex); return (sk ? [stallMsg(sk)] : []).concat(n.custom ? [n.custom] : []).concat(w).map(sentence).filter(Boolean); }
 // v86 (Jack, Oct 21): daily quote, preloaded with the program (the '## Daily quotes' block that build-quotes.py writes into program.md from the Coach Quotes sheet). No fetch at workout start.
 function quoteToday() {
   const s = (S && S.program) || '', d = (S && S.today) || ''; if (!d) return null;
@@ -1583,7 +1590,7 @@ function render() {
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + '</div>' +
-      '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnOpen(ex) ? ' open' : '') + '><summary><b>Instructions</b><span class="cnbtn" role="img" aria-label="' + (cnOpen(ex) ? 'Collapse instructions' : 'Expand instructions') + '"><span class="circ"><span class="chev"></span></span></span></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML(weekNotesFor(ex)) +
+      '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnOpen(ex) ? ' open' : '') + '><summary><b>Instructions</b><span class="cnbtn" role="img" aria-label="' + (cnOpen(ex) ? 'Collapse instructions' : 'Expand instructions') + '"><span class="circ"><span class="chev"></span></span></span></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML((() => { const sk = ex.bodyweight || isStretch(ex) ? null : stallOf(ex); return (sk ? [{ text: stallMsg(sk), stall: true }] : []).concat(weekNotesFor(ex)); })()) +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + ')' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
       warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
@@ -1712,7 +1719,7 @@ async function skipWorkout() {
 }
 function weekBoxHTML(ns, day) {
   if (!ns || !ns.length) return '';
-  return '<div class="wkbox' + (day ? ' wkday' : '') + '"><b>This week (Week ' + viewWeek() + ')' + (day ? ', every exercise' : '') + ':</b><ul>' + ns.map(n => '<li>' + esc(n.text) + '</li>').join('') + '</ul></div>';
+  return '<div class="wkbox' + (day ? ' wkday' : '') + '"><b>This week (Week ' + viewWeek() + ')' + (day ? ', every exercise' : '') + ':</b><ul>' + ns.map(n => '<li' + (n.stall ? ' class="stall"' : '') + '>' + (n.stall ? '<b>' + esc(n.text) + '</b>' : esc(n.text)) + '</li>').join('') + '</ul></div>';
 }
 async function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
