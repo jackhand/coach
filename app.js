@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 137; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 138; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -935,7 +935,7 @@ function bestE1(o) { // best estimated 1RM and best working load from this exerc
   return e1 ? { e1, top } : null;
 }
 function tipWeight(ex) {
-  const txt = [].concat(tipsFor(ex) || [], ex.note && ex.note.sets || '', ex.details || '').join(' ');
+  const txt = [].concat(tipsFor(ex) || [], ex.note && ex.note.sets || '', String(ex.details || '').replace(/\bprimer\s*:[^.]*\.?/i, '')).join(' '); // v138: primer weights are not the lift's weight
   const m = /(\d+(?:\.\d+)?)\s*(?:lbs?|pounds)\b/i.exec(txt); return m ? +m[1] : null;
 }
 function firstGuess(ex, lo, hi, dl, st) {
