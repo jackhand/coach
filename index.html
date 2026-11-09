@@ -259,7 +259,7 @@ html.modal,html.modal body{overscroll-behavior:none}
 /* v135: Load and Reps share one top-aligned row; the Plates line is its own full-width row below, so it can never push Reps down */
 #liftgrid{align-items:start;grid-template-columns:1fr 1fr;row-gap:4px}#liftgrid>#loadbox,#liftgrid>#repsbox{grid-row:1;align-self:start;margin:0;padding:0}#liftgrid>#loadbox{grid-column:1}#liftgrid>#repsbox{grid-column:2}#liftgrid>#fpl{grid-column:1/-1;grid-row:2;margin:0}#liftgrid>#fpl:empty{display:none}
 /* v135: primer drills in the warm-up group (tap to check off, not logged) */
-.wgrp li.prm .ptx{grid-column:2/5;font-size:15px;line-height:1.3}.wgrp li.prm.logged .ptx{color:var(--mut)}
+.wgrp li.prm .ptx{grid-column:2/5;font-size:15px;line-height:1.3}.wgrp li.prm.logged .ptx{color:var(--mut)}.wgrp li.prm .pvid{display:inline-flex;align-items:center;gap:4px;color:var(--blue);text-decoration:none;font-size:14px;min-height:32px;vertical-align:middle;white-space:nowrap}.wgrp li.prm .pvid svg{width:18px;height:18px}
 
 /* v114: compact title row so names fit on one line */
 .card h2{padding:4px 4px 4px 2px;gap:2px}
@@ -508,8 +508,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=136"></script>
-<script src="exlist.js?v=136"></script>
-<script src="app.js?v=136"></script>
+<script src="parse.js?v=137"></script>
+<script src="exlist.js?v=137"></script>
+<script src="app.js?v=137"></script>
 </body>
 </html>

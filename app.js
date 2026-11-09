@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 136; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 137; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -301,11 +301,13 @@ const PRIMER_RE = /^primer\s*:/i;
 function primerOf(ex) { const c = ((ex && ex.note && ex.note.extra) || []).find(x => PRIMER_RE.test(x)); if (!c) return []; return c.replace(PRIMER_RE, '').split(/,\s*(?![^()]*\))/).map(x => x.trim()).filter(Boolean).map(x => x[0].toUpperCase() + x.slice(1)); }
 const primeKey = ex => 'coach_prime_' + P + '_' + ((S && S.today) || '') + '_' + P_.norm(ex.canonical);
 const primeDone = ex => jget(primeKey(ex), []);
+// v137: a primer item named like a library exercise ('45-degree back extensions: 1-2 x 10-12') gets that exercise's demo video.
+function primerVideo(t) { const nm = String(t).split(':')[0].trim(); if (!nm || nm === t) return ''; try { const c = catFind(nm) || catFind(nm.replace(/s$/i, '')) || catFind(nm.replace(/es$/i, '')); return (c && c.video) || ''; } catch (e) { return ''; } }
 // All warm-ups for the exercise sit in one gold 'Warm-up' group above the numbered working sets.
 function warmRowsHTML(ex, worked) {
   const done = warmRowsToday(ex), plan = coachWarm(ex), name = esc(ex.canonical), prm = primerOf(ex), pd = primeDone(ex);
   const pl = w => plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '';
-  let h = worked ? '' : prm.map((t, k) => { const on = pd.includes(k); return '<li class="plan wrm prm' + (on ? ' logged' : '') + '"><div class="srow"><span class="sn">P</span><span class="ptx">' + esc(t) + '</span><button class="lg' + (on ? ' on' : '') + '" data-prm="' + k + '" data-ex="' + name + '" aria-label="' + (on ? 'Primer done: ' : 'Mark primer done: ') + esc(t) + '">' + (on ? '&#10003;' : '') + '</button></div></li>'; }).join('');
+  let h = worked ? '' : prm.map((t, k) => { const on = pd.includes(k); return '<li class="plan wrm prm' + (on ? ' logged' : '') + '"><div class="srow"><span class="sn">P</span><span class="ptx">' + esc(t) + (primerVideo(t) ? ' <a class="pvid" href="' + esc(primerVideo(t)) + '" target="_blank" rel="noopener noreferrer" aria-label="Demo video">' + ICO_V + '<span>Demo</span></a>' : '') + '</span><button class="lg' + (on ? ' on' : '') + '" data-prm="' + k + '" data-ex="' + name + '" aria-label="' + (on ? 'Primer done: ' : 'Mark primer done: ') + esc(t) + '">' + (on ? '&#10003;' : '') + '</button></div></li>'; }).join('');
   h += done.map(r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">W</span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span><span></span><span class="lg on">&#10003;</span></div>' + pl(r.load) +
     (r.pending || noteTxt(r) ? '<div class="s2">' + [r.pending ? 'pending sync' : '', esc(noteTxt(r))].filter(Boolean).join(' · ') + '</div>' : '') + '</li>').join('');
   if (!worked) for (let k = done.length; k < plan.length; k++) {
