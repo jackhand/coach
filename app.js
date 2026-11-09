@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 135; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 136; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -281,7 +281,7 @@ function warmHTML(ex, i, list) {
 // v135 (Jack, Nov 9): percentage ramps ('Warm-ups: 50% x 8, 70% x 5, 80% x 3, 88% x 1-2, 95% x 1 of the top set') follow today's top-set target, snapped to real plate loads.
 function pctWarm(ex) {
   const m = String(ex.details || '').match(/\bwarm-?ups?\s*:\s*([^.;]*%[^.;]*)/i); if (!m) return null;
-  const it = [...m[1].matchAll(/(\d+(?:\.\d+)?)\s*%\s*x\s*(\d+)(?:\s*-\s*(\d+))?/gi)]; if (!it.length) return null;
+  const it = [...m[1].matchAll(/(\d+(?:\.\d+)?)\s*%\s*x\s*(\d+)(?:\s*-\s*(\d+))?(?:\s*\(([^)]*)\))?/gi)]; // v136: '(cue)' after a step = that ramp set's note if (!it.length) return null;
   let top = 0; try { const sg = suggest(ex, 0); top = num(sg && sg.load); } catch (e) {}
   if (!top) { const pl = ex.note && ex.note.plan && ex.note.plan[1]; top = (pl && +pl.load) || 0; }
   if (!(top > 0)) return null;
@@ -291,7 +291,7 @@ function pctWarm(ex) {
     if (bar) { const np = v => { let side = (v - bar) / 2, c = 0; for (const q of PLATES) while (side >= q - 1e-9) { side -= q; c++; } return side > 0.01 ? 99 : c; }; // fewest plates within 5 lb of the target (e.g. 135, 185, 225)
       w = [w - 5, w, w + 5].filter(v => v >= bar && v < top).sort((a, b) => np(a) - np(b) || Math.abs(a - raw) - Math.abs(b - raw))[0] || w; }
     if (!(w > 0) || w >= top || out.some(o => o.w === w)) return;
-    const lo = +x[2], hi = x[3] ? +x[3] : lo; out.push({ w, n: hi, nTxt: hi > lo ? lo + '-' + hi : String(lo), pct: +x[1] });
+    const lo = +x[2], hi = x[3] ? +x[3] : lo; out.push({ w, n: hi, nTxt: hi > lo ? lo + '-' + hi : String(lo), pct: +x[1], cue: x[4] ? x[4].trim().replace(/^./, c => c.toUpperCase()) + '.' : '' });
   });
   return out.length ? out : null;
 }
@@ -311,7 +311,7 @@ function warmRowsHTML(ex, worked) {
   if (!worked) for (let k = done.length; k < plan.length; k++) {
     const w = plan[k];
     h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.nTxt || w.n) + '</span><span></span>' +
-      '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log warm-up ' + (k + 1) + ' of ' + plan.length + '"' + ((k === done.length || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' + pl(w.w) + '</li>';
+      '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log warm-up ' + (k + 1) + ' of ' + plan.length + '"' + ((k === done.length || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' + pl(w.w) + (w.cue ? '<div class="s2 wcue">' + esc(w.cue) + '</div>' : '') + '</li>';
   }
   return h ? '<li class="wgrp"><div class="wgh"><b>WARM-UP</b> <span>Coach plan. Not counted in suggestions or weekly sets.</span></div><ul class="wl">' + h + '</ul></li>' : '';
 }
@@ -2450,7 +2450,7 @@ function openForm(i, ts, row) {
   }
   if (!row && warmNext != null) { // logging a coach warm-up set
     const w = coachWarm(ex)[warmNext];
-    if (w) { $('fl').value = String(w.w); $('fr').value = String(w.n); ftOptions(); ffSel.value = 'warm-up'; $('fsug').textContent = 'Warm-up ' + (warmNext + 1) + ' of ' + coachWarm(ex).length + ': ' + w.w + ' x ' + w.n + ' (Coach plan). Logged as a warm-up, so it does not change the working set suggestions.'; setDrops(0); setMini(0); $('fmini').style.display = 'none'; bwLine(); plUpd(); }
+    if (w) { $('fl').value = String(w.w); $('fr').value = String(w.n); ftOptions(); ffSel.value = 'warm-up'; $('fsug').textContent = 'Warm-up ' + (warmNext + 1) + ' of ' + coachWarm(ex).length + ': ' + w.w + ' x ' + w.n + ' (Coach plan). ' + (w.cue ? w.cue + ' ' : '') + 'Logged as a warm-up, so it does not change the working set suggestions.'; setDrops(0); setMini(0); $('fmini').style.display = 'none'; bwLine(); plUpd(); }
   }
   warmNow = !row && warmNext != null && !!coachWarm(ex)[warmNext]; warmNext = null;
   formBase = row || warmNow || rowPrefill ? null : formSug;
