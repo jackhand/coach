@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 134; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 135; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -278,16 +278,39 @@ function warmHTML(ex, i, list) {
     '<div class="s2">' + (pl ? 'Tap a weight to see plates (' + wu.bar + ' lb ' + wu.bn + '). ' : '') + 'Rest about 1 min between ramp sets.</div></details>';
 }
 // Coach warm-ups ('Warm-ups: bar x 10, 135 x 5' in the program): listed before the working sets, logged with failure type 'warm-up'.
-function coachWarm(ex) { const b = ex && ex.note && ex.note.warmups; if (!b || !b.length || isStretch(ex)) return []; const bar = barWeight(ex); return b.map(x => ({ w: x.w === 'bar' ? bar : x.w, n: x.n })); }
+// v135 (Jack, Nov 9): percentage ramps ('Warm-ups: 50% x 8, 70% x 5, 80% x 3, 88% x 1-2, 95% x 1 of the top set') follow today's top-set target, snapped to real plate loads.
+function pctWarm(ex) {
+  const m = String(ex.details || '').match(/\bwarm-?ups?\s*:\s*([^.;]*%[^.;]*)/i); if (!m) return null;
+  const it = [...m[1].matchAll(/(\d+(?:\.\d+)?)\s*%\s*x\s*(\d+)(?:\s*-\s*(\d+))?/gi)]; if (!it.length) return null;
+  let top = 0; try { const sg = suggest(ex, 0); top = num(sg && sg.load); } catch (e) {}
+  if (!top) { const pl = ex.note && ex.note.plan && ex.note.plan[1]; top = (pl && +pl.load) || 0; }
+  if (!(top > 0)) return null;
+  const bar = plateT(ex) ? barWeight(ex) : 0, out = [];
+  it.forEach(x => {
+    const raw = top * x[1] / 100; let w = Math.round(raw / 5) * 5; try { w = snapW(ex, w) || w; } catch (e) {} if (bar) w = Math.max(bar, w);
+    if (bar) { const np = v => { let side = (v - bar) / 2, c = 0; for (const q of PLATES) while (side >= q - 1e-9) { side -= q; c++; } return side > 0.01 ? 99 : c; }; // fewest plates within 5 lb of the target (e.g. 135, 185, 225)
+      w = [w - 5, w, w + 5].filter(v => v >= bar && v < top).sort((a, b) => np(a) - np(b) || Math.abs(a - raw) - Math.abs(b - raw))[0] || w; }
+    if (!(w > 0) || w >= top || out.some(o => o.w === w)) return;
+    const lo = +x[2], hi = x[3] ? +x[3] : lo; out.push({ w, n: hi, nTxt: hi > lo ? lo + '-' + hi : String(lo), pct: +x[1] });
+  });
+  return out.length ? out : null;
+}
+function coachWarm(ex) { if (!ex || isStretch(ex)) return []; const pw = pctWarm(ex); if (pw) return pw; const b = ex.note && ex.note.warmups; if (!b || !b.length) return []; const bar = barWeight(ex); return b.map(x => ({ w: x.w === 'bar' ? bar : x.w, n: x.n })); }
+// v135 (Jack, Nov 9): 'Primer: a, b, c' in the program = short priming drills before the ramp (upper back, bench setup, legs, chest). Warm-up only: tap to check off, never logged or counted.
+const PRIMER_RE = /^primer\s*:/i;
+function primerOf(ex) { const c = ((ex && ex.note && ex.note.extra) || []).find(x => PRIMER_RE.test(x)); if (!c) return []; return c.replace(PRIMER_RE, '').split(/,\s*(?![^()]*\))/).map(x => x.trim()).filter(Boolean).map(x => x[0].toUpperCase() + x.slice(1)); }
+const primeKey = ex => 'coach_prime_' + P + '_' + ((S && S.today) || '') + '_' + P_.norm(ex.canonical);
+const primeDone = ex => jget(primeKey(ex), []);
 // All warm-ups for the exercise sit in one gold 'Warm-up' group above the numbered working sets.
 function warmRowsHTML(ex, worked) {
-  const done = warmRowsToday(ex), plan = coachWarm(ex), name = esc(ex.canonical);
+  const done = warmRowsToday(ex), plan = coachWarm(ex), name = esc(ex.canonical), prm = primerOf(ex), pd = primeDone(ex);
   const pl = w => plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '';
-  let h = done.map(r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">W</span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span><span></span><span class="lg on">&#10003;</span></div>' + pl(r.load) +
+  let h = worked ? '' : prm.map((t, k) => { const on = pd.includes(k); return '<li class="plan wrm prm' + (on ? ' logged' : '') + '"><div class="srow"><span class="sn">P</span><span class="ptx">' + esc(t) + '</span><button class="lg' + (on ? ' on' : '') + '" data-prm="' + k + '" data-ex="' + name + '" aria-label="' + (on ? 'Primer done: ' : 'Mark primer done: ') + esc(t) + '">' + (on ? '&#10003;' : '') + '</button></div></li>'; }).join('');
+  h += done.map(r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">W</span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span><span></span><span class="lg on">&#10003;</span></div>' + pl(r.load) +
     (r.pending || noteTxt(r) ? '<div class="s2">' + [r.pending ? 'pending sync' : '', esc(noteTxt(r))].filter(Boolean).join(' · ') + '</div>' : '') + '</li>').join('');
   if (!worked) for (let k = done.length; k < plan.length; k++) {
     const w = plan[k];
-    h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.n) + '</span><span></span>' +
+    h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.nTxt || w.n) + '</span><span></span>' +
       '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log warm-up ' + (k + 1) + ' of ' + plan.length + '"' + ((k === done.length || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' + pl(w.w) + '</li>';
   }
   return h ? '<li class="wgrp"><div class="wgh"><b>WARM-UP</b> <span>Coach plan. Not counted in suggestions or weekly sets.</span></div><ul class="wl">' + h + '</ul></li>' : '';
@@ -350,11 +373,22 @@ function methodOf(ex) {
   return v && v.v && (!v.from || wIndex(viewId) >= wIndex(v.from)) ? v.v : (/\bmyo[- ]?rep match\b/i.test(String(ex.details || '')) ? 'match' : 'standard');
 }
 const methodable = ex => !isStretch(ex) && (/\bmyo[- ]?reps?\b/i.test(String(ex.details || '')) || (ex.types || []).includes('isolation'));
+// v135 (Jack, Nov 9): myo-reps beat drop sets on one-arm (unilateral) exercises. Their last-set technique is myo-reps, never a drop set, in the plan, the badges and the tips.
+const oneArm = ex => !!(ex && ex.single) && !isStretch(ex);
+const DROP_WORD = /(?<!\bno\s(?:bench\s)?)\b(?:a\s+)?(?:drop[- ]?sets?|run(?:ning)? the rack)\b/gi;
+const uniTxt = (ex, t) => oneArm(ex) && typeof t === 'string' ? t.replace(DROP_WORD, 'myo-reps').replace(/\bmyo-reps\s+at the end\b/gi, 'myo-reps at the end') : t;
+function oneArmFix(ex) { // rewrite the program text once so cards, chips, notes and tips all say myo-reps
+  if (!oneArm(ex) || ex._oa) return ex; ex._oa = true; ex.details = uniTxt(ex, ex.details || '');
+  const fix = o => { if (!o || typeof o !== 'object') return; Object.keys(o).forEach(k => { const v = o[k]; if (typeof v === 'string') o[k] = uniTxt(ex, v); else if (Array.isArray(v)) v.forEach((x, i) => { if (typeof x === 'string') v[i] = uniTxt(ex, x); else fix(x); }); else fix(v); }); };
+  fix(ex.note); return ex;
+}
+function oneArmDays(days) { try { Object.values(days || {}).forEach(d0 => [d0].concat(d0.variants || []).forEach(d => (d.exercises || []).forEach(oneArmFix))); } catch (e) { console.warn('oneArm', e); } return days; }
 function techFor(ex) { // v131: a technique any coach tip mentions (week notes, custom tip) is scheduled into the matching set too
   let tips = ''; try { tips = tipsFor(ex).join(' '); } catch (e) {}
   const t = (String(ex.details || '') + ' ' + tips).replace(/\bno\s+(?:bench\s+)?(?:drop(?:\s*-?\s*sets?)?|myo[- ]?reps?|run(?:ning)? the rack)\b[^.;]*/gi, '').replace(/\bdrop\s+\d+(?:\.\d+)?\s*(?:lbs?|pounds?)\b/gi, ''); // 'no drop set' and 'drop 10 lb' are not drop sets
   let keys = Object.keys(TECH).filter(k => k !== 'match' && TECH[k].re.test(t));
   if (methodOf(ex) === 'match') { keys = ['match']; /* MRM excludes drop sets and standard myo-reps */ return { keys, all: !/\blast set\b/i.test(t), mrm: true }; }
+  if (oneArm(ex) && keys.includes('drop')) keys = keys.filter(k => k !== 'drop').concat(keys.includes('myo') ? [] : ['myo']); // v135: one-arm = myo-reps, not a drop set
   if (!keys.length) return null;
   // Rule: a set carries a drop set OR myo-reps, never both. 'drop or myo-reps' picks drop; myo wins only when the text says 'last set: myo-reps' with no drop tied to the last set.
   const prefer = keys.includes('drop') && keys.includes('myo') && /\blast set\b[^.;]*\bmyo[- ]?reps?\b/i.test(t) && !/\blast set\b[^.;]*\b(?:drop|run(?:ning)? the rack)\b/i.test(t) && !/\b(?:drop|rack)\b[^.;]*\bor\b[^.;]*\bmyo|\bmyo[^.;]*\bor\b[^.;]*\b(?:drop|rack)\b/i.test(t) ? 'myo' : 'drop';
@@ -635,7 +669,7 @@ function swappedEx(base, si) {
   const SIDE_RE = /\s*\b(per (arm|leg|side|hand)|each (arm|leg|side)|(single|one)[ -](arm|leg|hand)(ed)?)\b/gi;
   const bn = base.note || {}, sets = String(bn.sets || '').replace(SIDE_RE, '').replace(/\s+at\s+[\d.]+\s*(lbs?|pounds?)?\b.*$/i, '').trim();
   const det = [sets, bn.failure || '', bn.rest || ''].filter(Boolean).join('. ').replace(SIDE_RE, '');
-  const d = P_.enrich({ x: { exercises: [{ n: base.n, name: si.to, full_name: si.to, details: det, note: P_.parseNote(det) }] } }, LIB), ex = d.x.exercises[0];
+  const d = oneArmDays(P_.enrich({ x: { exercises: [{ n: base.n, name: si.to, full_name: si.to, details: det, note: P_.parseNote(det) }] } }, LIB)), ex = d.x.exercises[0];
   const c = catFind(si.to);
   if (c && !ex.muscles) { ex.canonical = c.name; ex.muscles = c.muscles; ex.rest_muscle = c.rest_muscle; ex.types = c.types; ex.equip = c.equip; ex.match_keys = [P_.norm(c.name)].concat((c.aliases || []).map(P_.norm)); ex.video = c.video || ''; }
   ex.swappedFrom = base.canonical; ex.swapScope = si.scope; ex.base = base;
@@ -653,7 +687,7 @@ function addsFor() {
 function addedEx(name, i, det) {
   const k = 'add|' + viewId + '|' + name + '|' + (det || ''); if (swapMemo[k]) return swapMemo[k];
   const c = catFind(name), nm = c ? c.name : name;
-  const p = P_.enrich(P_.parseProgram('## W\n### Addday: added\n' + (90 + i) + '. ' + nm + ': ' + String(det || '3 x 10-15. Rest 1.5 min.').replace(/[\r\n]+/g, ' ') + '\n'), LIB), ex = p.addday.exercises[0];
+  const p = P_.enrich(P_.parseProgram('## W\n### Addday: added\n' + (90 + i) + '. ' + nm + ': ' + String(det || '3 x 10-15. Rest 1.5 min.').replace(/[\r\n]+/g, ' ') + '\n'), LIB); oneArmDays(p); const ex = p.addday.exercises[0];
   if (c && !ex.muscles) { ex.canonical = c.name; ex.muscles = c.muscles; ex.rest_muscle = c.rest_muscle; ex.types = c.types; ex.equip = c.equip; ex.match_keys = [P_.norm(c.name)].concat((c.aliases || []).map(P_.norm)); ex.video = c.video || ''; }
   ex.added = true;
   return (swapMemo[k] = ex);
@@ -742,7 +776,7 @@ function smallerJump(ex, w) { // the next real weight above w when it is a small
   if (nx != null && nx - w < step) return nx; if (!Array.isArray(st) && st < step) return +(w + st).toFixed(2); return null;
 }
 // Test-mode only hook for the headless equipment tests (no data, no writes).
-if (testOn()) window.__coachT = { get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow };
+if (testOn()) window.__coachT = { get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
 // Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
 const sideReps = r => { const L = parseInt(r.left_reps, 10), Rr = parseInt(r.right_reps, 10); return { L: isFinite(L) ? L : null, R: isFinite(Rr) ? Rr : null }; };
 function repN(r) { const s = sideReps(r), v = [s.L, s.R].filter(x => x != null); return v.length ? Math.min.apply(null, v) : (parseInt(r.reps, 10) || 0); }
@@ -761,7 +795,8 @@ const holdW = ex => /keep the settled weight/i.test((ex.details || '') + ' ' + (
 function weekNotesFor(ex) {
   const all = (RAWDAYS && RAWDAYS._weekNotes) || [], w = viewWeek(); if (!ex) return all.filter(n => n.w === w && !n.name && (!n.day || n.day === dayKey));
   const keys = keysOf(ex); // v113: a replaced exercise gets only its own week notes, not the old exercise's
-  return all.filter(n => n.w === w && n.name && (!n.day || n.day === dayKey) && (keys.has(n.key) || keys.has(n.key2)));
+  const r = all.filter(n => n.w === w && n.name && (!n.day || n.day === dayKey) && (keys.has(n.key) || keys.has(n.key2)));
+  return oneArm(ex) ? r.map(n => Object.assign({}, n, { text: uniTxt(ex, n.text) })) : r; // v135: one-arm week notes say myo-reps
 }
 // The coach's per-set plan for this week: program plan, with week-note plans ('Start at 160') filling or overriding sets.
 function planFor(ex) {
@@ -855,7 +890,7 @@ function suggestRaw(ex, idx) {
     }
     if (holdW(ex)) return { load: String(sw), reps: String(Math.min(hi, reps + 1)), why: 'Use ' + sw + ' lbs. Hold the weight and add a rep.' };
     if (top > 0 && top < lo && lo - top < 3 && sw > 0) // v87 (Jack, Oct 21): heavier is preferred. 1-2 reps under the range: keep the weight, aim for the bottom, finish with a drop set
-      return { load: String(sw), reps: String(lo), firm: true, why: 'Use ' + sw + ' lbs. Reps were a bit low, so stay and drop set at the end.' };
+      return { load: String(sw), reps: String(lo), firm: true, why: 'Use ' + sw + ' lbs. Reps were a bit low, so stay and ' + (oneArm(ex) ? 'finish with myo-reps' : 'drop set at the end') + '.' };
     if (top > 0 && top < lo && sw > 0) { // v86: 3 or more reps under the range = one firm call to a lighter weight. Pick the weight whose estimated reps land mid-range (Epley and Brzycki average), rounded to the machine's increments.
       const best = at.reduce((m, r) => (repN(r) || 0) > (repN(m) || 0) ? r : m, at[0]), br = Math.min(repN(best) || top, 30), e = e1Of(sw, br);
       const mid = Math.round((lo + hi) / 2), rm = repModel(ex), raw = (rm && rm.loadFor(mid)) || loadFromE1(e, mid), nl = snapW(ex, raw); // v133: cumulative model, snapped
@@ -1103,13 +1138,13 @@ function dragFollow() { // v80: the lifted card sits under the finger; slots cha
 }
 function endDrag() {
   if (!drag) return;
-  const { main, card, auto, order0 } = drag; clearInterval(auto);
+  const { main, card, auto, order0, rerender } = drag; clearInterval(auto);
   const changed = [...main.querySelectorAll('.card')].map(c => c.dataset.name).join('|') !== order0; // v85: save and toast only when the order really changed
   card.style.transform = ''; card.classList.remove('dragging'); document.body.classList.remove('dragmode');
   const top = Math.max(90, card.getBoundingClientRect().top);
   drag = null;
   anchor(card, 0, () => top); main.classList.remove('collapsed');
-  if (changed) saveOrder(main, card.dataset.name); // same order (no move, or dragged back to the same slot): nothing saved, no toast
+  if (changed) saveOrder(main, card.dataset.name); else if (rerender) setTimeout(render, DRAG_ANIM + 40); // same order (no move, or dragged back to the same slot): nothing saved, no toast
 }
 function enableDrag(main) {
   dragCleanup.forEach(f => f()); dragCleanup = [];
@@ -1529,7 +1564,7 @@ function stallOf(ex, ls) {
   } catch (e) { return null; }
 }
 const stallMsg = k => 'You have stalled at ' + k.sw + ' lbs for ' + k.top + ' reps two sessions in a row. Push for ' + (k.top + 1) + ' reps at ' + k.sw + ' today, because one more rep is how you break the stall.';
-function tipsFor(ex) { const n = ex.note || {}; let w = []; try { w = weekNotesFor(ex).map(x => x.text); } catch (e) {} const sk = ex.bodyweight || isStretch(ex) ? null : stallOf(ex); return (sk ? [stallMsg(sk)] : []).concat(n.custom ? [n.custom] : []).concat(w).map(sentence).filter(Boolean); }
+function tipsFor(ex) { const n = ex.note || {}; let w = []; try { w = weekNotesFor(ex).map(x => x.text); } catch (e) {} const sk = ex.bodyweight || isStretch(ex) ? null : stallOf(ex); return (sk ? [stallMsg(sk)] : []).concat(n.custom ? [n.custom] : []).concat(w).map(x => uniTxt(ex, x)).map(sentence).filter(Boolean); }
 // v86 (Jack, Oct 21): daily quote, preloaded with the program (the '## Daily quotes' block that build-quotes.py writes into program.md from the Coach Quotes sheet). No fetch at workout start.
 function quoteToday() {
   const s = (S && S.program) || '', d = (S && S.today) || ''; if (!d) return null;
@@ -1569,6 +1604,7 @@ function tipUpcoming(force, withQuote, cur) { // after Start workout or after th
 // Rule 2 (intended): after the last planned set of an exercise, the next unlogged exercise's tip pops up even if it was seen before.
 function tipNext(ex) { if (rowsFor(ex, true).length >= plannedCount(ex)) tipUpcoming(true, false, ex); }
 function render() {
+  if (drag) { drag.rerender = true; return; } // v135: a background refresh (20 s load) mid-drag rebuilt the cards, so the drop was lost; render once the finger lifts
   const main = $('main'), d = days[dayKey];
   const nx = loggableId();
   $('prof').value = P;
@@ -1583,7 +1619,7 @@ function render() {
   $('sub').textContent = subWeek() + ' - ' + titleGym(titleCase(d.title));
   main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + weekBoxHTML(weekNotesFor(null), true) + cardsFor().map((ex, i) => {
     const n = ex.note, chips = [n.sets].concat(n.plan_txt || []).concat([n.failure, n.rest]).filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
-    const tips = (ex.cue ? [ex.cue] : []).concat(n.extra).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
+    const tips = (ex.cue ? [ex.cue] : []).concat(n.extra.filter(x => !PRIMER_RE.test(x))).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
     return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span><span class="ttl">' + (i + 1) + '. ' + esc(ex.canonical) + '</span>' + (ex.video ? '<a class="ico" href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer" aria-label="Demo video">' + ICO_V + '</a>' : '<span class="ico off" aria-label="No demo video">' + ICO_V + '</span>') + '<button type="button" class="ico" data-hi="' + i + '" aria-label="History">' + ICO_H + '</button>' + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
       (ex.swappedFrom ? '<div class="swp">Replaces ' + esc(ex.swappedFrom) + (ex.swapScope === 'block' ? ' for the rest of this block' : ' in this workout') + '</div>' : '') +
@@ -1617,6 +1653,7 @@ function render() {
     // v115: tapping anywhere else in a planned row (even with no estimate) opens the log window.
     const pr = !e.target.closest('button') && e.target.closest('li.plan:not(.wrm)');
     if (pr) { const lb = pr.querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, 'w'); return; }
+    const pb = e.target.closest('[data-prm]'); if (pb) { const ex = cardsFor().find(x => x.canonical === pb.dataset.ex); if (ex) { const k = +pb.dataset.prm, l = primeDone(ex); jset(primeKey(ex), l.includes(k) ? l.filter(x => x !== k) : l.concat([k])); sig = ''; render(); } return; }
     const wb = e.target.closest('[data-wu]'); if (wb) { if (!wb.disabled) { warmNext = +wb.dataset.wu; logRow(wb.dataset.ex, 0, wb.closest('li')); } return; }
     const lg = e.target.closest('[data-log]'); if (lg) { logRow(lg.dataset.ex, +lg.dataset.log, lg.closest('li')); return; }
     const li = e.target.closest('li[data-sid]'); if (li) openEdit(li.dataset.sid); };
@@ -1728,7 +1765,7 @@ async function editSetup(i) {
   putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; toast('Setup saved'); if (plateT(ex)) render();
 }
 function applyState(st, initial) {
-  S = st; S.rows = S.rows || []; LIB = P_.parseLibrary(st.library); RAWDAYS = P_.enrich(P_.parseProgram(st.program), LIB); days = P_.resolveDays(RAWDAYS, viewId ? viewWeek() : 1); swapMemo = {};
+  S = st; S.rows = S.rows || []; LIB = P_.parseLibrary(st.library); RAWDAYS = oneArmDays(P_.enrich(P_.parseProgram(st.program), LIB)); days = P_.resolveDays(RAWDAYS, viewId ? viewWeek() : 1); swapMemo = {};
   if (!layerOpen('settings')) { $('settings').style.display = 'none'; $('app').style.display = 'block'; }
   const ls = localSet(); if (migrateKeys(ls)) jset(SK(), ls);
   if (S.settings) migrateKeys(S.settings);
@@ -2219,7 +2256,7 @@ function setMini(n, keep) { minis = Math.max(0, Math.min(9, n | 0)); $('fmv').te
 function exclUI() { const both = $('fmini').style.display !== 'none' && $('fdwrap').style.display !== 'none'; $('fxhint').style.display = both ? 'block' : 'none'; $('fdwrap').classList.toggle('dim', both && minis > 0); $('fmini').classList.toggle('dim', both && drops > 0); $('fxhint').textContent = !both ? '' : minis > 0 ? 'Myo-reps on. Tap + on drop sets to switch to a drop set.' : drops > 0 ? 'Drop set on. Tap + on mini-sets to switch to myo-reps.' : 'Pick one: drop sets or myo-rep mini-sets.'; }
 function setKeys(ex, i, n) { const tq = ex ? techFor(ex) : null; return tq ? tqShow(tq, i, n) : []; }
 function formLast() { const ex = formEx; if (!ex) return false; const n = Math.max(plannedCount(ex), rowsFor(ex, true).length + (editId ? 0 : 1)); return formSetIdx >= n - 1; }
-function miniUI() { const ex = formEx, last = formLast(), mrm = !!ex && methodOf(ex) === 'match'; const on = !!ex && !isStretch(ex) && (minis > 0 || (mrm ? formSetIdx >= 1 : last)); $('fmini').style.display = on ? '' : 'none'; const dOn = !!ex && !isStretch(ex) && !mrm && (last || drops > 0); $('fdwrap').style.display = dOn ? '' : 'none'; if (!dOn && drops) setDrops(0, true); exclUI(); mrmUI(); }
+function miniUI() { const ex = formEx, last = formLast(), mrm = !!ex && methodOf(ex) === 'match'; const on = !!ex && !isStretch(ex) && (minis > 0 || (mrm ? formSetIdx >= 1 : last)); $('fmini').style.display = on ? '' : 'none'; const dOn = !!ex && !isStretch(ex) && !mrm && ((last && !oneArm(ex)) || drops > 0); /* v135: one-arm last sets use myo-reps, so no drop counter */ $('fdwrap').style.display = dOn ? '' : 'none'; if (!dOn && drops) setDrops(0, true); exclUI(); mrmUI(); }
 // v80: myo-rep match offers. Programmed exercise: 'Make this a myo-rep match' on set 1 only while nothing is logged for it today.
 // Added (non-programmed) exercise: 'Set as myo-rep match' on set 1, then how many matching sets followed; they are filled in on save.
 let mrmAdd = false, mrmN = 2;

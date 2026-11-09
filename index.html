@@ -256,7 +256,10 @@ details.cn>summary{cursor:pointer;list-style:none;display:flex;align-items:cente
 .card h2 .ico{background:none;border:0;color:inherit;min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center;padding:0;text-decoration:none}.card h2 .ico.off{opacity:.35}.card h2 .ico:first-of-type{margin-left:auto}.card h2 .ico~.menu-btn{margin-left:0}
 html.modal,html.modal body{overscroll-behavior:none}
 .in{overscroll-behavior:contain}
-#liftgrid{align-items:end}
+/* v135: Load and Reps share one top-aligned row; the Plates line is its own full-width row below, so it can never push Reps down */
+#liftgrid{align-items:start;grid-template-columns:1fr 1fr;row-gap:4px}#liftgrid>#loadbox,#liftgrid>#repsbox{grid-row:1;align-self:start;margin:0;padding:0}#liftgrid>#loadbox{grid-column:1}#liftgrid>#repsbox{grid-column:2}#liftgrid>#fpl{grid-column:1/-1;grid-row:2;margin:0}#liftgrid>#fpl:empty{display:none}
+/* v135: primer drills in the warm-up group (tap to check off, not logged) */
+.wgrp li.prm .ptx{grid-column:2/5;font-size:15px;line-height:1.3}.wgrp li.prm.logged .ptx{color:var(--mut)}
 
 /* v114: compact title row so names fit on one line */
 .card h2{padding:4px 4px 4px 2px;gap:2px}
@@ -378,8 +381,9 @@ details.cn:not([open])>summary{margin-bottom:-2px}
     <button class="btn" id="mic" type="button">Tap and speak</button>
     <div id="heard"></div>
     <div class="grid" id="liftgrid">
-      <div><label for="fl" id="fll">Load (lb)</label><input id="fl" inputmode="decimal" autocomplete="off"><div class="s2" id="fpl"></div></div>
+      <div id="loadbox"><label for="fl" id="fll">Load (lb)</label><input id="fl" inputmode="decimal" autocomplete="off"></div>
       <div id="repsbox"><label for="fr">Reps</label><input id="fr" inputmode="numeric" autocomplete="off"></div>
+      <div class="s2" id="fpl"></div>
     </div>
     <div id="holdbox" style="display:none">
 <div id="angbox">      <label for="fang">Angle (Flexability Level)</label>
@@ -504,8 +508,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=134"></script>
-<script src="exlist.js?v=134"></script>
-<script src="app.js?v=134"></script>
+<script src="parse.js?v=135"></script>
+<script src="exlist.js?v=135"></script>
+<script src="app.js?v=135"></script>
 </body>
 </html>
