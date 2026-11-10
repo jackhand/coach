@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 140; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 141; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -2135,7 +2135,7 @@ function profListRender() { if ($('pll')) $('pll').innerHTML = profListHTML(); i
 function openProfiles() { profListRender(); $('plw').classList.add('open'); pushLayer('plw', () => $('plw').classList.remove('open')); }
 const closeProfiles = () => { if (!$('plw').classList.contains('open')) return; $('plw').classList.remove('open'); popLayer('plw'); };
 let pEdit = null;
-function pedUpd() { const b = $('pedb').value; $('pedus').textContent = ISO_D.test(b) ? 'Birthday: ' + usDate(b) : 'Pick a birthday with the date picker (MM/DD/YYYY).'; $('pedf').innerHTML = factsHTML(b); }
+function pedUpd() { const b = $('pedb').value; $('pedf').innerHTML = factsHTML(b); }
 function openProfile(id) {
   const x = id ? profOf(id) : null; pEdit = id || null;
   $('pedh').textContent = x ? 'Edit profile' : 'Create profile'; $('pedn').value = x ? x.name : ''; $('pedb').value = x && x.birthday ? x.birthday : '';

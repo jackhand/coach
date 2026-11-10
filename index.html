@@ -514,7 +514,6 @@ details.cn:not([open])>summary{margin-bottom:-2px}
 <div id="pedw" role="dialog" aria-modal="true"><div class="in"><button type="button" class="xc" id="pedx" aria-label="Close">&times;</button><h3 id="pedh">Edit profile</h3>
 <label for="pedn">Name</label><input id="pedn" maxlength="30" autocomplete="off" placeholder="e.g. Jack">
 <label for="pedb">Birthday (MM/DD/YYYY)</label><input id="pedb" type="date" min="1900-01-01" lang="en-US">
-<div id="pedus" class="sub" style="margin:-2px 0 6px"></div>
 <div id="pedf" class="pfacts"></div>
 <div id="pedhint" class="sub" style="margin:8px 0"></div>
 <button type="button" class="btn" id="peds">Save</button><button type="button" class="btn sec" id="pedu">Save and use this profile</button><button type="button" class="btn sec" id="pedd" style="color:#e57373">Delete profile</button><button type="button" class="btn sec" id="pedc">Cancel</button></div></div>
@@ -540,8 +539,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=140"></script>
-<script src="exlist.js?v=140"></script>
-<script src="app.js?v=140"></script>
+<script src="parse.js?v=141"></script>
+<script src="exlist.js?v=141"></script>
+<script src="app.js?v=141"></script>
 </body>
 </html>
