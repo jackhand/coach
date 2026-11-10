@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 139; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 140; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -253,8 +253,19 @@ function barWeight(ex) {
 function plateGroup(list) { const g = []; list.forEach(p => { const l = g[g.length - 1]; if (l && l.p === p) l.n++; else g.push({ p, n: 1 }); }); return g.map(x => x.p + (x.n > 1 ? 'x' + x.n : '')).join(' + '); }
 function platesFor(w, bar) { bar = bar || BAR; let side = (w - bar) / 2; if (!(side > 0)) return w > 0 && w <= bar ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return plateGroup(out) + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
 const platesShort = (w, bar) => { const p = platesFor(+w, bar); return p ? p.replace(' per side', ' /side') : ''; };
-// v139 (Jack, Nov 10): the plates line names the assumed bar, e.g. '55 lb hex bar + 45x2 /side', so he never has to open the plate builder to see it.
-const plateLine = (ex, w) => { if (!(plateT(ex) && +w > 0)) return ''; const b = barWeight(ex), p = platesShort(w, b), bn = b + ' lb ' + (BAR_NAME[equipType(ex)] || 'bar'); return !p ? '' : p === 'Empty bar' ? bn + ' (empty)' : bn + ' + ' + p; };
+// v139 (Jack, Nov 10): the plates line names the assumed bar. v140 (Jack, Nov 10): plates first, then the bar, and always just 'bar' (never 'hex bar'): '45x2 /side + 55 lb bar'.
+// v140 (Jack approved the kg-bar mockup, Nov 10): the bar can be entered in kg; it is stored and used in lb, so totals, plates and logged loads stay in pounds.
+const KG_LB = 2.2046226218;
+const fmt1 = v => { const r = Math.round((+v) * 10) / 10; return Math.abs(r - Math.round(r)) < 0.05 ? String(Math.round(r)) : String(r); };
+const fmtLb = fmt1, fmtKg = fmt1;
+function gymScopeId() { try { const g = gymById(gymPick()); return (g && g.id) || 'home'; } catch (e) { return 'home'; } }
+function barUnit(ex) { // remembered per exercise at the current gym, else per bar type at that gym; default lb
+  if (!ex) return 'lb'; const gid = gymScopeId(), u = getSetting(ex.canonical, 'barunit:' + gid); if (u === 'kg' || u === 'lb') return u;
+  const u2 = getSetting('barunit', equipType(ex) + ':' + gid); return u2 === 'kg' || u2 === 'lb' ? u2 : 'lb';
+}
+function setBarUnit(ex, unit) { if (!ex || (unit !== 'kg' && unit !== 'lb')) return; const gid = gymScopeId(); putSetting(ex.canonical, 'barunit:' + gid, unit); putSetting('barunit', equipType(ex) + ':' + gid, unit); }
+const barTxt = ex => { const b = barWeight(ex); return barUnit(ex) === 'kg' ? fmtKg(b / KG_LB) + ' kg (' + fmtLb(b) + ' lb) bar' : fmtLb(b) + ' lb bar'; };
+const plateLine = (ex, w) => { if (!(plateT(ex) && +w > 0)) return ''; const p = platesShort(w, barWeight(ex)), bn = barTxt(ex); return !p ? '' : p === 'Empty bar' ? bn + ' (empty)' : p + ' + ' + bn; };
 // Warm-up kind: 'plate' (bar types), 'dumbbell', or '' (no ramp).
 const eqKind = ex => plateT(ex) ? 'plate' : equipType(ex) === 'dumbbell' ? 'dumbbell' : '';
 function warmFor(ex, list) {
@@ -276,7 +287,7 @@ function warmHTML(ex, i, list) {
   const pl = wu.k === 'plate', unit = wu.k === 'dumbbell' ? ' lb each' : ' lb';
   const row = (w, n, work) => '<li><button type="button" class="wuw"' + (pl ? ' data-pl="' + w + '"' : '') + '>' + w + unit + '</button> x ' + n + (work ? ' <span class="s2">working weight</span>' : '') + (pl ? '<div class="s2 wup" hidden>' + esc(platesFor(w, wu.bar)) + '</div>' : '') + '</li>';
   return '<details class="wu"><summary>Warm-up (not logged)</summary><ul>' + wu.steps.map(s => row(s.w, s.n)).join('') + row(wu.w, 'sets', true) + '</ul>' +
-    '<div class="s2">' + (pl ? 'Tap a weight to see plates (' + wu.bar + ' lb ' + wu.bn + '). ' : '') + 'Rest about 1 min between ramp sets.</div></details>';
+    '<div class="s2">' + (pl ? 'Tap a weight to see plates (' + wu.bar + ' lb bar). ' : '') + 'Rest about 1 min between ramp sets.</div></details>';
 }
 // Coach warm-ups ('Warm-ups: bar x 10, 135 x 5' in the program): listed before the working sets, logged with failure type 'warm-up'.
 // v135 (Jack, Nov 9): percentage ramps ('Warm-ups: 50% x 8, 70% x 5, 80% x 3, 88% x 1-2, 95% x 1 of the top set') follow today's top-set target, snapped to real plate loads.
@@ -810,7 +821,7 @@ function smallerJump(ex, w) { // the next real weight above w when it is a small
   if (nx != null && nx - w < step) return nx; if (!Array.isArray(st) && st < step) return +(w + st).toFixed(2); return null;
 }
 // Test-mode only hook for the headless equipment tests (no data, no writes).
-if (testOn()) window.__coachT = { basisOf: s => basisOf(s), get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
+if (testOn()) window.__coachT = { basisOf: s => basisOf(s), barUnit, setBarUnit, barTxt, get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
 // Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
 const sideReps = r => { const L = parseInt(r.left_reps, 10), Rr = parseInt(r.right_reps, 10); return { L: isFinite(L) ? L : null, R: isFinite(Rr) ? Rr : null }; };
 function repN(r) { const s = sideReps(r), v = [s.L, s.R].filter(x => x != null); return v.length ? Math.min.apply(null, v) : (parseInt(r.reps, 10) || 0); }
@@ -1610,7 +1621,7 @@ function quoteToday() {
 }
 function tipShow(ex, force, withQuote) { // force: ignore the seen list. Both triggers (Rule 1 Start, Rule 2 last set) pass force; the seen list no longer suppresses either
   if (!canLog()) return false;
-  const qt = withQuote ? quoteToday() : null; if (!ex && !qt) return false;
+  const bq = withQuote && bdayToday(), qt = withQuote ? (bq ? bdayLine(BDAY_PRE, bq) : quoteToday()) : null; if (!ex && !qt) return false;
   const k = 'coach_tips_' + P + '_' + viewId, seen = jget(k, []); if (!qt && !force && seen.includes(ex.canonical)) return false;
   const tips = ex ? tipsFor(ex) : []; if (!tips.length && !qt) return false;
   if (ex && tips.length && !seen.includes(ex.canonical)) { seen.push(ex.canonical); jset(k, seen); }
@@ -1623,7 +1634,7 @@ function quoteEnd() { // v108 (Jack, Oct 27): a different quote from the same Da
   const st = quoteToday(), all = [...((S && S.program) || '').matchAll(/^- \d{4}-\d{2}-\d{2} \| (.+?) \| ?(.*)$/gm)].map(m => ({ q: m[1].trim(), a: m[2].trim() })).filter(x => !st || x.q !== st.q);
   if (!all.length) return null; const d = String((S && S.today) || '').replace(/\D/g, ''); return all[(+d || 0) % all.length];
 }
-function endQuoteShow() { const qt = quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">Workout finished. Nice work.</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); }
+function endQuoteShow() { const bd = bdayToday(), qt = bd ? bdayLine(BDAY_POST, bd) : quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">' + (bd ? 'Workout finished. Happy birthday, ' + esc(bd.name) + '.' : 'Workout finished. Nice work.') + '</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); }
 const tipClose = () => { $('tipw').classList.remove('open'); popLayer('tip'); };
 $('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw') tipClose(); });
 // v129 (Jack, Nov 2): the next exercise = the first card from the top (not after the current one) that still has unlogged sets and is not marked skipped,
@@ -1665,7 +1676,7 @@ function render() {
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<div class="meta">' + esc(ex.muscles || '') + '</div>' +
       '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnOpen(ex) ? ' open' : '') + '><summary><b>Instructions</b><span class="cnbtn" role="img" aria-label="' + (cnOpen(ex) ? 'Collapse instructions' : 'Expand instructions') + '"><span class="circ"><span class="chev"></span></span></span></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML((() => { const sk = ex.bodyweight || isStretch(ex) ? null : stallOf(ex); return (sk ? [{ text: stallMsg(sk), stall: true }] : []).concat(weekNotesFor(ex)); })()) +
-      '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + ')' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
+      '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb bar)' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
       warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
@@ -1724,7 +1735,7 @@ function wstartHTML() {
   return '<button class="btn fin wsb" id="wstartb">Start workout (warm-ups count)</button>';
 }
 // Rule 1 (intended): Start workout always pops up the first unlogged exercise's tip, even if it was seen before. Tapping Log never shows a tip.
-function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); if (!re) tipUpcoming(true, true); }
+function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); const bd = re ? null : bdayToday(); if (bd) { bdayShow(bd, () => tipUpcoming(true, false)); return; } /* v140: birthday = confetti and a birthday line instead of the daily quote */ toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); if (!re) tipUpcoming(true, true); }
 // Reset: stop the workout and clear only this workout's logged sets (after a warning).
 function openReset() { const n = workoutRows().length; $('rstt').textContent = 'This will stop the workout' + (n ? ' and clear the ' + n + (n === 1 ? ' set' : ' sets') + ' you logged in it' : '') + '. Nothing else changes.'; $('rstw').classList.add('open'); pushLayer('rst', () => $('rstw').classList.remove('open')); }
 const closeReset = () => { if (!$('rstw').classList.contains('open')) return; $('rstw').classList.remove('open'); popLayer('rst'); };
@@ -1798,12 +1809,12 @@ function weekBoxHTML(ns, day) {
 }
 async function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
-  const v = await askBox({ title: 'Equipment setup', ok: 'Save', value: cur || '', input: 'Seat, pins, angle', body: ex.canonical + (plateT(ex) ? ' (seat, pins, angle; bar weight like "45 lb ' + (BAR_NAME[equipType(ex)] || 'bar') + '" sets plate math, now ' + barWeight(ex) + ' lb):' : ' (seat, pins, bench angle):') });
+  const v = await askBox({ title: 'Equipment setup', ok: 'Save', value: cur || '', input: 'Seat, pins, angle', body: ex.canonical + (plateT(ex) ? ' (seat, pins, angle; bar weight like "45 lb bar" sets plate math, now ' + barWeight(ex) + ' lb):' : ' (seat, pins, bench angle):') });
   if (v == null) return;
   putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; toast('Setup saved'); if (plateT(ex)) render();
 }
 function applyState(st, initial) {
-  S = st; S.rows = S.rows || []; LIB = P_.parseLibrary(st.library); RAWDAYS = oneArmDays(P_.enrich(P_.parseProgram(st.program), LIB)); days = P_.resolveDays(RAWDAYS, viewId ? viewWeek() : 1); swapMemo = {};
+  S = st; S.rows = S.rows || []; try { syncProfileFromBackend(); } catch (e) {} LIB = P_.parseLibrary(st.library); RAWDAYS = oneArmDays(P_.enrich(P_.parseProgram(st.program), LIB)); days = P_.resolveDays(RAWDAYS, viewId ? viewWeek() : 1); swapMemo = {};
   if (!layerOpen('settings')) { $('settings').style.display = 'none'; $('app').style.display = 'block'; }
   const ls = localSet(); if (migrateKeys(ls)) jset(SK(), ls);
   if (S.settings) migrateKeys(S.settings);
@@ -1824,6 +1835,7 @@ function restoreScreen() { if (screenRestored) return; screenRestored = true; le
   if (v === 'settings') setTimeout(() => showSettings(), 0); else if (v.startsWith('prog:')) setTimeout(() => openProg(parseInt(v.slice(5), 10) || 0), 0); }
 async function load(initial) {
   if (!U || !K) return showSettings();
+  if (isLocalProfile(P)) { S = null; $('settings').style.display = 'none'; $('app').style.display = 'block'; profSelRender(); $('sub').textContent = profOf(P).name; $('main').innerHTML = '<div class="empty"><b>' + esc(profOf(P).name) + '</b><br>This profile is saved on this phone only. Ask Coach to add it to the backend to get a program and logging.' + (profOf(P).birthday ? '<div class="pfacts" style="text-align:left;margin-top:12px">' + factsHTML(profOf(P).birthday) + '</div>' : '') + '<button class="btn sec" id="pledit" type="button">Edit profile</button></div>'; $('pledit').onclick = () => openProfile(P); return; } // v140: device-only profile
   if (initial && !S) { const c = jget('coach_cache_' + P, null); if (c) applyState(c, true); } // instant start, works offline
   try {
     const st = await apiGet();
@@ -2060,14 +2072,160 @@ $('calw').addEventListener('click', e => {
   if (!canOpen(wc.dataset.w)) return toast('Finish or skip ' + wLabel(loggableId()) + ' first. Workouts go in order.', 4000);
   closeCal(); openWorkout(wc.dataset.w);
 });
-$('prof').onchange = e => { P = e.target.value; LS.setItem('coach_p', P); dayKey = null; viewId = null; sig = ''; S = null; firstRender = true; load(true); };
+$('prof').onchange = e => { const v = e.target.value; if (v === '__edit') { e.target.value = P; openProfiles(); return; } switchProfile(v); };
+// ---------- Profiles and birthdays (v140, Jack, Nov 10, 2026) ----------
+// Profiles = [{id, name, birthday: 'YYYY-MM-DD' or ''}] in localStorage coach_profiles. jack and jacky are backend profiles: their name and
+// birthday are also saved to the backend (settings scope 'profile', keys 'name' and 'birthday'), and the backend copy wins when it loads.
+// Extra profiles live on this device only until Coach adds them to the backend. Only Jack's birthday is seeded; nobody else's is guessed.
+const BACKEND_PROFILES = ['jack', 'jacky'];
+const PROFILE_SEED = [{ id: 'jack', name: 'Jack', birthday: '1973-11-11' }, { id: 'jacky', name: 'Jacky', birthday: '' }];
+function profiles() {
+  let l = jget('coach_profiles', null); if (!Array.isArray(l)) l = [];
+  PROFILE_SEED.forEach(sd => { if (!l.some(x => x.id === sd.id)) l.push(Object.assign({}, sd)); });
+  return l.filter(x => x && x.id).sort((a, b) => (BACKEND_PROFILES.indexOf(a.id) + 1 || 99) - (BACKEND_PROFILES.indexOf(b.id) + 1 || 99));
+}
+const saveProfiles = l => jset('coach_profiles', l);
+const profOf = id => profiles().find(x => x.id === id) || { id, name: titleCase(String(id || '')), birthday: '' };
+const isLocalProfile = id => !BACKEND_PROFILES.includes(id);
+const ISO_D = /^\d{4}-\d{2}-\d{2}$/;
+function syncProfileFromBackend() { // the backend copy of the active profile's name and birthday wins
+  if (!S || isLocalProfile(P)) return; const n = getSetting('profile', 'name'), b = getSetting('profile', 'birthday');
+  if (n == null && b == null) return; const l = profiles(), x = l.find(y => y.id === P); if (!x) return;
+  let ch = false; if (n && n !== x.name) { x.name = String(n); ch = true; } if (b != null && (b === '' || ISO_D.test(b)) && b !== x.birthday) { x.birthday = String(b); ch = true; }
+  if (ch) { saveProfiles(l); profSelRender(); }
+}
+// Today in New York. Test mode only: localStorage coach_date_override = 'YYYY-MM-DD' simulates another day for the birthday features.
+function todayNY() { const o = testOn() ? LS.getItem('coach_date_override') : null; if (o && ISO_D.test(o)) return o; return new Date().toLocaleDateString('en-CA', { timeZone: NY }); }
+const usDate = iso => ISO_D.test(iso || '') ? iso.slice(5, 7) + '/' + iso.slice(8, 10) + '/' + iso.slice(0, 4) : '';
+const leap = y => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+const bdayIn = (b, y) => { const m = +b.slice(5, 7), d = +b.slice(8, 10); return Date.UTC(y, m - 1, m === 2 && d === 29 && !leap(y) ? 28 : d); }; // Feb 29 birthdays fall on Feb 28 in other years
+const ZOD = [['Capricorn', 120], ['Aquarius', 219], ['Pisces', 320], ['Aries', 420], ['Taurus', 521], ['Gemini', 621], ['Cancer', 722], ['Leo', 823], ['Virgo', 923], ['Libra', 1023], ['Scorpio', 1122], ['Sagittarius', 1222], ['Capricorn', 1231]];
+const zodiac = b => { const md = +b.slice(5, 7) * 100 + +b.slice(8, 10); return ZOD.find(z => md <= z[1])[0]; };
+function ageNote(a) {
+  if (a < 13) return 'Kids: learn the movements and keep it fun. Light loads, no max lifts.';
+  if (a < 18) return 'Teen years: growth plates are still open. Progressive overload with clean form, and no grinding to absolute failure on heavy barbell work.';
+  if (a < 30) return 'Peak recovery years: higher volume and frequency are usually well tolerated. Build the habits now.';
+  if (a < 40) return '30s: recovery slows a little. Keep sleep, protein, and planned deloads consistent.';
+  if (a < 50) return '40+: longer warm-ups, joint-friendly exercise choices, and a deload about every 4-6 weeks pay off.';
+  if (a < 65) return '50+: recovery takes longer. Warm up thoroughly, favor joint-friendly variations, keep protein high (about 0.9 g per lb), and keep deloads on schedule. Lifting is one of the best tools for aging well.';
+  return '65+: keep strength, add balance and power work, and allow more recovery between hard sessions.';
+}
+function bdayFacts(b, today) {
+  if (!ISO_D.test(b || '')) return null; today = today || todayNY();
+  const by = +b.slice(0, 4), ty = +today.slice(0, 4), t = Date.UTC(ty, +today.slice(5, 7) - 1, +today.slice(8, 10));
+  if (Date.UTC(by, +b.slice(5, 7) - 1, +b.slice(8, 10)) > t) return null;
+  const thisYear = bdayIn(b, ty), had = thisYear <= t, age = ty - by - (had ? 0 : 1), isToday = thisYear === t;
+  const next = isToday ? thisYear : had ? bdayIn(b, ty + 1) : thisYear, days = Math.round((next - t) / 864e5);
+  return { age, isToday, nextAge: isToday ? age + 1 : age + 1, days: isToday ? 0 : days, nextDate: new Date(isToday ? bdayIn(b, ty + 1) : next).toISOString().slice(0, 10), zodiac: zodiac(b), note: ageNote(age) };
+}
+function factsHTML(b) {
+  const f = bdayFacts(b); if (!f) return '';
+  const nx = f.isToday ? '<div>Happy birthday! Next birthday ' + usDate(f.nextDate) + ', turning ' + f.nextAge + '.</div>' : '<div>Turns ' + f.nextAge + ' on ' + usDate(f.nextDate) + ', in ' + f.days + (f.days === 1 ? ' day' : ' days') + '.</div>';
+  return '<div><b>Age ' + f.age + (f.isToday ? ' today' : '') + '</b></div>' + nx + '<div>Zodiac sign: ' + f.zodiac + '</div><div class="pnote">' + esc(f.note) + '</div>';
+}
+function profSelRender() {
+  const l = profiles(), sel = $('prof'); if (!sel) return;
+  sel.innerHTML = l.map(x => '<option value="' + esc(x.id) + '">' + esc(x.name) + '</option>').join('') + '<option value="__edit">Edit profiles...</option>';
+  sel.value = l.some(x => x.id === P) ? P : l[0].id;
+}
+function profListHTML() {
+  return profiles().map(x => { const f = bdayFacts(x.birthday); return '<div class="prow"><button type="button" class="pi" data-pe="' + esc(x.id) + '"><b>' + esc(x.name) + '</b><span>' + (x.birthday ? 'Born ' + usDate(x.birthday) + (f ? ' · age ' + f.age : '') : 'No birthday yet') + (isLocalProfile(x.id) ? ' · this phone only' : '') + '</span></button><button type="button" class="pu' + (x.id === P ? ' on' : '') + '" data-pu="' + esc(x.id) + '">' + (x.id === P ? 'In use' : 'Use') + '</button></div>'; }).join('');
+}
+function profListRender() { if ($('pll')) $('pll').innerHTML = profListHTML(); if ($('splist')) $('splist').innerHTML = profListHTML(); }
+function openProfiles() { profListRender(); $('plw').classList.add('open'); pushLayer('plw', () => $('plw').classList.remove('open')); }
+const closeProfiles = () => { if (!$('plw').classList.contains('open')) return; $('plw').classList.remove('open'); popLayer('plw'); };
+let pEdit = null;
+function pedUpd() { const b = $('pedb').value; $('pedus').textContent = ISO_D.test(b) ? 'Birthday: ' + usDate(b) : 'Pick a birthday with the date picker (MM/DD/YYYY).'; $('pedf').innerHTML = factsHTML(b); }
+function openProfile(id) {
+  const x = id ? profOf(id) : null; pEdit = id || null;
+  $('pedh').textContent = x ? 'Edit profile' : 'Create profile'; $('pedn').value = x ? x.name : ''; $('pedb').value = x && x.birthday ? x.birthday : '';
+  $('pedb').max = todayNY(); $('pedd').style.display = x && isLocalProfile(x.id) ? 'block' : 'none';
+  $('pedu').style.display = x && x.id === P ? 'none' : 'block';
+  $('pedhint').textContent = !x ? 'A new profile is saved on this phone. Workouts and logging for it start once Coach adds it to the backend.' : isLocalProfile(x.id) ? 'Saved on this phone only.' : 'Saved on this phone and in your Coach backend.';
+  pedUpd(); $('pedw').classList.add('open'); pushLayer('ped', () => $('pedw').classList.remove('open'));
+}
+const closeProfile = () => { if (!$('pedw').classList.contains('open')) return; $('pedw').classList.remove('open'); popLayer('ped'); };
+function switchProfile(id) { if (!id || id === P) { profSelRender(); return; } P = id; LS.setItem('coach_p', P); profSelRender(); dayKey = null; viewId = null; sig = ''; S = null; firstRender = true; load(true); }
+function saveProfile(use) {
+  const name = $('pedn').value.trim().replace(/\s+/g, ' '), b = $('pedb').value;
+  if (!name) return toast('Add a name first.');
+  if (b && (!ISO_D.test(b) || b > todayNY())) return toast('Pick a birthday in the past.');
+  const l = profiles(); let x = pEdit ? l.find(y => y.id === pEdit) : null;
+  if (!x) { let id = P_.norm(name).replace(/[^a-z0-9]+/g, ''); if (!id || l.some(y => y.id === id)) id = 'p' + Date.now().toString(36); x = { id, name, birthday: b }; l.push(x); }
+  else { x.name = name; x.birthday = b; }
+  saveProfiles(l);
+  if (!isLocalProfile(x.id)) { // backend copy (test mode keeps it local, like every other setting)
+    if (x.id === P) { putSetting('profile', 'name', name); putSetting('profile', 'birthday', b); }
+    else if (!testOn()) { enqueue({ action: 'setting', profile: x.id, scope: 'profile', key: 'name', value: name }); enqueue({ action: 'setting', profile: x.id, scope: 'profile', key: 'birthday', value: b }); }
+  }
+  closeProfile(); profListRender(); profSelRender(); toast('Profile saved');
+  if (use) { closeProfiles(); if (layerOpen('settings')) hideSettings(); switchProfile(x.id); } else if (x.id === P && S) { sig = ''; render(); }
+}
+function deleteProfile() {
+  if (!pEdit || !isLocalProfile(pEdit)) return; const id = pEdit; saveProfiles(profiles().filter(x => x.id !== id)); closeProfile(); profListRender();
+  if (P === id) switchProfile('jack'); else profSelRender(); toast('Profile deleted');
+}
+$('pedb').addEventListener('input', pedUpd); $('pedb').addEventListener('change', pedUpd);
+$('peds').onclick = () => saveProfile(false); $('pedu').onclick = () => saveProfile(true); $('pedd').onclick = deleteProfile; $('pedc').onclick = closeProfile; $('pedx').onclick = closeProfile;
+$('pedw').addEventListener('click', e => { if (e.target.id === 'pedw') closeProfile(); });
+$('plx').onclick = closeProfiles; $('pln').onclick = () => openProfile(null); $('plw').addEventListener('click', e => { if (e.target.id === 'plw') closeProfiles(); });
+$('sprof').onclick = () => openProfiles();
+[$('pll'), $('splist')].forEach(el => el && el.addEventListener('click', e => {
+  const u = e.target.closest('[data-pu]'); if (u) { const id = u.dataset.pu; closeProfiles(); if (layerOpen('settings')) hideSettings(); switchProfile(id); return; }
+  const ed = e.target.closest('[data-pe]'); if (ed) openProfile(ed.dataset.pe);
+}));
+// Birthday surprise: Start workout on the active profile's birthday (New York date) shows confetti and a birthday line instead of the daily quote.
+// The quotes are reflective and workout-themed: the accumulation of years of consistency, practice, and endurance. Original lines by Coach.
+const BDAY_PRE = [
+  'You did not build this strength in a year. You built it in thousands of ordinary sessions, and today you get to add one more.',
+  'Every year under the bar is a year of practice you keep. Train today like someone who has been showing up for a long time, because you have.',
+  'Consistency is quiet. It looks like nothing on any single day and like everything across the years.',
+  'The years did not take your strength. You trained it into them, one session at a time.',
+  '{age} years in, the work is still the same: warm up, lift with care, and come back next time.'
+];
+const BDAY_POST = [
+  'Another year, and the work is done. Endurance is just patience that kept lifting.',
+  '{age} years, and you still finished the session. That is what years of practice buy you.',
+  'The bar does not know your age. It only knows you kept coming back.',
+  'One birthday workout is a small thing. Years of them are the whole story.',
+  'You did not get here by accident. You got here by years of showing up. Well earned.'
+];
+function bdayToday() { const x = profOf(P), f = x && bdayFacts(x.birthday); return f && f.isToday ? { name: x.name, age: f.age } : null; }
+const bdayLine = (list, k) => { const i = ((k.age * 7) + (list === BDAY_POST ? 3 : 0)) % list.length; return { q: list[i].replace('{age}', String(k.age)), a: 'Coach, for your ' + ordinal(k.age) + ' birthday' }; };
+const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+const qtHTML = qt => '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>';
+let confettiStop = null;
+function confetti() {
+  const c = $('bdayc'); if (!c || !c.getContext) return; if (confettiStop) confettiStop();
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { c.style.display = 'none'; return; } // reduced motion: no animation, the card alone
+  c.style.display = ''; const dpr = Math.min(2, window.devicePixelRatio || 1), W = innerWidth, H = innerHeight; c.width = W * dpr; c.height = H * dpr; const g = c.getContext('2d'); g.scale(dpr, dpr);
+  const cols = ['#2ecc71', '#4da3ff', '#ffd27a', '#ff6b81', '#c39bff', '#ffffff'], N = 140, ps = [];
+  for (let i = 0; i < N; i++) ps.push({ x: Math.random() * W, y: -20 - Math.random() * H * 0.6, vx: (Math.random() - 0.5) * 2.2, vy: 2 + Math.random() * 3.2, s: 5 + Math.random() * 6, r: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.3, c: cols[i % cols.length] });
+  let raf = 0; const t0 = performance.now();
+  const step = t => { g.clearRect(0, 0, W, H); const fade = Math.max(0, Math.min(1, (5200 - (t - t0)) / 800));
+    ps.forEach(p => { p.x += p.vx; p.y += p.vy; p.r += p.vr; p.vy += 0.02; if (t - t0 < 3200 && p.y > H + 20) { p.y = -20; p.x = Math.random() * W; p.vy = 2 + Math.random() * 3; } g.save(); g.globalAlpha = fade; g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.c; g.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); g.restore(); });
+    if (fade > 0) raf = requestAnimationFrame(step); else g.clearRect(0, 0, W, H); };
+  raf = requestAnimationFrame(step); confettiStop = () => { cancelAnimationFrame(raf); g.clearRect(0, 0, W, H); confettiStop = null; };
+}
+let bdayAfter = null;
+function bdayShow(k, after) {
+  bdayAfter = after || null; $('bdayh').textContent = 'Happy birthday, ' + k.name + '!'; $('bdays').textContent = ordinal(k.age) + ' birthday. Your workout timer is running.';
+  $('bdayq').innerHTML = qtHTML(bdayLine(BDAY_PRE, k)); $('bdayw').classList.add('open'); pushLayer('bday', () => { $('bdayw').classList.remove('open'); if (confettiStop) confettiStop(); });
+  confetti(); setTimeout(() => { try { $('bdayok').focus({ preventScroll: true }); } catch (e) {} }, 50);
+}
+const bdayClose = () => { if (!$('bdayw').classList.contains('open')) return; $('bdayw').classList.remove('open'); if (confettiStop) confettiStop(); popLayer('bday'); const f = bdayAfter; bdayAfter = null; if (f) setTimeout(f, 250); };
+$('bdayok').onclick = bdayClose; $('bdayw').addEventListener('click', e => { if (e.target.id === 'bdayw') bdayClose(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('bdayw').classList.contains('open')) bdayClose(); });
+if (testOn()) window.__coachB = { bdayFacts, todayNY, profiles, bdayToday, openProfile, openProfiles, endQuoteShow: () => endQuoteShow(), quoteEnd: () => quoteEnd() };
+profSelRender();
+
 
 // ---------- Settings ----------
 function hideSettings(fromPop) { if (S) { $('settings').style.display = 'none'; $('app').style.display = 'block'; tick(); } if (!fromPop) popLayer('settings'); }
 function showSettings(msg) {
   if (S) pushLayer('settings', () => hideSettings(true));
   $('app').style.display = 'none'; $('settings').style.display = 'block'; $('timer').style.display = 'none';
-  $('su').value = U; $('sk').value = K; $('stest').checked = testOn(); $('smsg').textContent = msg || '';
+  $('su').value = U; $('sk').value = K; $('stest').checked = testOn(); $('smsg').textContent = msg || ''; profListRender();
   $('stripbox').style.display = S ? 'block' : 'none'; if (S) gymsRender(); $('sphasebox').style.display = S ? 'block' : 'none'; if (S) phaseRender();
   $('sbw').value = S ? (bodyweight() || '') : ''; $('sbws').textContent = S ? bwSrcText() + '. A newer MyFitnessPal weigh-in replaces an edit only if it is dated after the edit.' : '';
 }
@@ -2353,17 +2511,40 @@ function bwLine() {
 function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; const bb = plateT(formEx); $('pbt').style.display = bb ? '' : 'none'; $('fl').inputMode = bb ? 'text' : 'decimal'; $('fl').placeholder = bb ? 'e.g. 185 or 4x45 2x25' : ''; if (!bb) $('pbx').hidden = true; }
 // Plate-first: tap plates (one per side each), chips remove, total = bar weight (barWeight) + 2 x plates.
 let pbList = []; // one entry per pair (one plate each side)
-function pbRender() { const tot = barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + '</button>').join('') || '<span class="s2">Empty ' + (BAR_NAME[equipType(formEx)] || 'bar') + ' (' + barWeight(formEx) + ' lb). Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + (Math.round(tot * 10) / 10) + ' lb'; }
+function pbRender() { const tot = barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + '</button>').join('') || '<span class="s2">Empty bar (' + barTxt(formEx).replace(/ bar$/, '') + '). Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + fmtLb(tot) + ' lb' + (pbList.length ? ': ' + plateGroup(pbList) + ' /side + ' + barTxt(formEx) : ''); }
 // v85 (Jack, Oct 20, 2026): the plate builder has a Bar weight field at the top. It edits the same per-exercise bar setting as the card row and recalculates live.
-function pbBarSet(v) { const n = parseFloat(v); if (!formEx || !(n > 0 && n < 200)) { $('pbbw').value = String(barWeight(formEx)); return; } if (n !== barWeight(formEx)) putSetting(formEx.canonical, 'bar', String(n)); $('pbbw').value = String(n); pbRender(); plUpd(); bwLine(); }
+// v140: compact lb | kg toggle on the Bar weight row. Kg entry converts to lb instantly; the unit is remembered per exercise and bar type at the current gym.
+function pbConv(typed) {
+  const el = $('pbkg'); if (!el) return; if (barUnit(formEx) !== 'kg') { el.hidden = true; el.textContent = ''; return; }
+  const lb = barWeight(formEx), kg = typed > 0 ? typed : (parseFloat($('pbbw').value) || lb / KG_LB);
+  el.hidden = false; el.textContent = fmtKg(kg) + ' kg = ' + fmtLb(typed > 0 ? typed * KG_LB : lb) + ' lb';
+}
+function pbBarShow() {
+  const unit = barUnit(formEx), lb = barWeight(formEx);
+  $('pbbw').value = unit === 'kg' ? fmtKg(lb / KG_LB) : fmtLb(lb);
+  $('pbulb').classList.toggle('on', unit === 'lb'); $('pbulb').setAttribute('aria-pressed', unit === 'lb' ? 'true' : 'false');
+  $('pbukg').classList.toggle('on', unit === 'kg'); $('pbukg').setAttribute('aria-pressed', unit === 'kg' ? 'true' : 'false');
+  $('pbbm').setAttribute('aria-label', unit === 'kg' ? 'Bar weight minus 1 kg' : 'Bar weight minus 5'); $('pbbp').setAttribute('aria-label', unit === 'kg' ? 'Bar weight plus 1 kg' : 'Bar weight plus 5');
+  pbConv();
+}
+function pbBarSet(v) {
+  const unit = barUnit(formEx), n = parseFloat(v);
+  if (unit === 'kg') { if (!formEx || !(n > 0 && n < 100)) { pbBarShow(); return; } const lb = Math.round(n * KG_LB * 10) / 10; if (lb !== barWeight(formEx)) putSetting(formEx.canonical, 'bar', String(lb)); }
+  else { if (!formEx || !(n > 0 && n < 200)) { pbBarShow(); return; } if (n !== barWeight(formEx)) putSetting(formEx.canonical, 'bar', String(n)); }
+  pbBarShow(); pbRender(); plUpd(); bwLine();
+}
+function pbSetUnit(unit) { if (!formEx || (unit !== 'kg' && unit !== 'lb') || unit === barUnit(formEx)) return; setBarUnit(formEx, unit); pbBarShow(); pbRender(); plUpd(); if (S) { sig = ''; } }
 $('pbbw').addEventListener('change', () => pbBarSet($('pbbw').value));
 $('pbbw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); pbBarSet($('pbbw').value); } });
-$('pbbm').onclick = () => pbBarSet(Math.max(5, barWeight(formEx) - 5)); $('pbbp').onclick = () => pbBarSet(barWeight(formEx) + 5);
-$('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; $('pbbw').value = String(barWeight(formEx)); pbRender(); } $('pbtl').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; $('pbt').classList.toggle('on', !x.hidden); };
+$('pbbw').addEventListener('input', () => { if (barUnit(formEx) !== 'kg') return; const n = parseFloat($('pbbw').value); if (n > 0 && n < 100) pbConv(n); });
+$('pbbm').onclick = () => { if (barUnit(formEx) === 'kg') pbBarSet(Math.max(1, (parseFloat($('pbbw').value) || 0) - 1)); else pbBarSet(Math.max(5, barWeight(formEx) - 5)); };
+$('pbbp').onclick = () => { if (barUnit(formEx) === 'kg') pbBarSet((parseFloat($('pbbw').value) || 0) + 1); else pbBarSet(barWeight(formEx) + 5); };
+$('pbulb').onclick = () => pbSetUnit('lb'); $('pbukg').onclick = () => pbSetUnit('kg');
+$('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; pbBarShow(); pbRender(); } $('pbtl').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; $('pbt').classList.toggle('on', !x.hidden); };
 $('pbp').addEventListener('click', e => { const b = e.target.closest('[data-pp]'); if (!b) return; pbList.push(+b.dataset.pp); pbList.sort((a, c) => c - a); pbRender(); });
 $('pbc').addEventListener('click', e => { const b = e.target.closest('[data-pr]'); if (!b) return; const i = pbList.indexOf(+b.dataset.pr); if (i >= 0) pbList.splice(i, 1); pbRender(); });
 $('pbclr').onclick = () => { pbList = []; pbRender(); };
-$('pbuse').onclick = () => { $('fl').value = String(barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0)); bwLine(); plUpd(); };
+$('pbuse').onclick = () => { $('fl').value = fmtLb(barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0)); bwLine(); plUpd(); };
 const isBB = () => plateT(formEx);
 function flPlates() { const pl = isBB() ? P_.platesToLoad($('fl').value, barWeight(formEx)) : null; if (pl && !pl.rest) { $('fl').value = String(pl.load); bwLine(); plUpd(); return true; } return false; }
 $('fl').oninput = () => { bwLine(); const pl = isBB() ? P_.platesToLoad($('fl').value, barWeight(formEx)) : null; if (pl && !pl.rest) $('fpl').textContent = '= ' + pl.load + ' lb (tap away to use)'; else plUpd(); };
