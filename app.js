@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 138; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 139; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -224,7 +224,7 @@ function setTxt(r) {
 }
 function lastTime(ex) {
   const ls = lastSession(ex); if (!ls) return 'First time on this exercise. Today sets your baseline.';
-  return 'Last time (' + wLabel(ls.date, true) + ', ' + ls.rows[0].date + '): ' + ls.rows.map(setTxt).join(', ');
+  return 'Last time (' + wLabel(ls.date, true) + ', ' + ls.rows[0].date + '): ' + ls.rows.map(setTxt).join(', ') + (ls.skipped ? '. ' + skipTxt(ls.skipped) : '');
 }
 // ---------- Warm-up ramp + plate calculator (barbell and dumbbell only, never logged) ----------
 const PLATES = [45, 35, 25, 10, 5, 2.5], BAR = 45;
@@ -253,7 +253,8 @@ function barWeight(ex) {
 function plateGroup(list) { const g = []; list.forEach(p => { const l = g[g.length - 1]; if (l && l.p === p) l.n++; else g.push({ p, n: 1 }); }); return g.map(x => x.p + (x.n > 1 ? 'x' + x.n : '')).join(' + '); }
 function platesFor(w, bar) { bar = bar || BAR; let side = (w - bar) / 2; if (!(side > 0)) return w > 0 && w <= bar ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return plateGroup(out) + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
 const platesShort = (w, bar) => { const p = platesFor(+w, bar); return p ? p.replace(' per side', ' /side') : ''; };
-const plateLine = (ex, w) => plateT(ex) && +w > 0 ? platesShort(w, barWeight(ex)) : '';
+// v139 (Jack, Nov 10): the plates line names the assumed bar, e.g. '55 lb hex bar + 45x2 /side', so he never has to open the plate builder to see it.
+const plateLine = (ex, w) => { if (!(plateT(ex) && +w > 0)) return ''; const b = barWeight(ex), p = platesShort(w, b), bn = b + ' lb ' + (BAR_NAME[equipType(ex)] || 'bar'); return !p ? '' : p === 'Empty bar' ? bn + ' (empty)' : bn + ' + ' + p; };
 // Warm-up kind: 'plate' (bar types), 'dumbbell', or '' (no ramp).
 const eqKind = ex => plateT(ex) ? 'plate' : equipType(ex) === 'dumbbell' ? 'dumbbell' : '';
 function warmFor(ex, list) {
@@ -333,7 +334,7 @@ function setsHTML(ex) {
     const hold = (r.left_reps || r.right_reps)
       ? ((st ? fmtHold(r.left_reps) : r.left_reps || '?') || '-') + ' L / ' + ((st ? fmtHold(r.right_reps) : r.right_reps || '?') || '-') + ' R'
       : (st ? (fmtHold(r.reps) || r.reps) : r.reps);
-    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div>' + (plateLine(ex, r.load) ? '<div class="s2 plt">' + esc(plateLine(ex, r.load)) + '</div>' : '') + '<div class="s2">' + esc(bits) + (noteTxt(r) ? '<br>' + esc(noteTxt(r)) : '') + '</div></li>';
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div>' + (plateLine(ex, r.load) ? '<div class="s2 plt">Plates: ' + esc(plateLine(ex, r.load)) + '</div>' : '') + '<div class="s2">' + esc(bits) + (noteTxt(r) ? '<br>' + esc(noteTxt(r)) : '') + '</div></li>';
   }).join('');
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
@@ -350,7 +351,7 @@ function setsHTML(ex) {
         (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + (sg && sg.short ? ' <span class="tr dn" aria-label="last set came up short">&#9660;</span>' : '') + '</span>' +
       '<span></span>' +
       '<button class="lg" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' +
-      (plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '') +
+      (plateLine(ex, w) ? '<div class="s2 plt">Plates: ' + esc(plateLine(ex, w)) + '</div>' : '') +
       (sg ? '<div class="s2">' + (sg.coach ? '<b class="cplan">Coach plan</b> ' : '') + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.coach ? sg.why.replace(/^Coach plan: /, '') : sg.why) + (ex.single ? (st ? ' · per side' : ' · reps per side') : '') + '</div>' : '') + '</li>';
   }
   return h;
@@ -365,7 +366,7 @@ const TECH = {
     info: 'Activation set near failure (usually 12-20 reps), then short rests of about 3-5 deep breaths and mini-sets of 3-5 reps with the same weight. Stop when you can\'t hit 3.',
     log: 'Pick Myo-reps as the failure type. Log the activation set\'s weight and reps, and put the mini-sets in the note, like "myo 4+4+3".' },
   match: { tag: 'MRM', name: 'Myo-rep match', re: /\bmyo[- ]?rep match\b/i, url: 'https://www.youtube.com/watch?v=KIJ77QTsvlo', urlTitle: 'Need More Growth? Myorep Match Is The Solution! (Renaissance Periodization)',
-    info: 'Myo-rep match: set 1 is a normal set; its reps are your target. Each later set, after normal rest, do as many reps as you can, then 5-15 s pauses and mini-sets of a few reps until your total matches set 1. Log the total.',
+    info: 'Myo-rep match on the last set: set 1 is a normal set and its reps are your target. On the last set, after normal rest, do as many reps as you can, then 5-15 s pauses and mini-sets of a few reps until your total matches set 1. Log the total.',
     log: 'Log each set\'s weight and TOTAL reps (all mini-sets added up) and set the Mini-sets counter. No drop sets or standard myo-reps on an MRM exercise.' }
 };
 // Set method per exercise: settings scope = slot name, key 'method:<wid>' (this workout) or 'bmethod:B<n>' = {v, from} (rest of block). Default standard.
@@ -396,9 +397,9 @@ function techFor(ex) { // v131: a technique any coach tip mentions (week notes, 
   const prefer = keys.includes('drop') && keys.includes('myo') && /\blast set\b[^.;]*\bmyo[- ]?reps?\b/i.test(t) && !/\blast set\b[^.;]*\b(?:drop|run(?:ning)? the rack)\b/i.test(t) && !/\b(?:drop|rack)\b[^.;]*\bor\b[^.;]*\bmyo|\bmyo[^.;]*\bor\b[^.;]*\b(?:drop|rack)\b/i.test(t) ? 'myo' : 'drop';
   return { keys, all: !/\blast set\b/i.test(t), prefer };
 }
-// One set method at a time: MRM on every set after the opener; MR and DROP only on the last set (never both).
+// One set method at a time: MR, MRM or DROP, on the last set only (never two on one set).
 function tqShow(tq, i, n) {
-  let ks = tq.keys.filter(k => k === 'match' ? i >= 1 : i === n - 1); // v80: drop sets and standard myo-reps only on the last set
+  let ks = tq.keys.filter(k => i === n - 1); // v139 (Jack, Nov 10): MR, MRM and DROP all go on the last set only (v80 put MRM on every set after the opener)
   if (ks.includes('drop') && ks.includes('myo')) ks = ks.filter(k => k !== (tq.prefer === 'myo' ? 'drop' : 'myo')); // never DROP + MR on one set
   return ks;
 }
@@ -740,9 +741,40 @@ function lastSession(ex, before) {
   if (nb.length) { const k = rs.filter(r => !nb.includes(widOf(r))); if (k.length) rs = k; }
   if (!rs.length) return null;
   if (!isDeload(viewWeek())) { const nd = rs.filter(r => { const p = wParse(widOf(r)); return !p || !isDeload(p.w); }); if (nd.length) rs = nd; }
-  const d = rs.reduce((m, r) => wIndex(widOf(r)) > wIndex(m) ? widOf(r) : m, widOf(rs[0]));
-  return { date: d, rows: rs.filter(r => widOf(r) === d) };
+  // v139: the basis is picked from the recent history (up to 6 sessions), not blindly the newest one.
+  const by = {}; rs.forEach(r => { const w = widOf(r); (by[w] = by[w] || []).push(r); });
+  const sess = Object.keys(by).sort((x, y) => wIndex(y) - wIndex(x)).slice(0, HIST_N).map(w => ({ date: w, rows: by[w] }));
+  const pick = basisOf(sess);
+  return Object.assign({ date: sess[pick.i].date, rows: sess[pick.i].rows }, pick.skipped ? { skipped: pick.skipped } : {});
 }
+// v139 (Jack, Nov 10, 2026): suggestions use the whole recent history (last 4-6 sessions; free weights across gyms, machines per gym via rowsFor).
+// Effort weighting: a session whose working sets all went to true or technical failure counts fully (1); a submaximal one counts half (0.5),
+// because sets short of failure can understate strength. One-off rule: when the newest session's settled weight is more than 10% under the
+// effort-weighted median of the prior (up to) 3 sessions, it is treated as a one-off and the basis is the most recent normal session, unless
+// (a) the lighter weight repeats two sessions in a row, (b) it went to failure at the same gym as the sessions before it (a real drop), or
+// (c) he is training at that same lighter gym again today (its limits apply). Example: seated DB OHP 70 (Oct 13, Oct 20, Nov 3), then
+// 50 x 11, 10, 10 at the Hotel gym (Nov 7) = 29% under 70 at a different gym, so Nov 3 (70 x 7, 7, 7) is the basis and the stall rule gives 70 x 8.
+const HIST_N = 6, ONEOFF = 0.10;
+const failRow = r => !!r.failure_type && r.failure_type !== 'not to failure' && r.failure_type !== 'warm-up';
+function sessInfo(s) { const sw = settled(s.rows), at = s.rows.filter(r => num(r.load) === sw), fail = at.length > 0 && at.every(failRow); let g = 'home', gn = ''; try { const x = gymParse(s.rows[0]); g = x.gym_id; gn = x.gym_name || ''; } catch (e) {} return { sw, fail, eff: fail ? 1 : 0.5, gym: g, gymName: gn }; }
+function wMedian(list) { // effort-weighted median of [{v, w}]
+  const l = list.filter(x => x.v > 0).sort((a, b) => a.v - b.v), tot = l.reduce((a, x) => a + x.w, 0); if (!l.length) return null;
+  let acc = 0; for (const x of l) { acc += x.w; if (acc >= tot / 2 - 1e-9) return x.v; } return l[l.length - 1].v;
+}
+function basisOf(sess) {
+  if (sess.length < 2) return { i: 0 };
+  const inf = sess.map(sessInfo), n0 = inf[0], prior = inf.slice(1, 4).filter(x => x.sw > 0);
+  if (!(n0.sw > 0) || !prior.length) return { i: 0 };
+  const med = wMedian(prior.map(x => ({ v: x.sw, w: x.eff })));
+  if (!(med > 0) || !(n0.sw < med * (1 - ONEOFF))) return { i: 0 };
+  if (inf[1].sw > 0 && inf[1].sw <= n0.sw * (1 + ONEOFF)) return { i: 0 }; // (a) the session before was just as light
+  let here = null; try { here = curGymId(); } catch (e) {}
+  if (here != null && n0.gym === here && inf[1].gym !== here) return { i: 0 }; // (c) back at the lighter gym
+  if (n0.fail && n0.gym === inf[1].gym) return { i: 0 }; // (b) to failure where he usually trains = a real drop
+  const i = inf.findIndex((x, k) => k > 0 && x.sw >= med * (1 - ONEOFF)); if (i < 1) return { i: 0 };
+  return { i, skipped: { date: sess[0].date, day: sess[0].rows[0].date, w: n0.sw, gym: n0.gymName || (n0.gym === 'home' ? '' : n0.gym), fail: n0.fail, med } };
+}
+const skipTxt = k => k ? wLabel(k.date, true) + (k.gym ? ' at ' + k.gym : '') + ' (' + k.w + ' lbs) was a lighter one-off, so it is skipped.' : '';
 const r5 = (w, step) => Math.max(step, Math.round(w / step) * step);
 const EQ_F = { barbell: 1, hexbar: 1, ez: 1, smith: 1, dumbbell: 0.38, machine: 0.9, machine_plate: 0.9, machine_assisted: 0.9, cable: 0.45 };
 const eqFactor = ex => EQ_F[equipType(ex)] || 0.8;
@@ -778,7 +810,7 @@ function smallerJump(ex, w) { // the next real weight above w when it is a small
   if (nx != null && nx - w < step) return nx; if (!Array.isArray(st) && st < step) return +(w + st).toFixed(2); return null;
 }
 // Test-mode only hook for the headless equipment tests (no data, no writes).
-if (testOn()) window.__coachT = { get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
+if (testOn()) window.__coachT = { basisOf: s => basisOf(s), get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
 // Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
 const sideReps = r => { const L = parseInt(r.left_reps, 10), Rr = parseInt(r.right_reps, 10); return { L: isFinite(L) ? L : null, R: isFinite(Rr) ? Rr : null }; };
 function repN(r) { const s = sideReps(r), v = [s.L, s.R].filter(x => x != null); return v.length ? Math.min.apply(null, v) : (parseInt(r.reps, 10) || 0); }
@@ -876,8 +908,12 @@ function suggestRaw(ex, idx) {
     }
     return { load: defA, reps: defT, repsL: defT, repsR: defT, angL: defA, angR: defA, why: 'start about 40° for 5 min per side', est: true };
   }
-  const [lo, hi] = repRange(ex), dl = isDeload(viewWeek()), st = stepFor(ex), iso = (ex.types || []).includes('isolation');
   const ls = lastSession(ex);
+  if (ls && ls.skipped) { const r = suggestRaw0(ex, idx, ls); return r && r.why ? Object.assign({}, r, { why: r.why + ' Based on ' + wLabel(ls.date, true) + ', not the lighter ' + wLabel(ls.skipped.date, true) + (ls.skipped.gym ? ' at ' + ls.skipped.gym : '') + '.' }) : r; }
+  return suggestRaw0(ex, idx, ls);
+}
+function suggestRaw0(ex, idx, ls) {
+  const [lo, hi] = repRange(ex), dl = isDeload(viewWeek()), st = stepFor(ex), iso = (ex.types || []).includes('isolation');
   if (ls) {
     const rows = ls.rows, sw = settled(rows);
     if (sw == null) { const r = rows[Math.min(idx, rows.length - 1)], reps = repN(r) || 0; return { load: r.load, reps: String(dl ? lo : Math.min(hi, reps + 1)), why: 'Use ' + r.load + ' lbs. ' + (dl ? 'Easy deload week.' : 'Beat last time.') }; }
@@ -1101,7 +1137,7 @@ function saveOrder(main, moved) {
   setTimeout(() => {
     sig = ''; render();
     const c = [...$('main').querySelectorAll('.card')].find(x => x.dataset.name === moved);
-    if (c) { const r = c.getBoundingClientRect(); if (r.top < 80 || r.top > innerHeight - 260) window.scrollBy(0, r.top - 90); }
+    if (c) { const top = () => c.getBoundingClientRect().top - (Math.max(barH(), 0) + 8); window.scrollBy(0, top()); requestAnimationFrame(() => { const d = top(); if (Math.abs(d) > 1) window.scrollBy(0, d); }); } // v139 (Jack, Nov 10): the dropped exercise becomes the topmost card on screen
   }, DRAG_ANIM + 40);
 }
 function startDrag(main, card, y, pointerId, h) {
@@ -1634,7 +1670,7 @@ function render() {
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
       '</div></div>';
-  }).join('') + (d.footer && d.footer.length ? '<div class="note">' + d.footer.map(esc).join('<br>') + '</div>' : '') +
+  }).join('') + /* v139 (Jack, Nov 10): the day-level program notes box above Finish workout is gone on every day */
     '<div id="finwrap"></div>';
   main.querySelectorAll('[data-su]').forEach(el => el.onclick = () => editSetup(+el.dataset.su));
   main.querySelectorAll('[data-hi]').forEach(b => b.onclick = e => { e.stopPropagation(); const ex = cardsFor()[+b.dataset.hi]; if (ex) openHistory(ex); });
@@ -2258,7 +2294,7 @@ function setMini(n, keep) { minis = Math.max(0, Math.min(9, n | 0)); $('fmv').te
 function exclUI() { const both = $('fmini').style.display !== 'none' && $('fdwrap').style.display !== 'none'; $('fxhint').style.display = both ? 'block' : 'none'; $('fdwrap').classList.toggle('dim', both && minis > 0); $('fmini').classList.toggle('dim', both && drops > 0); $('fxhint').textContent = !both ? '' : minis > 0 ? 'Myo-reps on. Tap + on drop sets to switch to a drop set.' : drops > 0 ? 'Drop set on. Tap + on mini-sets to switch to myo-reps.' : 'Pick one: drop sets or myo-rep mini-sets.'; }
 function setKeys(ex, i, n) { const tq = ex ? techFor(ex) : null; return tq ? tqShow(tq, i, n) : []; }
 function formLast() { const ex = formEx; if (!ex) return false; const n = Math.max(plannedCount(ex), rowsFor(ex, true).length + (editId ? 0 : 1)); return formSetIdx >= n - 1; }
-function miniUI() { const ex = formEx, last = formLast(), mrm = !!ex && methodOf(ex) === 'match'; const on = !!ex && !isStretch(ex) && (minis > 0 || (mrm ? formSetIdx >= 1 : last)); $('fmini').style.display = on ? '' : 'none'; const dOn = !!ex && !isStretch(ex) && !mrm && ((last && !oneArm(ex)) || drops > 0); /* v135: one-arm last sets use myo-reps, so no drop counter */ $('fdwrap').style.display = dOn ? '' : 'none'; if (!dOn && drops) setDrops(0, true); exclUI(); mrmUI(); }
+function miniUI() { const ex = formEx, work = !!ex && !isStretch(ex) && warmNext == null && ffSel.value !== 'warm-up'; /* v139 (Jack, Nov 10): every working set shows both counters and the Pick one hint, whatever was scheduled, so he can switch technique mid-set */ const on = work || (!!ex && minis > 0); $('fmini').style.display = on ? '' : 'none'; const dOn = work || (!!ex && drops > 0); $('fdwrap').style.display = dOn ? '' : 'none'; if (!dOn && drops) setDrops(0, true); exclUI(); mrmUI(); }
 // v80: myo-rep match offers. Programmed exercise: 'Make this a myo-rep match' on set 1 only while nothing is logged for it today.
 // Added (non-programmed) exercise: 'Set as myo-rep match' on set 1, then how many matching sets followed; they are filled in on save.
 let mrmAdd = false, mrmN = 2;
@@ -2441,7 +2477,7 @@ function openForm(i, ts, row) {
   if (SR) $('heard').textContent = '';
   const f = (ex.note.failure || '').toLowerCase();
   const isMrm = !isStretch(ex) && methodOf(ex) === 'match';
-  if (isMrm && !(row && +row.drops)) setDrops(0); mrmAdd = false; mrmN = 2;
+  mrmAdd = false; mrmN = 2;
   ftOptions(row && row.failure_type === 'drop set' ? 'drop set' : null, isMrm && !(row && row.failure_type === 'myo-reps'));
   ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : prev && FT_OPTS.includes(prev.failure_type) && !(isMrm && prev.failure_type === 'myo-reps') ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
   miniUI();
