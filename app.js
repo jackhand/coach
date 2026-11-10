@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 141; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 142; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -97,8 +97,8 @@ if (swHad) navigator.serviceWorker.addEventListener('controllerchange', () => { 
 document.addEventListener('visibilitychange', swReload);
 
 // ---------- Backend ----------
-async function apiGet() {
-  const r = await fetch(U + (U.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(K) + '&profile=' + encodeURIComponent(P) + '&t=' + Date.now(), { cache: 'no-store', redirect: 'follow' });
+async function apiGet(p) {
+  const r = await fetch(U + (U.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(K) + '&profile=' + encodeURIComponent(p || P) + '&t=' + Date.now(), { cache: 'no-store', redirect: 'follow' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
@@ -1814,6 +1814,7 @@ async function editSetup(i) {
   putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; toast('Setup saved'); if (plateT(ex)) render();
 }
 function applyState(st, initial) {
+  if (st && st.profile && st.profile !== P) return; // v142: never show or sync another profile's data
   S = st; S.rows = S.rows || []; try { syncProfileFromBackend(); } catch (e) {} LIB = P_.parseLibrary(st.library); RAWDAYS = oneArmDays(P_.enrich(P_.parseProgram(st.program), LIB)); days = P_.resolveDays(RAWDAYS, viewId ? viewWeek() : 1); swapMemo = {};
   if (!layerOpen('settings')) { $('settings').style.display = 'none'; $('app').style.display = 'block'; }
   const ls = localSet(); if (migrateKeys(ls)) jset(SK(), ls);
@@ -1836,11 +1837,14 @@ function restoreScreen() { if (screenRestored) return; screenRestored = true; le
 async function load(initial) {
   if (!U || !K) return showSettings();
   if (isLocalProfile(P)) { S = null; $('settings').style.display = 'none'; $('app').style.display = 'block'; profSelRender(); $('sub').textContent = profOf(P).name; $('main').innerHTML = '<div class="empty"><b>' + esc(profOf(P).name) + '</b><br>This profile is saved on this phone only. Ask Coach to add it to the backend to get a program and logging.' + (profOf(P).birthday ? '<div class="pfacts" style="text-align:left;margin-top:12px">' + factsHTML(profOf(P).birthday) + '</div>' : '') + '<button class="btn sec" id="pledit" type="button">Edit profile</button></div>'; $('pledit').onclick = () => openProfile(P); return; } // v140: device-only profile
-  if (initial && !S) { const c = jget('coach_cache_' + P, null); if (c) applyState(c, true); } // instant start, works offline
+  if (initial && !S) { const c = jget('coach_cache_' + P, null); if (c && (!c.profile || c.profile === P)) applyState(c, true); } // instant start, works offline
+  const p = P; // v142: the profile this request is for. A reply that lands after a profile switch is cached under its own profile and not applied.
   try {
-    const st = await apiGet();
+    const st = await apiGet(p);
     if (!st.ok) { if (st.error === 'unauthorized') return showSettings('Key rejected by the backend.'); throw new Error(st.error); }
-    jset('coach_cache_' + P, st);
+    if (st.profile && st.profile !== p) return;
+    jset('coach_cache_' + p, st);
+    if (p !== P) return;
     $('offline').style.display = 'none';
     applyState(st, initial);
   } catch (e) {
@@ -2089,7 +2093,7 @@ const profOf = id => profiles().find(x => x.id === id) || { id, name: titleCase(
 const isLocalProfile = id => !BACKEND_PROFILES.includes(id);
 const ISO_D = /^\d{4}-\d{2}-\d{2}$/;
 function syncProfileFromBackend() { // the backend copy of the active profile's name and birthday wins
-  if (!S || isLocalProfile(P)) return; const n = getSetting('profile', 'name'), b = getSetting('profile', 'birthday');
+  if (!S || isLocalProfile(P) || (S.profile && S.profile !== P)) return; const n = getSetting('profile', 'name'), b = getSetting('profile', 'birthday');
   if (n == null && b == null) return; const l = profiles(), x = l.find(y => y.id === P); if (!x) return;
   let ch = false; if (n && n !== x.name) { x.name = String(n); ch = true; } if (b != null && (b === '' || ISO_D.test(b)) && b !== x.birthday) { x.birthday = String(b); ch = true; }
   if (ch) { saveProfiles(l); profSelRender(); }
@@ -2246,7 +2250,7 @@ $('ssave').onclick = async () => {
   LS.setItem('coach_u', U); LS.setItem('coach_k', K); $('smsg').textContent = 'Testing...';
   const bw = parseFloat($('sbw').value);
   try {
-    const st = await apiGet(); if (!st.ok) { $('smsg').textContent = 'Backend said: ' + st.error; return; }
+    const p = P, st = await apiGet(p); if (!st.ok) { $('smsg').textContent = 'Backend said: ' + st.error; return; } if (p !== P) return;
     jset('coach_cache_' + P, st); sig = ''; S = null; firstRender = true; popLayer('settings'); applyState(st, true);
     if (bw > 0 && bw !== bodyweight()) { putSetting('profile', 'bodyweight', String(bw)); putSetting('profile', 'bodyweight_src', 'manual'); putSetting('profile', 'bodyweight_date', S.today || new Date().toISOString().slice(0, 10)); }
     sig = ''; applyState(S, false); toast('Connected'); flush();
