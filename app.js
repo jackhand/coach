@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 142; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 143; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -85,14 +85,30 @@ if (location.hash.length > 1) {
 window.addEventListener('hashchange', () => { if (/[#&](u|k)=/.test(location.hash)) location.reload(); });
 let U = LS.getItem('coach_u') || '', K = LS.getItem('coach_k') || '';
 let P = LS.getItem('coach_p') || 'jack';
+// v143 self-heal (Jack, Nov 10, 2026): v141 could file Jacky's backend reply under jack (offline copy and local profile list). Once per phone:
+// drop any offline copy that belongs to another profile, reset the local jack and jacky entries (the backend name and birthday refill them),
+// and go back to Jack's profile. Every load also falls back to jack when the active profile is not in the local list.
+(function heal143() {
+  try {
+    ['jack', 'jacky'].forEach(id => { const c = jget('coach_cache_' + id, null); if (c && c.profile && c.profile !== id) LS.removeItem('coach_cache_' + id); });
+    if (LS.getItem('coach_heal143')) return;
+    let l = jget('coach_profiles', null); if (!Array.isArray(l)) l = [];
+    const norm = t => String(t || '').toLowerCase().replace(/[^a-z]/g, ''), dup = new Set(['jack', 'jacky', 'jackie', 'john']);
+    l = l.filter(x => x && x.id && x.id !== 'jack' && x.id !== 'jacky' && !dup.has(norm(x.name))); // device-only copies named Jack/Jacky/Jackie go too
+    l.unshift({ id: 'jack', name: 'Jack', birthday: '1973-11-11' }, { id: 'jacky', name: 'Jacky', birthday: '' });
+    jset('coach_profiles', l);
+    if (P !== 'jack') { P = 'jack'; LS.setItem('coach_p', 'jack'); }
+    LS.setItem('coach_heal143', '1');
+  } catch (e) {}
+})();
 let S = null, days = {}, RAWDAYS = {}, dayKey = null, viewId = null, sig = '', formEx = null, firstRender = true;
 
 let swReg = null;
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').then(r => { swReg = r; }).catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').then(r => { swReg = r; const go = w => w && w.postMessage({ type: 'skipWaiting' }); go(r.waiting); r.addEventListener('updatefound', () => { const w = r.installing; w && w.addEventListener('statechange', () => { if (w.state === 'installed') go(w); }); }); r.update().catch(() => {}); }).catch(() => {});
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && swReg) swReg.update().catch(() => {}); });
 // v84: a PWA resumed from the background kept running old code after an update. Reload once the new version takes over, but only while no sheet or pop-up is open.
 let swNew = false; const swHad = 'serviceWorker' in navigator && !!navigator.serviceWorker.controller;
-const swReload = () => { if (swNew && document.visibilityState === 'visible' && !layers.length) location.reload(); };
+const swReload = () => { if (swNew && document.visibilityState === 'visible' && !layers.length && !sessionStorage.getItem('coach_swr' + APP_VERSION)) { sessionStorage.setItem('coach_swr' + APP_VERSION, '1'); location.reload(); } };
 if (swHad) navigator.serviceWorker.addEventListener('controllerchange', () => { swNew = true; swReload(); });
 document.addEventListener('visibilitychange', swReload);
 
@@ -1834,6 +1850,7 @@ window.addEventListener('pagehide', saveScreen); window.addEventListener('before
 let screenRestored = false;
 function restoreScreen() { if (screenRestored) return; screenRestored = true; let v = ''; try { v = sessionStorage.getItem('coach_screen') || ''; sessionStorage.removeItem('coach_screen'); } catch (e) {}
   if (v === 'settings') setTimeout(() => showSettings(), 0); else if (v.startsWith('prog:')) setTimeout(() => openProg(parseInt(v.slice(5), 10) || 0), 0); }
+let otherFetched = false;
 async function load(initial) {
   if (!U || !K) return showSettings();
   if (isLocalProfile(P)) { S = null; $('settings').style.display = 'none'; $('app').style.display = 'block'; profSelRender(); $('sub').textContent = profOf(P).name; $('main').innerHTML = '<div class="empty"><b>' + esc(profOf(P).name) + '</b><br>This profile is saved on this phone only. Ask Coach to add it to the backend to get a program and logging.' + (profOf(P).birthday ? '<div class="pfacts" style="text-align:left;margin-top:12px">' + factsHTML(profOf(P).birthday) + '</div>' : '') + '<button class="btn sec" id="pledit" type="button">Edit profile</button></div>'; $('pledit').onclick = () => openProfile(P); return; } // v140: device-only profile
@@ -1844,6 +1861,7 @@ async function load(initial) {
     if (!st.ok) { if (st.error === 'unauthorized') return showSettings('Key rejected by the backend.'); throw new Error(st.error); }
     if (st.profile && st.profile !== p) return;
     jset('coach_cache_' + p, st);
+    if (!otherFetched && BACKEND_PROFILES.includes(p)) { otherFetched = true; BACKEND_PROFILES.filter(o => o !== p).forEach(o => apiGet(o).then(x => { if (x && x.ok && x.profile === o) { jset('coach_cache_' + o, x); profSelRender(); profListRender(); } }).catch(() => {})); } // v143: the other profile's backend name and birthday for the lists
     if (p !== P) return;
     $('offline').style.display = 'none';
     applyState(st, initial);
@@ -2086,6 +2104,14 @@ const PROFILE_SEED = [{ id: 'jack', name: 'Jack', birthday: '1973-11-11' }, { id
 function profiles() {
   let l = jget('coach_profiles', null); if (!Array.isArray(l)) l = [];
   PROFILE_SEED.forEach(sd => { if (!l.some(x => x.id === sd.id)) l.push(Object.assign({}, sd)); });
+  const seen = new Set(); l = l.filter(x => x && x.id && !seen.has(x.id) && seen.add(x.id)); // one entry per id
+  BACKEND_PROFILES.forEach(id => { // v143: the backend name and birthday win on every read (from this profile's own backend copy)
+    const x = l.find(y => y.id === id); if (!x) return; let n = null, bd = null;
+    if (id === P && S && (!S.profile || S.profile === id)) { n = getSetting('profile', 'name'); bd = getSetting('profile', 'birthday'); } // includes unsent edits
+    else { const c = jget('coach_cache_' + id, null), sp = c && c.profile === id && c.settings && c.settings.profile; if (sp) { n = sp.name; bd = sp.birthday; }
+      getRQ().filter(q => q.profile === id && q.action === 'setting' && q.scope === 'profile').forEach(q => { if (q.key === 'name') n = q.value; if (q.key === 'birthday') bd = q.value; }); }
+    if (n) x.name = String(n); if (bd != null && (bd === '' || ISO_D.test(bd))) x.birthday = String(bd);
+  });
   return l.filter(x => x && x.id).sort((a, b) => (BACKEND_PROFILES.indexOf(a.id) + 1 || 99) - (BACKEND_PROFILES.indexOf(b.id) + 1 || 99));
 }
 const saveProfiles = l => jset('coach_profiles', l);
@@ -2129,6 +2155,7 @@ function factsHTML(b) {
 }
 function profSelRender() {
   const l = profiles(), sel = $('prof'); if (!sel) return;
+  if (!l.some(x => x.id === P)) { P = 'jack'; LS.setItem('coach_p', P); } // v143: unknown active profile falls back to Jack
   sel.innerHTML = l.map(x => '<option value="' + esc(x.id) + '">' + esc(x.name) + '</option>').join('') + '<option value="__edit">Edit profiles...</option>';
   sel.value = l.some(x => x.id === P) ? P : l[0].id;
 }

@@ -1,6 +1,6 @@
 // Coach service worker: caches the app shell only. Backend data is never cached here.
-const CACHE = 'coach-shell-v142';
-const SHELL = ['./', 'index.html', 'app.js?v=142', 'parse.js?v=142', 'exlist.js?v=142', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const CACHE = 'coach-shell-v143';
+const SHELL = ['./', 'index.html', 'app.js?v=143', 'parse.js?v=143', 'exlist.js?v=143', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
@@ -31,6 +31,7 @@ let restKey = null;
 const waitUntilTime = ts => new Promise(r => setTimeout(r, Math.max(0, ts - Date.now())));
 self.addEventListener('message', e => {
   const d = e.data || {};
+  if (d.type === 'skipWaiting') { self.skipWaiting(); return; } // v143: a waiting worker takes over right away
   if (d.type === 'restCancel') { restKey = null; return; }
   if (d.type !== 'rest') return;
   restKey = d.key; const k = d.key;
