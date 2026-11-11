@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 143; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 144; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -238,9 +238,15 @@ function setTxt(r) {
   if (r.left_reps || r.right_reps) return (r.load || '-') + ' x L' + (r.left_reps || '?') + ' / R' + (r.right_reps || '?');
   return (r.load || '-') + ' x ' + r.reps;
 }
+// v144 (Jack, Nov 11, 2026): the one 'Last time (...)' line is replaced by each set row's own numbers from last time (prevHTML).
+// The line under Setup is left only for a first session (baseline) and for a skipped lighter session (it names the session the numbers come from).
 function lastTime(ex) {
   const ls = lastSession(ex); if (!ls) return 'First time on this exercise. Today sets your baseline.';
-  return 'Last time (' + wLabel(ls.date, true) + ', ' + ls.rows[0].date + '): ' + ls.rows.map(setTxt).join(', ') + (ls.skipped ? '. ' + skipTxt(ls.skipped) : '');
+  return ls.skipped ? 'Last time is ' + wLabel(ls.date, true) + ' (' + ls.rows[0].date + '). ' + skipTxt(ls.skipped) : '';
+}
+function prevHTML(ls, i) {
+  const r = ls && ls.rows[i]; if (!r) return '';
+  return '<div class="s2 prev">Last time: ' + esc(setTxt(r) + (+r.drops ? ' +' + r.drops + 'D' : '') + (miniOf(r) ? ' +' + miniOf(r) + 'M' : '')) + '</div>';
 }
 // ---------- Warm-up ramp + plate calculator (barbell and dumbbell only, never logged) ----------
 const PLATES = [45, 35, 25, 10, 5, 2.5], BAR = 45;
@@ -315,7 +321,7 @@ function pctWarm(ex) {
   if (!(top > 0)) return null;
   const bar = plateT(ex) ? barWeight(ex) : 0, out = [];
   it.forEach(x => {
-    const raw = top * x[1] / 100; let w = Math.round(raw / 5) * 5; try { w = snapW(ex, w) || w; } catch (e) {} if (bar) w = Math.max(bar, w);
+    const raw = top * x[1] / 100; let w = Math.round(raw / 5) * 5; try { w = snapW(ex, w, 0, true) || w; } catch (e) {} if (bar) w = Math.max(bar, w);
     if (bar) { const np = v => { let side = (v - bar) / 2, c = 0; for (const q of PLATES) while (side >= q - 1e-9) { side -= q; c++; } return side > 0.01 ? 99 : c; }; // fewest plates within 5 lb of the target (e.g. 135, 185, 225)
       w = [w - 5, w, w + 5].filter(v => v >= bar && v < top).sort((a, b) => np(a) - np(b) || Math.abs(a - raw) - Math.abs(b - raw))[0] || w; }
     if (!(w > 0) || w >= top || out.some(o => o.w === w)) return;
@@ -350,7 +356,8 @@ function setsHTML(ex) {
   if (!n) return '<li class="s2 none">Skipped today.</li>';
   const name = esc(ex.canonical), t = getT();
   const st = isStretch(ex);
-  let h = '<li class="shead' + (st ? ' stretch' : '') + '"><span>SET</span><span>' + (st ? 'ANGLE' : 'WEIGHT') + '</span><span>' + (st ? 'HOLD' : 'REPS') + '</span><span></span><span>LOG</span></li>';
+  const ls = lastSession(ex);
+  let h = '<li class="shead' + (st ? ' stretch' : '') + '"><span>SET</span><span>' + (st ? 'ANGLE' : 'WEIGHT') + '</span><span>' + (st ? 'HOLD' : ex.single ? 'REPS/SIDE' : 'REPS') + '</span><span></span><span>LOG</span></li>';
   h += warmRowsHTML(ex, rs.length);
   h += rs.map((r, i) => {
     const e = st ? null : P_.e1rm(loadOf(r), repN(r));
@@ -361,7 +368,7 @@ function setsHTML(ex) {
     const hold = (r.left_reps || r.right_reps)
       ? ((st ? fmtHold(r.left_reps) : r.left_reps || '?') || '-') + ' L / ' + ((st ? fmtHold(r.right_reps) : r.right_reps || '?') || '-') + ' R'
       : (st ? (fmtHold(r.reps) || r.reps) : r.reps);
-    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div>' + (plateLine(ex, r.load) ? '<div class="s2 plt">Plates: ' + esc(plateLine(ex, r.load)) + '</div>' : '') + '<div class="s2">' + esc(bits) + (noteTxt(r) ? '<br>' + esc(noteTxt(r)) : '') + '</div></li>';
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div>' + (plateLine(ex, r.load) ? '<div class="s2 plt">Plates: ' + esc(plateLine(ex, r.load)) + '</div>' : '') + '<div class="s2">' + esc(bits) + (noteTxt(r) ? '<br>' + esc(noteTxt(r)) : '') + '</div>' + prevHTML(ls, i) + '</li>';
   }).join('');
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
@@ -379,7 +386,7 @@ function setsHTML(ex) {
       '<span></span>' +
       '<button class="lg" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' +
       (plateLine(ex, w) ? '<div class="s2 plt">Plates: ' + esc(plateLine(ex, w)) + '</div>' : '') +
-      (sg ? '<div class="s2">' + (sg.coach ? '<b class="cplan">Coach plan</b> ' : '') + (sg.est ? '<b class="est">estimate</b> ' : '') + esc(sg.coach ? sg.why.replace(/^Coach plan: /, '') : sg.why) + (ex.single ? (st ? ' · per side' : ' · reps per side') : '') + '</div>' : '') + '</li>';
+      prevHTML(ls, i) + '</li>'; // v144 (Jack, Nov 11): no estimate sentence under the row; the weight and reps already show it
   }
   return h;
 }
@@ -746,9 +753,20 @@ function applyDeletes(list) {
   if (!del.size) return list;
   return list.filter(ex => !del.has(P_.norm(slotOf(ex))) || rowsFor(ex, true).length);
 }
+// v144 rule (Jack, Nov 11, 2026): the same exercise never appears twice in one workout. A replacement that lands on an exercise the
+// workout already has is ignored (that slot shows its own exercise again); a repeat that is still left is dropped, keeping the first card.
+// Cause of the W5 Wednesday double Glute Master: a W1 rest-of-block swap Leg press -> Glute Master kept applying after Week 4 added Glute Master as its own slot.
+function noDupes(list) {
+  const key = ex => P_.norm(ex.canonical), plain = new Set(list.filter(ex => !ex.swappedFrom).map(key)), seen = new Set(), out = [];
+  list.forEach(ex => {
+    let x = ex; if (x.swappedFrom && plain.has(key(x)) && x.base) x = x.base;
+    const k = key(x); if (seen.has(k)) return; seen.add(k); out.push(x);
+  });
+  return out;
+}
 function cardsFor() {
   let added = []; try { added = addsFor().map((a, i) => { const b = addedEx(a.name, i, a.details), si = swapInfo(b); return si ? swappedEx(b, si) : b; }); } catch (e) { console.warn('adds', e); }
-  let base = baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }).concat(added); let ord = null;
+  let base = noDupes(baseCards().map(b => { const si = swapInfo(b); return si ? swappedEx(b, si) : b; }).concat(added)); let ord = null;
   try { base = applyDeletes(base); } catch (e) { console.warn('deletes', e); }
   ord = sJSON('order', dayKeyOf(), []); // v131: a null fallback made sJSON reject every saved array, so a dropped card snapped back
   if (!Array.isArray(ord) || !ord.length) return base;
@@ -826,7 +844,26 @@ function weightSteps(ex) {
   if (+gs > 0) return +gs;
   return e === 'dumbbell' ? 5 : (stepFor(ex).unit || 5);
 }
-function snapW(ex, w, dir) { // nearest real weight (ties go lighter); dir 1 = next one at or above, -1 = at or below
+// v144 (Jack, Nov 11, 2026): an odd weight he has logged on an exercise (e.g. 128 on a machine whose stack goes by 5) is a real weight for that
+// exercise, on any equipment. It is kept as is, and the usual jump from it stays valid (128 -> 133). Default steps still apply otherwise.
+function oddLoads(ex) {
+  if (!ex) return []; let rs = []; try { rs = rowsFor(ex, false).concat(rowsFor(ex, true)); } catch (e) { return []; }
+  const k = rs.length + '|' + viewId + '|' + ex.canonical; if (oddLoads.k === k && oddLoads.s === S) return oddLoads.v;
+  const st = weightSteps(ex), v = [...new Set(rs.map(r => num(r.load)).filter(x => x > 0))].filter(x => Array.isArray(st) ? !st.includes(x) : Math.abs(x / st - Math.round(x / st)) > 1e-6);
+  oddLoads.k = k; oddLoads.s = S; oddLoads.v = v; return v;
+}
+function snapW(ex, w, dir, gridOnly) {
+  if (!(w > 0)) return w;
+  const g = snapGrid(ex, w, dir); if (gridOnly) return g;
+  const odd = oddLoads(ex); if (!odd.length) return g;
+  if (odd.some(x => Math.abs(x - w) < 1e-6)) return w;
+  const st = weightSteps(ex), cand = [g].concat(odd);
+  if (!Array.isArray(st)) odd.forEach(o => { const k = (w - o) / st; [Math.floor(k), Math.ceil(k)].forEach(n => { const v = +(o + n * st).toFixed(2); if (v > 0) cand.push(v); }); });
+  const pool = dir > 0 ? cand.filter(v => v >= w - 1e-6) : dir < 0 ? cand.filter(v => v <= w + 1e-6) : cand;
+  if (!pool.length) return g;
+  return pool.sort((a, b) => Math.abs(a - w) - Math.abs(b - w) || a - b)[0];
+}
+function snapGrid(ex, w, dir) { // nearest real weight (ties go lighter); dir 1 = next one at or above, -1 = at or below
   const st = weightSteps(ex); if (!(w > 0)) return w;
   if (Array.isArray(st)) { const up = st.find(x => x >= w), dn = [...st].reverse().find(x => x <= w); if (dir > 0) return up != null ? up : st[st.length - 1]; if (dir < 0) return dn != null ? dn : st[0]; if (up == null) return dn; if (dn == null) return up; return up - w < w - dn ? up : dn; }
   const k = w / st, r = dir > 0 ? Math.ceil(k - 1e-9) : dir < 0 ? Math.floor(k + 1e-9) : Math.ceil(k - 0.5 - 1e-9);
@@ -1102,13 +1139,16 @@ function repModel(ex) {
   };
 }
 // Estimate for a load in the editor or the arrows: the model when there is history, else the planned target moved by the e1RM blend. Rough guesses carry a snapped weight that lands mid-range.
+// v144 (Jack, Nov 11, 2026): with a planned target, the estimate is anchored to it. The target's Epley/Brzycki e1RM gives the reps at the new
+// weight, so a small change moves the reps a little (lying leg curl 125 x 12 -> 128 x 11, not 9). The history model only fills in when there is no target.
 function estAt(ex, w, tw, treps) {
-  const m = repModel(ex); let o = m ? m.at(w) : null, src = 'model';
-  if (!o && tw > 0 && treps > 0) { const e = e1Of(tw, treps), r = repsFromE1(e, w); o = { reps: Math.max(2, Math.min(20, Math.round(r))), rough: w < tw * 0.85 || w > tw * 1.15 || r < 2 || r > 20 }; src = 'target'; }
+  const m = repModel(ex); let o = null, src = 'model';
+  if (tw > 0 && treps > 0) { const e = e1Of(tw, treps), r = repsFromE1(e, w); o = { reps: Math.max(2, Math.min(20, Math.round(r))), rough: w < tw * 0.85 || w > tw * 1.15 || r < 2 || r > 20 }; src = 'target'; }
+  else if (m) o = m.at(w);
   if (!o) return null;
   if (o.rough) {
-    const [lo, hi] = repRange(ex), mid = Math.round((lo + hi) / 2), e = m ? null : e1Of(tw, treps);
-    const lw = m ? m.loadFor(mid) : loadFromE1(e, mid), sw = lw > 0 ? snapW(ex, lw) : null;
+    const [lo, hi] = repRange(ex), mid = Math.round((lo + hi) / 2);
+    const lw = src === 'model' ? m.loadFor(mid) : loadFromE1(e1Of(tw, treps), mid), sw = lw > 0 ? snapW(ex, lw) : null;
     if (sw > 0 && sw !== w) o.better = { load: sw, reps: mid };
   }
   o.src = src; return o;
@@ -1521,6 +1561,7 @@ async function pickReplace(name, custom) {
   if (!rReason) { $('rreason').scrollIntoView({ block: 'center' }); msgPop('Pick a reason first: Equipment busy, Pain or Preference. Then tap Replace again.'); return; }
   const ex = rEx, b = baseOf(ex), c = catFind(name) || { name: custom ? name.replace(/^./, x => x.toUpperCase()) : name, muscles: '' }, to = c.name;
   if (P_.norm(to) === P_.norm(ex.canonical)) return toast('That is the current exercise.');
+  if (cardsFor().some(x => x !== ex && P_.norm(x.canonical) === P_.norm(to))) return msgPop(to + ' is already in this workout. The same exercise can\'t be in one workout twice, so pick a different one.');
   if (!related(c, curInfo(ex)) && !(await askBox({ title: 'Replace anyway?', body: to + (c.muscles ? ' works ' + c.muscles.toLowerCase() : ' has no muscle info') + ', not the same muscles as ' + ex.canonical + '.', ok: 'Replace' }))) return;
   const blk = blockOf(viewWeek());
   if (rScope === 'block' && !(b.types || []).includes('isolation') && !(await askBox({ title: 'Replace a main lift?', body: b.canonical + ' is a main lift, fixed for the block. Replace it with ' + to + ' for the rest of Block ' + blk + '?', ok: 'Replace' }))) return;
@@ -1595,7 +1636,7 @@ function btnLabel(ex) {
 }
 const cnClosed = () => jget('coach_cn_closed', []);
 // v121: two-line exercise names get extra header padding so they look balanced.
-function markTwo() { document.querySelectorAll('.card h2 .ttl').forEach(t => { const lh = parseFloat(getComputedStyle(t).lineHeight) || 20; t.parentNode.classList.toggle('two', t.offsetHeight > lh * 1.5); }); }
+function markTwo() { document.querySelectorAll('.card h2 .ttl .tn').forEach(t => { const lh = parseFloat(getComputedStyle(t).lineHeight) || 20; t.closest('h2').classList.toggle('two', t.offsetHeight > lh * 1.5); }); }
 window.addEventListener('resize', () => markTwo());
 // v121: Instructions box. Open by default only for a first-time exercise (no earlier sets at any gym); otherwise closed at the start of every workout. Taps are remembered for this workout only.
 const cnKey = () => 'coach_cn_wk_' + P + '_' + viewId;
@@ -1650,8 +1691,10 @@ function quoteEnd() { // v108 (Jack, Oct 27): a different quote from the same Da
   const st = quoteToday(), all = [...((S && S.program) || '').matchAll(/^- \d{4}-\d{2}-\d{2} \| (.+?) \| ?(.*)$/gm)].map(m => ({ q: m[1].trim(), a: m[2].trim() })).filter(x => !st || x.q !== st.q);
   if (!all.length) return null; const d = String((S && S.today) || '').replace(/\D/g, ''); return all[(+d || 0) % all.length];
 }
-function endQuoteShow() { const bd = bdayToday(), qt = bd ? bdayLine(BDAY_POST, bd) : quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">' + (bd ? 'Workout finished. Happy birthday, ' + esc(bd.name) + '.' : 'Workout finished. Nice work.') + '</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); }
-const tipClose = () => { $('tipw').classList.remove('open'); popLayer('tip'); };
+function endQuoteShow() { const bd = bdayToday(), qt = bd ? bdayLine(BDAY_POST, bd) : quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">' + (bd ? 'Workout finished. Happy birthday, ' + esc(bd.name) + '.' : 'Workout finished. Nice work.') + '</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); $('tipw').classList.add('open'); pushLayer('tip', () => { $('tipw').classList.remove('open'); tipConfettiOff(); });
+  if (bd) requestAnimationFrame(() => confetti($('tipc'), 8000)); } // v144: animated confetti behind the post-workout birthday window
+function tipConfettiOff() { const c = $('tipc'); if (c && !c.hidden) { if (confettiStop) confettiStop(); c.hidden = true; } }
+const tipClose = () => { $('tipw').classList.remove('open'); tipConfettiOff(); popLayer('tip'); };
 $('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw') tipClose(); });
 // v129 (Jack, Nov 2): the next exercise = the first card from the top (not after the current one) that still has unlogged sets and is not marked skipped,
 // e.g. dips passed over earlier come before the card below the one just finished. Scroll, rest bar Next, and coach tip all use this.
@@ -1686,11 +1729,10 @@ function render() {
     const n = ex.note, chips = [n.sets].concat(n.plan_txt || []).concat([n.failure, n.rest]).filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
     const tips = (ex.cue ? [ex.cue] : []).concat(n.extra.filter(x => !PRIMER_RE.test(x))).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
-    return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span><span class="ttl">' + (i + 1) + '. ' + esc(ex.canonical) + '</span>' + (ex.video ? '<a class="ico" href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer" aria-label="Demo video">' + ICO_V + '</a>' : '<span class="ico off" aria-label="No demo video">' + ICO_V + '</span>') + '<button type="button" class="ico" data-hi="' + i + '" aria-label="History">' + ICO_H + '</button>' + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
+    return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span><span class="ttl"><span class="tn">' + (i + 1) + '. ' + esc(ex.canonical) + '</span>' + (ex.muscles ? '<span class="tm">' + esc(ex.muscles) + '</span>' : '') + '</span>' + (ex.video ? '<a class="ico" href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer" aria-label="Demo video">' + ICO_V + '</a>' : '<span class="ico off" aria-label="No demo video">' + ICO_V + '</span>') + '<button type="button" class="ico" data-hi="' + i + '" aria-label="History">' + ICO_H + '</button>' + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
       (ex.swappedFrom ? '<div class="swp">Replaces ' + esc(ex.swappedFrom) + (ex.swapScope === 'block' ? ' for the rest of this block' : ' in this workout') + '</div>' : '') +
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
-      '<div class="meta">' + esc(ex.muscles || '') + '</div>' +
       '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnOpen(ex) ? ' open' : '') + '><summary><b>Instructions</b><span class="cnbtn" role="img" aria-label="' + (cnOpen(ex) ? 'Collapse instructions' : 'Expand instructions') + '"><span class="circ"><span class="chev"></span></span></span></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML((() => { const sk = ex.bodyweight || isStretch(ex) ? null : stallOf(ex); return (sk ? [{ text: stallMsg(sk), stall: true }] : []).concat(weekNotesFor(ex)); })()) +
       '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb bar)' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
       warmHTML(ex, i, cardsFor()) +
@@ -1751,7 +1793,10 @@ function wstartHTML() {
   return '<button class="btn fin wsb" id="wstartb">Start workout (warm-ups count)</button>';
 }
 // Rule 1 (intended): Start workout always pops up the first unlogged exercise's tip, even if it was seen before. Tapping Log never shows a tip.
-function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); const bd = re ? null : bdayToday(); if (bd) { bdayShow(bd, () => tipUpcoming(true, false)); return; } /* v140: birthday = confetti and a birthday line instead of the daily quote */ toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); if (!re) tipUpcoming(true, true); }
+// v144 (Jack, Nov 11, 2026): the birthday confetti and pre-workout birthday line show once per workout: on Start workout, or on the first logged set when Start was not tapped.
+const bdayKey = () => 'coach_bdshown_' + P + '_' + viewId;
+function bdayFirstLog(after) { const bd = bdayToday(); if (!bd || !isToday() || LS.getItem(bdayKey())) return false; LS.setItem(bdayKey(), '1'); let n = 0; const go = () => { if (ignorePop && n++ < 20) return setTimeout(go, 30); bdayShow(bd, after); }; go(); return true; } // waits for the set sheet's history entry to close first
+function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); const bd = re ? null : bdayToday(); if (bd) { LS.setItem(bdayKey(), '1'); bdayShow(bd, () => tipUpcoming(true, false)); return; } /* v140: birthday = confetti and a birthday line instead of the daily quote */ toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); if (!re) tipUpcoming(true, true); }
 // Reset: stop the workout and clear only this workout's logged sets (after a warning).
 function openReset() { const n = workoutRows().length; $('rstt').textContent = 'This will stop the workout' + (n ? ' and clear the ' + n + (n === 1 ? ' set' : ' sets') + ' you logged in it' : '') + '. Nothing else changes.'; $('rstw').classList.add('open'); pushLayer('rst', () => $('rstw').classList.remove('open')); }
 const closeReset = () => { if (!$('rstw').classList.contains('open')) return; $('rstw').classList.remove('open'); popLayer('rst'); };
@@ -2226,15 +2271,15 @@ const bdayLine = (list, k) => { const i = ((k.age * 7) + (list === BDAY_POST ? 3
 const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
 const qtHTML = qt => '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>';
 let confettiStop = null;
-function confetti() {
-  const c = $('bdayc'); if (!c || !c.getContext) return; if (confettiStop) confettiStop();
+function confetti(cv, ms) {
+  const c = cv || $('bdayc'); if (!c || !c.getContext) return; if (confettiStop) confettiStop(); c.hidden = false; const LIFE = ms || 5200;
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { c.style.display = 'none'; return; } // reduced motion: no animation, the card alone
   c.style.display = ''; const dpr = Math.min(2, window.devicePixelRatio || 1), W = innerWidth, H = innerHeight; c.width = W * dpr; c.height = H * dpr; const g = c.getContext('2d'); g.scale(dpr, dpr);
   const cols = ['#2ecc71', '#4da3ff', '#ffd27a', '#ff6b81', '#c39bff', '#ffffff'], N = 140, ps = [];
   for (let i = 0; i < N; i++) ps.push({ x: Math.random() * W, y: -20 - Math.random() * H * 0.6, vx: (Math.random() - 0.5) * 2.2, vy: 2 + Math.random() * 3.2, s: 5 + Math.random() * 6, r: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.3, c: cols[i % cols.length] });
   let raf = 0; const t0 = performance.now();
-  const step = t => { g.clearRect(0, 0, W, H); const fade = Math.max(0, Math.min(1, (5200 - (t - t0)) / 800));
-    ps.forEach(p => { p.x += p.vx; p.y += p.vy; p.r += p.vr; p.vy += 0.02; if (t - t0 < 3200 && p.y > H + 20) { p.y = -20; p.x = Math.random() * W; p.vy = 2 + Math.random() * 3; } g.save(); g.globalAlpha = fade; g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.c; g.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); g.restore(); });
+  const step = t => { g.clearRect(0, 0, W, H); const fade = Math.max(0, Math.min(1, (LIFE - (t - t0)) / 800));
+    ps.forEach(p => { p.x += p.vx; p.y += p.vy; p.r += p.vr; p.vy += 0.02; if (t - t0 < LIFE - 2000 && p.y > H + 20) { p.y = -20; p.x = Math.random() * W; p.vy = 2 + Math.random() * 3; } g.save(); g.globalAlpha = fade; g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.c; g.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); g.restore(); });
     if (fade > 0) raf = requestAnimationFrame(step); else g.clearRect(0, 0, W, H); };
   raf = requestAnimationFrame(step); confettiStop = () => { cancelAnimationFrame(raf); g.clearRect(0, 0, W, H); confettiStop = null; };
 }
@@ -2593,7 +2638,7 @@ function reEstimate() {
   else {
     const o = estAt(ex, nl, bl, br);
     if (!o) return;
-    const why = o.rough ? 'Rough guess, ' + nl + ' lbs is far from your logged weights.' + (o.better ? ' Try ' + o.better.load + ' lbs for about ' + o.better.reps + '.' : '') : o.src === 'model' ? 'From your recent sets.' : 'A guess from the target.';
+    const why = o.rough ? 'Rough guess, ' + nl + ' lbs is far from your logged weights.' + (o.better ? ' Try ' + o.better.load + ' lbs for about ' + o.better.reps + '.' : '') : o.src === 'model' ? 'From your recent sets.' : 'Scaled from the ' + bl + ' x ' + br + ' target.';
     formSug = { load: String(nl), reps: String(o.reps), est: true, rough: o.rough, why: 'Get ' + o.reps + '. ' + why };
   }
   if (repsTyped) { $('fsug').textContent = 'Target ' + formSug.load + ' x ' + formSug.reps + '. ' + formSug.why + ' Kept the reps you typed.'; return; }
@@ -2771,7 +2816,8 @@ $('fsave').onclick = () => {
   }
   const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical, workout: viewId }, fields);
   const before = viewRows();
-  if (!workoutRows().length && !manualStart()) jset(WSK(), { wid: viewId, ts: doneTs });
+  const firstNoStart = !workoutRows().length && !manualStart();
+  if (firstNoStart) jset(WSK(), { wid: viewId, ts: doneTs });
   enqueue({ action: 'log', date: S.today, set });
   const nt = nextTarget(ex.canonical); let t = getT();
   if (t && !t.hidden) { t.target = nt.target; t.next = nt.next; t.firstSide = false; t.hidden = !!nt.last; t.exercise = ex.canonical; setT(t); }
@@ -2779,7 +2825,9 @@ $('fsave').onclick = () => {
   $('sheet').classList.remove('open'); formEx = null; restSnap = null; LS.removeItem('coach_draft'); stopRec(); popLayer('sheet');
   if (mrmAdd && ex.added && formSetIdx === 0) mrmFill(ex, set);
   mrmAdd = false;
-  update(); feedback(ex, set, before, prevRest, t ? t.target : 120, formSug); if (nt.last) finishPrompt(); else tipNext(ex);
+  update(); feedback(ex, set, before, prevRest, t ? t.target : 120, formSug);
+  if (firstNoStart && bdayFirstLog(() => { if (nt.last) finishPrompt(); else tipNext(ex); })) return;
+  if (nt.last) finishPrompt(); else tipNext(ex);
 };
 function mrmFill(ex, set) { // set 1 is logged; add the matching sets as myo-rep match sets, then fix the planned count
   const sl = ex.base ? ex.base.canonical : ex.canonical; putSetting(sl, 'method:' + viewId, 'match');
@@ -2815,12 +2863,13 @@ function saveStretch(ex) {
     closeForm(); return;
   }
   const set = Object.assign({ set_id: uid(), client_ts: doneTs, exercise: ex.canonical, workout: viewId }, fields);
-  if (!workoutRows().length && !manualStart()) jset(WSK(), { wid: viewId, ts: doneTs });
+  const firstNoStart = !workoutRows().length && !manualStart();
+  if (firstNoStart) jset(WSK(), { wid: viewId, ts: doneTs });
   enqueue({ action: 'log', date: S.today, set });
   const nt = nextTarget(ex.canonical);
   setT({ start: Date.now(), exercise: ex.canonical, target: nt.target || 60, next: nt.next, hidden: !!nt.last });
   $('sheet').classList.remove('open'); formEx = null; restSnap = null; LS.removeItem('coach_draft'); stopRec(); popLayer('sheet');
-  update(); if (nt.last) finishPrompt();
+  update(); if (firstNoStart && bdayFirstLog(() => { if (nt.last) finishPrompt(); })) return; if (nt.last) finishPrompt();
 }
 // ---------- Feedback toasts ----------
 const JOKES = [

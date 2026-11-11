@@ -164,6 +164,7 @@ label{display:block;font-size:14px;color:var(--mut);margin:8px 0 4px}
 .ri{background:var(--card2);border-radius:10px;padding:10px 12px;margin-bottom:6px;cursor:pointer;font-size:15px}.ri a{color:var(--blue);font-weight:600;text-decoration:none}.ri .mine{color:var(--acc)}
 .warn{color:#ffd666;font-size:13px;margin-top:4px}
 #rscope button,#rreason button{font-size:14px}
+#rreason{margin-bottom:14px}#rreason button{flex:1 1 auto;white-space:nowrap;padding:0 10px;min-width:0}#rscope{margin-bottom:6px}#repl .rsrch{margin-top:12px}#rlist:empty{display:none}#rlist{margin-bottom:4px} /* v144: Why buttons no longer crowd the search box; labels stay on one line */
 .meso td.lock{opacity:.35}.meso td.unpl{border:1px dashed var(--mut)}#calw .meso{font-size:15px}#calw .meso td{width:46px;height:34px}
 #cal{color:var(--txt);display:inline-flex;align-items:center;justify-content:center}
 .calnow{text-align:center;font-weight:700;margin-bottom:6px}.calnow small{display:block;color:var(--mut);font-weight:600}
@@ -344,6 +345,16 @@ details.cn:not([open])>summary{margin-bottom:-2px}
 #bdayw .in{position:relative;background:var(--card);border:1px solid #3a4a5e;border-radius:18px;margin:0 18px;padding:22px 18px 16px;text-align:center;max-width:420px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
 #tipb p.fin{padding-right:36px}.pbrow{flex-wrap:wrap}#pbtot{flex-basis:100%}
 #bdayw .bdemo{font-size:52px;line-height:1}#bdayw h2{margin:8px 0 4px;font-size:26px}#bdayw .qt{margin:14px 0 14px;text-align:left}
+/* v144 (Jack, Nov 11): taller green header holds the number, name and target muscles; more finger room to drag */
+.card h2,.card h2.two{min-height:64px;padding:8px 4px 8px 4px;gap:4px;align-items:center;box-sizing:border-box}
+.card h2 .grip{align-self:stretch;min-height:48px;min-width:34px;font-size:22px}
+.card h2 .ttl{display:flex;flex-direction:column;justify-content:center;gap:2px;-webkit-line-clamp:unset;line-clamp:unset;overflow:visible;padding-left:6px}
+.card h2 .ttl .tn{font-size:16.7px;line-height:1.2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.card h2 .ttl .tm{font-size:13px;font-weight:500;line-height:1.25;color:rgba(234,255,242,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card h2 .ico,.card h2 .menu-btn{align-self:center}
+.last:empty{display:none}
+.sets li .s2.prev{color:var(--mut);margin-top:2px}
+#tipw .tipc{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}#tipw .in{z-index:1}
 </style>
 </head>
 <body>
@@ -502,7 +513,7 @@ details.cn:not([open])>summary{margin-bottom:-2px}
 <div id="hist"><div class="in"><button type="button" class="xc" id="hclose" aria-label="Close">&times;</button><h3 id="hh"></h3><div id="hgym" class="sub" style="margin:-4px 0 8px"></div><div id="hb"></div><button class="btn sec" id="hmore" style="display:none">Load older</button></div></div>
 <div id="gdelw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="gdelx" aria-label="Close">&times;</button><h3 id="gdelh">Delete gym?</h3><p>Are you sure? This removes the gym from your list. Sets you logged there are kept and still show the gym name in past workouts.</p><button type="button" class="btn" id="gdely" style="background:#e57373;color:#2a0b0b">Delete gym</button><button type="button" class="btn sec" id="gdeln">Cancel</button></div></div>
 <div id="msgw" role="dialog" aria-modal="true"><div class="in"><p id="msgt"></p></div></div>
-<div id="tipw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="tipx" aria-label="Close">&times;</button><h3 id="tiph"></h3><div id="tipb"></div><button type="button" class="btn" id="tipok">Got it</button></div></div>
+<div id="tipw" role="dialog" aria-modal="true"><canvas id="tipc" class="tipc" aria-hidden="true" hidden></canvas><div class="in"><button type="button" id="tipx" aria-label="Close">&times;</button><h3 id="tiph"></h3><div id="tipb"></div><button type="button" class="btn" id="tipok">Got it</button></div></div>
 <div id="gchw" role="dialog" aria-modal="true"><div class="in"><button type="button" class="xc" id="gchx" aria-label="Close">&times;</button><h3>Change gym?</h3><p>Are you sure? This changes the gym for the entire day.</p><button type="button" class="btn" id="gchy">Change gym</button><button type="button" class="btn sec" id="gchn">Cancel</button></div></div>
 <div id="gedw" role="dialog" aria-modal="true"><div class="in"><button type="button" id="gedx" aria-label="Close">&times;</button><h3 id="gedh">Gym</h3>
 <label for="gedn">Name</label><input id="gedn" maxlength="40" autocomplete="off" placeholder="e.g. Hotel gym">
@@ -539,8 +550,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=143"></script>
-<script src="exlist.js?v=143"></script>
-<script src="app.js?v=143"></script>
+<script src="parse.js?v=144"></script>
+<script src="exlist.js?v=144"></script>
+<script src="app.js?v=144"></script>
 </body>
 </html>
