@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 144; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 145; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -382,11 +382,11 @@ function setsHTML(ex) {
     const rShow = st && r ? (fmtHold(r) || r) : r;
     h += '<li class="plan' + (tb ? ' hasq' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + (tb ? '<span class="tqs">' + tb + '</span>' : '') + '</span>' +
       '<span class="val sug" data-f="w">' + esc(wShow) + '</span><span class="val sug" data-f="' + (ex.single ? 'L' : 'r') + '">' +
-        (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + (sg && sg.short ? ' <span class="tr dn" aria-label="last set came up short">&#9660;</span>' : '') + '</span>' +
+        (ex.single ? (sg && sg.repsL && !st ? '<span data-f="L">L' + esc(sg.repsL) + '</span>/<span data-f="R">R' + esc(sg.repsR) + '</span>' : '<span data-f="L">' + esc(rShow) + '</span>') : esc(rShow)) + '</span>' +
       '<span></span>' +
       '<button class="lg" data-log="' + i + '" data-ex="' + name + '" aria-label="Log this set"' + ((isNext || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' +
       (plateLine(ex, w) ? '<div class="s2 plt">Plates: ' + esc(plateLine(ex, w)) + '</div>' : '') +
-      prevHTML(ls, i) + '</li>'; // v144 (Jack, Nov 11): no estimate sentence under the row; the weight and reps already show it
+      prevHTML(ls, i) + '</li>'; // v144 (Jack, Nov 11): no estimate sentence under the row; the weight and reps already show it. v145 (Jack, Nov 12): no down-arrow on unlogged planned sets; it was unclear until after the set was logged
   }
   return h;
 }

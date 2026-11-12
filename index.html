@@ -347,7 +347,9 @@ details.cn:not([open])>summary{margin-bottom:-2px}
 #bdayw .bdemo{font-size:52px;line-height:1}#bdayw h2{margin:8px 0 4px;font-size:26px}#bdayw .qt{margin:14px 0 14px;text-align:left}
 /* v144 (Jack, Nov 11): taller green header holds the number, name and target muscles; more finger room to drag */
 .card h2,.card h2.two{min-height:64px;padding:8px 4px 8px 4px;gap:4px;align-items:center;box-sizing:border-box}
-.card h2 .grip{align-self:stretch;min-height:48px;min-width:34px;font-size:22px}
+/* v145 (Jack, Nov 12): 34px square background on the drag handle, centered in the 64px header; the grip still stretches so the drag target stays large */
+.card h2 .grip{align-self:stretch;min-height:0;width:34px;min-width:34px;font-size:22px;background:transparent;position:relative;border-radius:0}
+.card h2 .grip::before{content:"";position:absolute;left:0;top:50%;width:34px;height:34px;margin-top:-17px;background:rgba(0,0,0,.25);border-radius:6px;pointer-events:none}
 .card h2 .ttl{display:flex;flex-direction:column;justify-content:center;gap:2px;-webkit-line-clamp:unset;line-clamp:unset;overflow:visible;padding-left:6px}
 .card h2 .ttl .tn{font-size:16.7px;line-height:1.2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
 .card h2 .ttl .tm{font-size:13px;font-weight:500;line-height:1.25;color:rgba(234,255,242,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -550,8 +552,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=144"></script>
-<script src="exlist.js?v=144"></script>
-<script src="app.js?v=144"></script>
+<script src="parse.js?v=145"></script>
+<script src="exlist.js?v=145"></script>
+<script src="app.js?v=145"></script>
 </body>
 </html>
