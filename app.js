@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 145; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 146; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -774,7 +774,7 @@ function cardsFor() {
   return base.slice().sort((a, b) => pos(a) - pos(b));
 }
 const dayVal = (ex, k) => getSetting(ex.canonical, k + ':' + viewId);
-function setDayVal(ex, k, v) { putSetting(ex.canonical, k + ':' + viewId, v); sig = ''; applyState(S, false); }
+function setDayVal(ex, k, v) { putSetting(ex.canonical, k + ':' + viewId, v); sig = ''; applyState(S, false); if (k === 'skip' || k === 'extra') refreshRestFromLast(); }
 function plannedCount(ex) { const b = ex.planned_sets || 3; return Math.max(0, (isDeload(viewWeek()) ? Math.ceil(b / 2) : b) + (+dayVal(ex, 'extra') || 0) - (+dayVal(ex, 'skip') || 0)); }
 function repRange(ex) { const m = (ex.note.sets || '').match(/x\s*(\d+)(?:\s*-\s*(\d+))?/i); if (m) return [+m[1], +(m[2] || m[1])]; const p1 = ex.note.plan && ex.note.plan[1]; return p1 && p1.lo ? [p1.lo, p1.hi] : [8, 12]; }
 const LOWER = /quad|hamstring|glute|leg|calf|calves|adductor|abductor/i;
@@ -1685,17 +1685,18 @@ function tipShow(ex, force, withQuote) { // force: ignore the seen list. Both tr
   const qh = qt ? '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>' : '';
   const th = tips.length ? (qt ? '<h4 class="tiph2">Coach tip: ' + esc(ex.canonical) + '</h4>' : '') + tips.map(t => '<p>' + esc(t) + '</p>').join('') : '';
   $('tiph').textContent = qt ? '' : 'Coach tip: ' + ex.canonical; $('tiph').hidden = !!qt; $('tipb').innerHTML = qh + th;
-  $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); return true;
+  tipGuard = Date.now(); $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); return true;
 }
 function quoteEnd() { // v108 (Jack, Oct 27): a different quote from the same Daily quotes block when the workout ends
   const st = quoteToday(), all = [...((S && S.program) || '').matchAll(/^- \d{4}-\d{2}-\d{2} \| (.+?) \| ?(.*)$/gm)].map(m => ({ q: m[1].trim(), a: m[2].trim() })).filter(x => !st || x.q !== st.q);
   if (!all.length) return null; const d = String((S && S.today) || '').replace(/\D/g, ''); return all[(+d || 0) % all.length];
 }
-function endQuoteShow() { const bd = bdayToday(), qt = bd ? bdayLine(BDAY_POST, bd) : quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">' + (bd ? 'Workout finished. Happy birthday, ' + esc(bd.name) + '.' : 'Workout finished. Nice work.') + '</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); $('tipw').classList.add('open'); pushLayer('tip', () => { $('tipw').classList.remove('open'); tipConfettiOff(); });
+function endQuoteShow() { const bd = bdayToday(), qt = bd ? bdayLine(BDAY_POST, bd) : quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">' + (bd ? 'Workout finished. Happy birthday, ' + esc(bd.name) + '.' : 'Workout finished. Nice work.') + '</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); tipGuard = Date.now(); $('tipw').classList.add('open'); pushLayer('tip', () => { $('tipw').classList.remove('open'); tipConfettiOff(); });
   if (bd) requestAnimationFrame(() => confetti($('tipc'), 8000)); } // v144: animated confetti behind the post-workout birthday window
 function tipConfettiOff() { const c = $('tipc'); if (c && !c.hidden) { if (confettiStop) confettiStop(); c.hidden = true; } }
+let tipGuard = 0; // v146: ignore a leftover Start-workout tap on the backdrop so the quote stays until Jack closes it
 const tipClose = () => { $('tipw').classList.remove('open'); tipConfettiOff(); popLayer('tip'); };
-$('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw') tipClose(); });
+$('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw' && Date.now() - tipGuard > 800) tipClose(); });
 // v129 (Jack, Nov 2): the next exercise = the first card from the top (not after the current one) that still has unlogged sets and is not marked skipped,
 // e.g. dips passed over earlier come before the card below the one just finished. Scroll, rest bar Next, and coach tip all use this.
 function nextUp(cur) {
@@ -1796,7 +1797,7 @@ function wstartHTML() {
 // v144 (Jack, Nov 11, 2026): the birthday confetti and pre-workout birthday line show once per workout: on Start workout, or on the first logged set when Start was not tapped.
 const bdayKey = () => 'coach_bdshown_' + P + '_' + viewId;
 function bdayFirstLog(after) { const bd = bdayToday(); if (!bd || !isToday() || LS.getItem(bdayKey())) return false; LS.setItem(bdayKey(), '1'); let n = 0; const go = () => { if (ignorePop && n++ < 20) return setTimeout(go, 30); bdayShow(bd, after); }; go(); return true; } // waits for the set sheet's history entry to close first
-function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); const bd = re ? null : bdayToday(); if (bd) { LS.setItem(bdayKey(), '1'); bdayShow(bd, () => tipUpcoming(true, false)); return; } /* v140: birthday = confetti and a birthday line instead of the daily quote */ toast(re ? 'Workout timer restarted' : 'Workout started. Warm-ups count.', 3000); if (!re) tipUpcoming(true, true); }
+function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); const bd = re ? null : bdayToday(); if (bd) { LS.setItem(bdayKey(), '1'); bdayShow(bd, () => tipUpcoming(true, false)); return; } /* v140: birthday = confetti and a birthday line instead of the daily quote */ /* v146: no Start workout toast (Jack, Nov 13). The quote stays up until he closes it. */ if (!re) tipUpcoming(true, true); }
 // Reset: stop the workout and clear only this workout's logged sets (after a warning).
 function openReset() { const n = workoutRows().length; $('rstt').textContent = 'This will stop the workout' + (n ? ' and clear the ' + n + (n === 1 ? ' set' : ' sets') + ' you logged in it' : '') + '. Nothing else changes.'; $('rstw').classList.add('open'); pushLayer('rst', () => $('rstw').classList.remove('open')); }
 const closeReset = () => { if (!$('rstw').classList.contains('open')) return; $('rstw').classList.remove('open'); popLayer('rst'); };
@@ -2286,11 +2287,11 @@ function confetti(cv, ms) {
 let bdayAfter = null;
 function bdayShow(k, after) {
   bdayAfter = after || null; $('bdayh').textContent = 'Happy birthday, ' + k.name + '!'; $('bdays').textContent = ordinal(k.age) + ' birthday. Your workout timer is running.';
-  $('bdayq').innerHTML = qtHTML(bdayLine(BDAY_PRE, k)); $('bdayw').classList.add('open'); pushLayer('bday', () => { $('bdayw').classList.remove('open'); if (confettiStop) confettiStop(); });
+  $('bdayq').innerHTML = qtHTML(bdayLine(BDAY_PRE, k)); tipGuard = Date.now(); $('bdayw').classList.add('open'); pushLayer('bday', () => { $('bdayw').classList.remove('open'); if (confettiStop) confettiStop(); });
   confetti(); setTimeout(() => { try { $('bdayok').focus({ preventScroll: true }); } catch (e) {} }, 50);
 }
 const bdayClose = () => { if (!$('bdayw').classList.contains('open')) return; $('bdayw').classList.remove('open'); if (confettiStop) confettiStop(); popLayer('bday'); const f = bdayAfter; bdayAfter = null; if (f) setTimeout(f, 250); };
-$('bdayok').onclick = bdayClose; $('bdayw').addEventListener('click', e => { if (e.target.id === 'bdayw') bdayClose(); });
+$('bdayok').onclick = bdayClose; $('bdayw').addEventListener('click', e => { if (e.target.id === 'bdayw' && Date.now() - tipGuard > 800) bdayClose(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('bdayw').classList.contains('open')) bdayClose(); });
 if (testOn()) window.__coachB = { bdayFacts, todayNY, profiles, bdayToday, openProfile, openProfiles, endQuoteShow: () => endQuoteShow(), quoteEnd: () => quoteEnd() };
 profSelRender();
@@ -2388,8 +2389,12 @@ $('gdeln').onclick = gdelClose; $('gdelx').onclick = gdelClose;
 $('gdely').onclick = () => { const g = gymById(gEdit); gdelClose(); if (!g || g.id === 'home') return; const nm = gymNames(); nm[g.id] = g.name; putJSON('profile', 'gym_names', nm, { what: 'gym names' }); saveGyms(gymList().filter(x => x.id !== g.id)); if (getSetting('profile', 'gym_last') === g.id) putSetting('profile', 'gym_last', 'home'); gedClose(); gymsRender(); sig = ''; toast(g.name + ' deleted. Its logged sets are kept.'); };
 
 // ---------- Rest timer ----------
-// Target depends on what comes next: same muscle = that exercise's normal rest, different muscle = 75 s.
-const SWITCH_REST = 75;
+// Target depends on what comes next: same muscle = the longer of the two exercises' set rests,
+// different muscle = 90 s. Never under 60 s (time to walk to and set up the next machine).
+// v146: nextTarget used to call cardsFor() twice and compare objects with indexOf, so the
+// switch-rest branch never ran (Jack still got 2 min after a cable row before laterals).
+const SWITCH_REST = 90;
+const MIN_REST = 60;
 const TKEY = () => 'coach_timer_' + P;
 const getT = () => jget(TKEY(), null);
 function setT(t) { if (t) jset(TKEY(), t); else LS.removeItem(TKEY()); tick(); markActive(); restNotify(t); }
@@ -2421,15 +2426,27 @@ function restNotify(t) {
   } catch (e) {}
 }
 function nextTarget(name) {
-  const ex = exFor(name); if (!ex) return { target: 120, next: '' };
+  const list = cardsFor(), n = P_.norm(name);
+  const ex = list.find(x => keysOf(x).has(n)) || exFor(name); if (!ex) return { target: 120, next: '' };
   const normal = ex.note.rest_target_sec || 120;
-  const list = cardsFor(), idx = list.indexOf(ex);
+  const idx = list.findIndex(x => P_.norm(x.canonical) === P_.norm(ex.canonical));
   const done = idx >= 0 ? rowsFor(ex, true).length : 0;
-  if (idx < 0 || done < plannedCount(ex)) return { target: normal, next: idx < 0 ? '' : 'next: ' + ex.canonical + ' set ' + (done + 1) };
+  if (idx < 0 || done < plannedCount(ex)) return { target: Math.max(MIN_REST, normal), next: idx < 0 ? '' : 'next: ' + ex.canonical + ' set ' + (done + 1) };
   const nx = nextUp(ex);
   if (!nx) return { target: normal, next: 'last exercise done', last: true }; // v86: no rest timer after the final set; Finish workout is offered instead
-  if (nx.rest_muscle && nx.rest_muscle === ex.rest_muscle) return { target: nx.note.rest_target_sec || normal, next: 'next: ' + nx.canonical + ' (same muscle)' };
-  return { target: SWITCH_REST, next: 'next: ' + nx.canonical + ' (new muscle)' };
+  if (nx.rest_muscle && nx.rest_muscle === ex.rest_muscle) {
+    const t = Math.max(normal, nx.note.rest_target_sec || normal);
+    return { target: Math.max(MIN_REST, t), next: 'next: ' + nx.canonical + ' (same muscle)' };
+  }
+  return { target: Math.max(MIN_REST, SWITCH_REST), next: 'next: ' + nx.canonical + ' (new muscle)' };
+}
+function refreshRestFromLast() { // v146: if Jack skips the remaining sets, retarget rest for the next exercise
+  const t = getT(); if (!t || t.hidden || t.firstSide) return;
+  const last = recentLast(); if (!last) return;
+  const nt = nextTarget(last.exercise);
+  if (t.target !== nt.target || t.next !== nt.next || !!t.hidden !== !!nt.last) {
+    t.target = nt.target; t.next = nt.next; t.hidden = !!nt.last; t.exercise = last.exercise; setT(t);
+  }
 }
 const TIMER_MAX = 3600 * 1000; // older than 60 min: no rest timer
 function recentLast() {
