@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 146; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 147; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -699,13 +699,21 @@ function catalog() { // his library first, then the built-in list, then his own 
   return out;
 }
 function catFind(name) { const n = P_.norm(name); return catalog().find(c => P_.norm(c.name) === n || (c.aliases || []).some(a => P_.norm(a) === n)) || null; }
+// v147: a replacement can keep its own rest from the library cue or setup (Cable Preacher Curl is Rest 2 min)
+// instead of the inherited slot rest.
+function libRestOf(name) {
+  const e = P_.lookup(LIB, name); if (!e) return null;
+  const n = P_.parseNote([e.setup, e.cue].filter(Boolean).join('. '));
+  return n.rest_target_sec ? n : null;
+}
 function swappedEx(base, si) {
   const k = viewId + '|' + base.canonical + '|' + si.to;
   if (swapMemo[k]) return swapMemo[k];
   // v113: the replacement keeps only the slot's set count, effort and rest. Per-arm wording, weights, cues and tips belong to the old exercise.
   const SIDE_RE = /\s*\b(per (arm|leg|side|hand)|each (arm|leg|side)|(single|one)[ -](arm|leg|hand)(ed)?)\b/gi;
   const bn = base.note || {}, sets = String(bn.sets || '').replace(SIDE_RE, '').replace(/\s+at\s+[\d.]+\s*(lbs?|pounds?)?\b.*$/i, '').trim();
-  const det = [sets, bn.failure || '', bn.rest || ''].filter(Boolean).join('. ').replace(SIDE_RE, '');
+  const own = libRestOf(si.to), rest = (own && own.rest) || bn.rest || '';
+  const det = [sets, bn.failure || '', rest].filter(Boolean).join('. ').replace(SIDE_RE, '');
   const d = oneArmDays(P_.enrich({ x: { exercises: [{ n: base.n, name: si.to, full_name: si.to, details: det, note: P_.parseNote(det) }] } }, LIB)), ex = d.x.exercises[0];
   const c = catFind(si.to);
   if (c && !ex.muscles) { ex.canonical = c.name; ex.muscles = c.muscles; ex.rest_muscle = c.rest_muscle; ex.types = c.types; ex.equip = c.equip; ex.match_keys = [P_.norm(c.name)].concat((c.aliases || []).map(P_.norm)); ex.video = c.video || ''; }
@@ -1319,7 +1327,7 @@ function closeMenu(keepHistory) { $('menu').classList.remove('open'); if (!keepH
 $('menu').addEventListener('click', e => { if (e.target.id === 'menu') closeMenu(); });
 $('madd').onclick = () => { const ex = menuEx; closeMenu(); setDayVal(ex, 'extra', String((+dayVal(ex, 'extra') || 0) + 1)); };
 $('mskip').onclick = () => {
-  if (+dayVal(menuEx, 'skip') > 0) { const ex = menuEx; closeMenu(); setDayVal(ex, 'skip', ''); toast('Skipped sets restored'); return; }
+  if (+dayVal(menuEx, 'skip') > 0) { const ex = menuEx; closeMenu(); setDayVal(ex, 'skip', ''); return; }
   const ex = menuEx, left = plannedCount(ex) - rowsFor(ex, true).length; closeMenu();
   if (left <= 0) return toast('No sets left to skip');
   setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + left));
@@ -1329,7 +1337,7 @@ $('mdset').onclick = () => { // removes one unlogged planned set; logged sets ar
   if (left <= 0) return msgPop('No unlogged sets left. To delete a logged set, tap it and use Delete.');
   removePlanned(ex.canonical);
 };
-$('mnote').onclick = async () => { const ex = menuEx; closeMenu(); const v = await askBox({ title: 'Note for today', body: ex.canonical, input: 'How it went, machine taken, etc.', value: dayVal(ex, 'note') || '', ok: 'Save' }); if (v != null) { setDayVal(ex, 'note', v.trim()); toast('Note saved'); } };
+$('mnote').onclick = async () => { const ex = menuEx; closeMenu(); const v = await askBox({ title: 'Note for today', body: ex.canonical, input: 'How it went, machine taken, etc.', value: dayVal(ex, 'note') || '', ok: 'Save' }); if (v != null) { setDayVal(ex, 'note', v.trim()); } };
 $('mpainb').onclick = async () => {
   const ex = menuEx; closeMenu(); const cur = dayVal(ex, 'pain') || 'none';
   // v119: a tap highlights and saves the level; the window stays open until the X or an outside tap
@@ -1344,7 +1352,6 @@ $('mmatch').onclick = async () => {
     if (sc === 'block') { putSetting(sl, 'bmethod:B' + blk, JSON.stringify({ v, from: viewId })); if (getSetting(sl, 'method:' + viewId)) putSetting(sl, 'method:' + viewId, ''); }
     else putSetting(sl, 'method:' + viewId, v);
     sig = ''; applyState(S, false);
-    toast((v === 'match' ? 'Myo-rep match on' : 'Myo-rep match off, normal sets') + (sc === 'block' ? ' for the rest of Block ' + blk : ' for this workout'));
   } catch (e) { toast('Could not set the method: ' + (e && e.message || e)); }
 };
 $('mdel').onclick = () => { const ex = menuEx; closeMenu(); if (ex) removeEx(ex); };
@@ -1358,7 +1365,7 @@ function pickGym(id, sure) {
   if (started && !sure) { gymAsk = id; $('gchw').classList.add('open'); pushLayer('gch', () => { $('gchw').classList.remove('open'); render(); }); return; }
   putSetting('profile', 'gym_day:' + (viewId || todayWid()), id); putSetting('profile', 'gym_last', id);
   if (started) retagDay(id);
-  sig = ''; applyState(S, false); const g = gymById(id); toast((viewId && viewId !== todayWid() ? 'Gym for this workout: ' : 'Gym today: ') + (g ? g.name : 'home gym'), 4000);
+  sig = ''; applyState(S, false);
 }
 let gymAsk = null;
 function retagDay(id) { // the whole day moves to the new gym: rewrite the gym tag on today's logged sets
@@ -1502,7 +1509,7 @@ function addMany(items) {
     if (!added.length) return toast('Already in this workout.');
     if (!putJSON('adds', k, list, { what: 'added exercises' })) return;
     closeRepl(); swapMemo = {}; sig = ''; applyState(S, true);
-    toast(unknown.length ? "Added it for now. I'll look it up and add the info, like a demo, later." : 'Added ' + (added.length === 1 ? added[0] : added.length + ' exercises') + (rScope === 'block' ? ' for the rest of Block ' + blockOf(viewWeek()) : ' to this workout'), unknown.length ? 7000 : 5000);
+    if (unknown.length) toast("Added it for now. I'll look it up and add the info, like a demo, later.", 7000);
   } catch (e) { closeRepl(); toast('Could not add: ' + (e && e.message || e), 6000); }
 }
 function pickAdd(name, custom) {
@@ -1513,7 +1520,7 @@ function pickAdd(name, custom) {
     if (!putJSON('adds', k, list, { what: 'added exercises' })) return;
     if (!c) putSetting('pending_exercises', P_.norm(to), JSON.stringify({ name: to, at: new Date().toISOString(), wid: viewId, added: true, scope: rScope }));
     closeRepl(); swapMemo = {}; sig = ''; applyState(S, true);
-    toast(!c ? "Added it for now. I'll look it up and add the info, like a demo, later." : 'Added ' + to + (rScope === 'block' ? ' for the rest of Block ' + blockOf(viewWeek()) : ' to this workout'), !c ? 7000 : 5000);
+    if (!c) toast("Added it for now. I'll look it up and add the info, like a demo, later.", 7000);
   } catch (e) { closeRepl(); toast('Could not add: ' + (e && e.message || e), 6000); }
 }
 function openReplace(ex) {
@@ -1573,7 +1580,7 @@ async function pickReplace(name, custom) {
     if (unknown) putSetting('pending_exercises', P_.norm(to), JSON.stringify({ name: to, at: new Date().toISOString(), wid: viewId, replaced: b.canonical, scope: rScope, reason: rReason }));
   } catch (e) { closeRepl(); toast('Could not replace: ' + (e && e.message || e), 6000); return; }
   closeRepl();
-  toast(unknown ? "Replaced it for now. I'll look it up and add the info, like a demo, later." : 'Replaced with ' + to + (rScope === 'block' ? ' for the rest of Block ' + blk : ' for this workout'), unknown ? 7000 : 5000);
+  if (unknown) toast("Replaced it for now. I'll look it up and add the info, like a demo, later.", 7000);
 }
 function applySwap(b, to, scope, reason, was, custom) {
   const blk = blockOf(viewWeek()), back = P_.norm(to) === P_.norm(b.canonical);
@@ -1587,7 +1594,7 @@ $('rundo').onclick = async () => {
   if (ex.swapScope === 'workout') { putSetting(b.canonical, 'swap:' + viewId, ''); if (swapInfo(b)) putSetting(b.canonical, 'swap:' + viewId, b.canonical); }
   else { if (!(await askBox({ title: 'Go back?', body: 'Go back to ' + b.canonical + ' for the rest of Block ' + blockOf(viewWeek()) + '?', ok: 'Go back' }))) return; const v = sJSON(b.canonical, 'bswap:B' + blockOf(viewWeek()), {}); putSetting(b.canonical, 'bswap:B' + blockOf(viewWeek()), v.from === viewId ? '' : JSON.stringify({ to: b.canonical, from: viewId })); }
   putJSON('swaps', 's' + Date.now().toString(36), ({ at: new Date().toISOString(), wid: viewId, block: blockOf(viewWeek()), from: b.canonical, was: ex.canonical, to: b.canonical, scope: ex.swapScope, reason: 'undo' }));
-  closeRepl(); swapMemo = {}; sig = ''; applyState(S, true); toast('Back to ' + b.canonical);
+  closeRepl(); swapMemo = {}; sig = ''; applyState(S, true);
 };
 function histLine(rs) { // RP style: '160 lbs x 12, 12, 7' or '190 x 11, 180 x 8, 8 +1D'
   const ld = r => String(r.total_load || r.load || ''), rp = r => (r.left_reps || r.right_reps) ? (r.left_reps || '-') + '/' + (r.right_reps || '-') : String(r.reps || '');
@@ -1649,7 +1656,7 @@ function everDone(ex) {
 }
 function gymBind(main) {
   const sel = main.querySelector('#gymsel'); if (sel) sel.onchange = () => pickGym(sel.value);
-  const gi = main.querySelector('#goalin'); if (gi) gi.onchange = () => { putSetting('profile', 'goal:' + viewId, gi.value.trim()); toast('Goal saved', 2500); };
+  const gi = main.querySelector('#goalin'); if (gi) gi.onchange = () => { putSetting('profile', 'goal:' + viewId, gi.value.trim()); };
 }
 // Message-only pop-up (tap anywhere to close).
 function msgPop(m) { $('msgt').textContent = m; $('msgw').classList.add('open'); pushLayer('msg', () => $('msgw').classList.remove('open')); }
@@ -1810,7 +1817,6 @@ function doReset() {
   q = q.filter(x => !((x.action === 'log' && ids.has(x.set.set_id)) || (x.action === 'edit' && ids.has(x.set_id)))); setQ(q);
   ids.forEach(id => { if (!pend.has(id)) enqueue({ action: 'undo', set_id: id }); });
   LS.removeItem(WSK()); setT(null); sig = ''; applyState(S, true);
-  toast('Workout reset' + (ids.size ? '. Cleared ' + ids.size + (ids.size === 1 ? ' set.' : ' sets.') : '.'), 4000);
 }
 function updWstart() { const z = $('wstart'); if (!z) return; const h = wstartHTML(); if (z.innerHTML.replace(/<b id="wstt">[^<]*<\/b>/, '<b id="wstt"></b>') !== h) z.innerHTML = h; tickDur(); }
 const NY = 'America/New_York';
@@ -1863,7 +1869,7 @@ async function skipWorkout() {
   if (!(await askBox({ title: 'Skip ' + wLabel(viewId) + '?', body: n ? 'The ' + n + (n === 1 ? ' set' : ' sets') + ' you logged stay in your log, and the workout is marked skipped (not finished). The next workout becomes available.' : 'The next workout becomes available.', ok: 'Skip workout' }))) return;
   enqueue({ action: 'finish', session: { session_id: uid(), client_ts: Date.now(), date: S.today, day: viewId, sets: String(n), exercises: String(new Set(rs.map(r => P_.norm(r.exercise))).size), notes: n ? 'skipped (partial, ' + n + ' sets kept)' : 'skipped' } });
   LS.removeItem(WSK()); const t = getT(); if (t && n) { t.hidden = true; setT(t); }
-  setView(loggableId() || viewId); sig = ''; applyState(S, true); window.scrollTo(0, 0); toast('Workout skipped');
+  setView(loggableId() || viewId); sig = ''; applyState(S, true); window.scrollTo(0, 0);
 }
 function weekBoxHTML(ns, day) {
   if (!ns || !ns.length) return '';
@@ -1873,7 +1879,7 @@ async function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
   const v = await askBox({ title: 'Equipment setup', ok: 'Save', value: cur || '', input: 'Seat, pins, angle', body: ex.canonical + (plateT(ex) ? ' (seat, pins, angle; bar weight like "45 lb bar" sets plate math, now ' + barWeight(ex) + ' lb):' : ' (seat, pins, bench angle):') });
   if (v == null) return;
-  putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; toast('Setup saved'); if (plateT(ex)) render();
+  putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; if (plateT(ex)) render();
 }
 function applyState(st, initial) {
   if (st && st.profile && st.profile !== P) return; // v142: never show or sync another profile's data
@@ -2121,7 +2127,6 @@ function doDelete(ex, scope) {
     if (!putJSON('deletes', delKey(slotOf(ex), only), ent, { what: 'removal' })) return; // the row is new or replaces the same removal; the legacy list cell is never overwritten
     if (!jsonRecover(getSetting('deletes', delPrefix())).ok) console.warn('legacy removals cell is damaged; complete entries recovered');
     swapMemo = {}; sig = ''; applyState(S, true);
-    toast('Removed ' + ex.canonical + (scope === 'workout' ? ' from this workout' : ' for the rest of Block ' + blockOf(viewWeek())) + (rowsFor(ex, true).length ? '. Its logged sets today stay on the card.' : ''), 6000);
   } catch (e) { toast('Could not delete: ' + (e && e.message || e), 6000); }
 }
 const closeWm = () => { $('wmw').classList.remove('open'); popLayer('wm'); };
@@ -2235,12 +2240,12 @@ function saveProfile(use) {
     if (x.id === P) { putSetting('profile', 'name', name); putSetting('profile', 'birthday', b); }
     else if (!testOn()) { enqueue({ action: 'setting', profile: x.id, scope: 'profile', key: 'name', value: name }); enqueue({ action: 'setting', profile: x.id, scope: 'profile', key: 'birthday', value: b }); }
   }
-  closeProfile(); profListRender(); profSelRender(); toast('Profile saved');
+  closeProfile(); profListRender(); profSelRender();
   if (use) { closeProfiles(); if (layerOpen('settings')) hideSettings(); switchProfile(x.id); } else if (x.id === P && S) { sig = ''; render(); }
 }
 function deleteProfile() {
   if (!pEdit || !isLocalProfile(pEdit)) return; const id = pEdit; saveProfiles(profiles().filter(x => x.id !== id)); closeProfile(); profListRender();
-  if (P === id) switchProfile('jack'); else profSelRender(); toast('Profile deleted');
+  if (P === id) switchProfile('jack'); else profSelRender();
 }
 $('pedb').addEventListener('input', pedUpd); $('pedb').addEventListener('change', pedUpd);
 $('peds').onclick = () => saveProfile(false); $('pedu').onclick = () => saveProfile(true); $('pedd').onclick = deleteProfile; $('pedc').onclick = closeProfile; $('pedx').onclick = closeProfile;
@@ -2308,12 +2313,12 @@ function showSettings(msg) {
 }
 $('gear').onclick = () => showSettings();
 function phaseRender() { const c = phase(); $('sphase').querySelectorAll('[data-ph]').forEach(b => { b.classList.toggle('on', b.dataset.ph === c); b.setAttribute('aria-pressed', b.dataset.ph === c ? 'true' : 'false'); }); }
-$('sphase').onclick = e => { const b = e.target.closest('[data-ph]'); if (!b || !S || b.dataset.ph === phase()) return; putSetting('profile', 'phase', b.dataset.ph); phaseRender(); flush(); toast('Training phase: ' + PHASES[b.dataset.ph].name); };
+$('sphase').onclick = e => { const b = e.target.closest('[data-ph]'); if (!b || !S || b.dataset.ph === phase()) return; putSetting('profile', 'phase', b.dataset.ph); phaseRender(); flush(); };
 $('stest').onchange = async e => {
-  if (e.target.checked) { LS.setItem('coach_test', '1'); toast('Test mode on'); }
+  if (e.target.checked) { LS.setItem('coach_test', '1'); }
   else {
     if (!(await askBox({ title: 'Turn off test mode?', body: 'All test sets are discarded.', ok: 'Turn off', danger: true }))) { e.target.checked = true; return; }
-    LS.removeItem('coach_test'); LS.removeItem('coach_testq'); LS.removeItem('coach_settings_test_' + P); LS.removeItem('coach_wstart_test_' + P); LS.removeItem(TKEY()); setRQ(getRQ().filter(x => !x.test)); toast('Test mode off, test data discarded');
+    LS.removeItem('coach_test'); LS.removeItem('coach_testq'); LS.removeItem('coach_settings_test_' + P); LS.removeItem('coach_wstart_test_' + P); LS.removeItem(TKEY()); setRQ(getRQ().filter(x => !x.test));
   }
   sig = ''; if (S) { hideSettings(); applyState(S, true); }
 };
@@ -2326,7 +2331,7 @@ $('ssave').onclick = async () => {
     const p = P, st = await apiGet(p); if (!st.ok) { $('smsg').textContent = 'Backend said: ' + st.error; return; } if (p !== P) return;
     jset('coach_cache_' + P, st); sig = ''; S = null; firstRender = true; popLayer('settings'); applyState(st, true);
     if (bw > 0 && bw !== bodyweight()) { putSetting('profile', 'bodyweight', String(bw)); putSetting('profile', 'bodyweight_src', 'manual'); putSetting('profile', 'bodyweight_date', S.today || new Date().toISOString().slice(0, 10)); }
-    sig = ''; applyState(S, false); toast('Connected'); flush();
+    sig = ''; applyState(S, false); flush();
   }
   catch (e) { $('smsg').textContent = 'Could not reach it: ' + e.message; }
 };
@@ -2381,12 +2386,12 @@ $('gedx').onclick = () => { gPickFor = null; gedClose(); }; $('gedc').onclick = 
 $('geds').onclick = () => {
   const n = $('gedn').value.trim().replace(/[\[\]|]/g, '').slice(0, 40); if (!n) { $('gedn').focus(); return; }
   const gl = gymList(), nid = gl.some(g => g.id === 'home') ? 'g' + Date.now().toString(36) : 'home'; if (gEdit) { const g = gl.find(x => x.id === gEdit); if (g) { g.name = n; g.icon = gIcon; } } else gl.push({ id: nid, name: n, icon: gIcon });
-  saveGyms(gl); gedClose(); gymsRender(); sig = ''; if (!gEdit && gPickFor && gPickFor === viewId) setWorkoutGym(nid); gPickFor = null; toast(gEdit ? 'Gym saved' : n + ' created', 3000);
+  saveGyms(gl); gedClose(); gymsRender(); sig = ''; if (!gEdit && gPickFor && gPickFor === viewId) setWorkoutGym(nid); gPickFor = null;
 };
 $('gedd').onclick = () => { const g = gymById(gEdit); if (!g) return; $('gdelh').textContent = 'Delete ' + g.name + '?'; $('gdelw').classList.add('open'); pushLayer('gdel', () => $('gdelw').classList.remove('open')); };
 const gdelClose = () => { $('gdelw').classList.remove('open'); popLayer('gdel'); };
 $('gdeln').onclick = gdelClose; $('gdelx').onclick = gdelClose;
-$('gdely').onclick = () => { const g = gymById(gEdit); gdelClose(); if (!g || g.id === 'home') return; const nm = gymNames(); nm[g.id] = g.name; putJSON('profile', 'gym_names', nm, { what: 'gym names' }); saveGyms(gymList().filter(x => x.id !== g.id)); if (getSetting('profile', 'gym_last') === g.id) putSetting('profile', 'gym_last', 'home'); gedClose(); gymsRender(); sig = ''; toast(g.name + ' deleted. Its logged sets are kept.'); };
+$('gdely').onclick = () => { const g = gymById(gEdit); gdelClose(); if (!g || g.id === 'home') return; const nm = gymNames(); nm[g.id] = g.name; putJSON('profile', 'gym_names', nm, { what: 'gym names' }); saveGyms(gymList().filter(x => x.id !== g.id)); if (getSetting('profile', 'gym_last') === g.id) putSetting('profile', 'gym_last', 'home'); gedClose(); gymsRender(); sig = ''; };
 
 // ---------- Rest timer ----------
 // Target depends on what comes next: same muscle = the longer of the two exercises' set rests,
@@ -2549,7 +2554,7 @@ function miniUI() { const ex = formEx, work = !!ex && !isStretch(ex) && warmNext
 // v80: myo-rep match offers. Programmed exercise: 'Make this a myo-rep match' on set 1 only while nothing is logged for it today.
 // Added (non-programmed) exercise: 'Set as myo-rep match' on set 1, then how many matching sets followed; they are filled in on save.
 let mrmAdd = false, mrmN = 2;
-$('fmrmb').onclick = () => { const ex = formEx; if (!ex) return; const sl = ex.base ? ex.base.canonical : ex.canonical; putSetting(sl, 'method:' + viewId, 'match'); sig = ''; toast('Myo-rep match on. Set 1 is a normal set; later sets match its reps.', 5000); miniUI(); };
+$('fmrmb').onclick = () => { const ex = formEx; if (!ex) return; const sl = ex.base ? ex.base.canonical : ex.canonical; putSetting(sl, 'method:' + viewId, 'match'); sig = ''; miniUI(); };
 $('fmrmc').onchange = e => { mrmAdd = e.target.checked; mrmUI(); };
 $('fmrmm').onclick = () => { mrmN = Math.max(1, mrmN - 1); mrmUI(); }; $('fmrmp').onclick = () => { mrmN = Math.min(6, mrmN + 1); mrmUI(); };
 function mrmUI() {
@@ -2852,7 +2857,7 @@ function mrmFill(ex, set) { // set 1 is logged; add the matching sets as myo-rep
   const want = 1 + mrmN, planned = plannedCount(ex);
   if (planned > want) setDayVal(ex, 'skip', String((+dayVal(ex, 'skip') || 0) + planned - want)); // extra planned rows go away
   else if (want > planned) setDayVal(ex, 'extra', String((+dayVal(ex, 'extra') || 0) + want - planned));
-  toast('Myo-rep match: set 1 plus ' + mrmN + ' matching ' + (mrmN === 1 ? 'set' : 'sets') + ' saved. Edit any of them if the reps differ.');
+  /* v147: no confirmation toast after filling myo-rep match sets */
 }
 
 function saveStretch(ex) {
