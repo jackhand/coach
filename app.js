@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 147; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 148; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -55,6 +55,7 @@ function askOpen(o, res) {
     $('asky').textContent = o.ok || 'OK'; $('askn').textContent = o.cancel || 'Cancel'; $('asky').classList.toggle('dng', !!o.danger);
     const fin = v => { if (done) return; done = true; w.classList.remove('open'); popLayer('ask'); res(v); };
     $('asky').onclick = () => fin(inp.hidden ? true : inp.value); $('askn').onclick = $('askx').onclick = () => fin(inp.hidden ? false : null);
+    w.onclick = o.outside ? (e => { if (e.target === w) fin(inp.hidden ? false : null); }) : null; // v148: tapping outside the window cancels (when asked)
     w.classList.add('open'); pushLayer('ask', () => { if (!done) { done = true; w.classList.remove('open'); res(inp.hidden ? false : null); } });
     if (!inp.hidden) setTimeout(() => inp.focus({ preventScroll: true }), 50);
   }
@@ -319,13 +320,15 @@ function pctWarm(ex) {
   let top = 0; try { const sg = suggest(ex, 0); top = num(sg && sg.load); } catch (e) {}
   if (!top) { const pl = ex.note && ex.note.plan && ex.note.plan[1]; top = (pl && +pl.load) || 0; }
   if (!(top > 0)) return null;
-  const bar = plateT(ex) ? barWeight(ex) : 0, out = [];
-  it.forEach(x => {
+  const bar = plateT(ex) ? barWeight(ex) : 0, out = [], dl = dlNow();
+  // v148 (Jack, Nov 16): a deload ramp is 2 short sets, the first step and one about 70% step for 3, with no heavy 88% or 95% steps.
+  let use = it; if (dl) { use = it.filter(x => +x[1] <= 80); if (use.length > 2) use = [use[0], use[use.length - 1]]; }
+  use.forEach((x, j) => {
     const raw = top * x[1] / 100; let w = Math.round(raw / 5) * 5; try { w = snapW(ex, w, 0, true) || w; } catch (e) {} if (bar) w = Math.max(bar, w);
     if (bar) { const np = v => { let side = (v - bar) / 2, c = 0; for (const q of PLATES) while (side >= q - 1e-9) { side -= q; c++; } return side > 0.01 ? 99 : c; }; // fewest plates within 5 lb of the target (e.g. 135, 185, 225)
       w = [w - 5, w, w + 5].filter(v => v >= bar && v < top).sort((a, b) => np(a) - np(b) || Math.abs(a - raw) - Math.abs(b - raw))[0] || w; }
     if (!(w > 0) || w >= top || out.some(o => o.w === w)) return;
-    const lo = +x[2], hi = x[3] ? +x[3] : lo; out.push({ w, n: hi, nTxt: hi > lo ? lo + '-' + hi : String(lo), pct: +x[1], cue: x[4] ? x[4].trim().replace(/^./, c => c.toUpperCase()) + '.' : '' });
+    let lo = +x[2], hi = x[3] ? +x[3] : lo; if (dl && j > 0) { lo = Math.min(lo, 3); hi = Math.min(hi, 3); } out.push({ w, n: hi, nTxt: hi > lo ? lo + '-' + hi : String(lo), pct: +x[1], cue: x[4] ? x[4].trim().replace(/^./, c => c.toUpperCase()) + '.' : '' });
   });
   return out.length ? out : null;
 }
@@ -338,17 +341,35 @@ const primeDone = ex => jget(primeKey(ex), []);
 // v137: a primer item named like a library exercise ('45-degree back extensions: 1-2 x 10-12') gets that exercise's demo video.
 function primerVideo(t) { const nm = String(t).split(':')[0].trim(); if (!nm || nm === t) return ''; try { const c = catFind(nm) || catFind(nm.replace(/s$/i, '')) || catFind(nm.replace(/es$/i, '')); return (c && c.video) || ''; } catch (e) { return ''; } }
 // All warm-ups for the exercise sit in one gold 'Warm-up' group above the numbered working sets.
+// v148 (Jack, Nov 16): warm-up slots. A planned warm-up logged as a working set marks its slot as used ('Logged as working set N'),
+// and the rest of the ramp stays visible after a working set exists. Each slot keeps its own draft, so an edited weight survives Cancel.
+const wuseKey = ex => 'coach_wuse_' + P + '_' + viewId + '_' + P_.norm(ex.canonical);
+const wDraftKey = (ex, k) => viewId + '|' + ex.canonical + '|w' + k;
+function warmSlots(ex) {
+  const plan = coachWarm(ex), done = warmRowsToday(ex), work = rowsFor(ex, true), ids = new Set(work.map(r => r.set_id)), used = {};
+  Object.entries(jget(wuseKey(ex), {})).forEach(([k, sid]) => { if (ids.has(sid) && +k < plan.length) used[+k] = sid; });
+  const free = plan.map((_, k) => k).filter(k => used[k] == null), bySlot = {};
+  done.forEach((r, j) => { if (j < free.length) bySlot[free[j]] = r; });
+  return { plan, done, used, bySlot, left: free.filter(k => !bySlot[k]), extra: done.slice(free.length), work };
+}
+const delBtn = r => '<button type="button" class="sdel" data-del="' + esc(r.set_id) + '" aria-label="Delete this set">&times;</button>';
+// All warm-ups for the exercise sit in one gold 'Warm-up' group above the numbered working sets.
 function warmRowsHTML(ex, worked) {
-  const done = warmRowsToday(ex), plan = coachWarm(ex), name = esc(ex.canonical), prm = primerOf(ex), pd = primeDone(ex);
+  const ws = warmSlots(ex), plan = ws.plan, name = esc(ex.canonical), prm = primerOf(ex), pd = primeDone(ex);
   const pl = w => plateLine(ex, w) ? '<div class="s2 plt">' + esc(plateLine(ex, w)) + '</div>' : '';
   let h = worked ? '' : prm.map((t, k) => { const on = pd.includes(k); return '<li class="plan wrm prm' + (on ? ' logged' : '') + '"><div class="srow"><span class="sn">P</span><span class="ptx">' + esc(t) + (primerVideo(t) ? ' <a class="pvid" href="' + esc(primerVideo(t)) + '" target="_blank" rel="noopener noreferrer" aria-label="Demo video">' + ICO_V + '<span>Demo</span></a>' : '') + '</span><button class="lg' + (on ? ' on' : '') + '" data-prm="' + k + '" data-ex="' + name + '" aria-label="' + (on ? 'Primer done: ' : 'Mark primer done: ') + esc(t) + '">' + (on ? '&#10003;' : '') + '</button></div></li>'; }).join('');
-  h += done.map(r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">W</span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span><span></span><span class="lg on">&#10003;</span></div>' + pl(r.load) +
-    (r.pending || noteTxt(r) ? '<div class="s2">' + [r.pending ? 'pending sync' : '', esc(noteTxt(r))].filter(Boolean).join(' · ') + '</div>' : '') + '</li>').join('');
-  if (!worked) for (let k = done.length; k < plan.length; k++) {
-    const w = plan[k];
-    h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.nTxt || w.n) + '</span><span></span>' +
-      '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log warm-up ' + (k + 1) + ' of ' + plan.length + '"' + ((k === done.length || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' + pl(w.w) + (w.cue ? '<div class="s2 wcue">' + esc(w.cue) + '</div>' : '') + '</li>';
-  }
+  const logged = r => '<li data-sid="' + esc(r.set_id) + '" class="logged wrm' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">W</span><span class="val">' + esc(r.load || '-') + '</span><span class="val">' + esc(r.reps) + '</span>' + delBtn(r) + '<span class="lg on">&#10003;</span></div>' + pl(r.load) +
+    (r.pending || noteTxt(r) ? '<div class="s2">' + [r.pending ? 'pending sync' : '', esc(noteTxt(r))].filter(Boolean).join(' · ') + '</div>' : '') + '</li>';
+  const d = jget('coach_draft', null);
+  plan.forEach((w, k) => {
+    if (ws.bySlot[k]) { h += logged(ws.bySlot[k]); return; }
+    if (ws.used[k] != null) { const n = ws.work.findIndex(r => r.set_id === ws.used[k]) + 1;
+      h += '<li class="plan wrm used"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.nTxt || w.n) + '</span><span></span><span class="lg on" aria-label="Used as a working set">&#10003;</span></div><div class="s2 wuse">Logged as working set ' + n + '</div></li>'; return; }
+    const dd = d && d.k === wDraftKey(ex, k) ? d : null, wv = dd && dd.load ? dd.load : w.w, nv = dd && dd.reps ? dd.reps : (w.nTxt || w.n);
+    h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val">' + esc(wv) + '</span><span class="val">' + esc(nv) + '</span><span></span>' +
+      '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log warm-up ' + (k + 1) + ' of ' + plan.length + '"' + ((k === ws.left[0] || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' + pl(wv) + (w.cue ? '<div class="s2 wcue">' + esc(w.cue) + '</div>' : '') + '</li>';
+  });
+  h += ws.extra.map(logged).join('');
   return h ? '<li class="wgrp"><div class="wgh"><b>WARM-UP</b> <span>Coach plan. Not counted in suggestions or weekly sets.</span></div><ul class="wl">' + h + '</ul></li>' : '';
 }
 function setsHTML(ex) {
@@ -368,7 +389,7 @@ function setsHTML(ex) {
     const hold = (r.left_reps || r.right_reps)
       ? ((st ? fmtHold(r.left_reps) : r.left_reps || '?') || '-') + ' L / ' + ((st ? fmtHold(r.right_reps) : r.right_reps || '?') || '-') + ' R'
       : (st ? (fmtHold(r.reps) || r.reps) : r.reps);
-    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span><span></span><span class="lg on">&#10003;</span></div>' + (plateLine(ex, r.load) ? '<div class="s2 plt">Plates: ' + esc(plateLine(ex, r.load)) + '</div>' : '') + '<div class="s2">' + esc(bits) + (noteTxt(r) ? '<br>' + esc(noteTxt(r)) : '') + '</div>' + prevHTML(ls, i) + '</li>';
+    return '<li data-sid="' + esc(r.set_id) + '" class="logged' + (r.pending ? ' pend' : '') + '"><div class="srow"><span class="sn">' + (i + 1) + '</span><span class="val">' + esc(ang) + (r.load && ex.bodyweight && !st ? '<small> +</small>' : '') + '</span><span class="val">' + esc(hold) + ' ' + (st ? '' : trend(ex, r, i)) + '</span>' + delBtn(r) + '<span class="lg on">&#10003;</span></div>' + (plateLine(ex, r.load) ? '<div class="s2 plt">Plates: ' + esc(plateLine(ex, r.load)) + '</div>' : '') + '<div class="s2">' + esc(bits) + (noteTxt(r) ? '<br>' + esc(noteTxt(r)) : '') + '</div>' + prevHTML(ls, i) + '</li>';
   }).join('');
   const tq = techFor(ex);
   for (let i = rs.length; i < n; i++) {
@@ -405,6 +426,7 @@ const TECH = {
 };
 // Set method per exercise: settings scope = slot name, key 'method:<wid>' (this workout) or 'bmethod:B<n>' = {v, from} (rest of block). Default standard.
 function methodOf(ex) {
+  if (dlNow()) return 'standard'; // v148: no myo-rep match on a deload week
   const sl = ex.base ? ex.base.canonical : ex.canonical, w = getSetting(sl, 'method:' + viewId); if (w) return w;
   let v = sJSON(sl, 'bmethod:B' + blockOf(viewWeek()), null);
   return v && v.v && (!v.from || wIndex(viewId) >= wIndex(v.from)) ? v.v : (/\bmyo[- ]?rep match\b/i.test(String(ex.details || '')) ? 'match' : 'standard');
@@ -421,6 +443,7 @@ function oneArmFix(ex) { // rewrite the program text once so cards, chips, notes
 }
 function oneArmDays(days) { try { Object.values(days || {}).forEach(d0 => [d0].concat(d0.variants || []).forEach(d => (d.exercises || []).forEach(oneArmFix))); } catch (e) { console.warn('oneArm', e); } return days; }
 function techFor(ex) { // v131: a technique any coach tip mentions (week notes, custom tip) is scheduled into the matching set too
+  if (dlNow()) return null; // v148 (Jack, Nov 16): no drop sets, myo-reps, myo-rep match or other intensity technique on any deload card
   let tips = ''; try { tips = tipsFor(ex).join(' '); } catch (e) {}
   const t = (String(ex.details || '') + ' ' + tips).replace(/\bno\s+(?:bench\s+)?(?:drop(?:\s*-?\s*sets?)?|myo[- ]?reps?|run(?:ning)? the rack)\b[^.;]*/gi, '').replace(/\bdrop\s+\d+(?:\.\d+)?\s*(?:lbs?|pounds?)\b/gi, ''); // 'no drop set' and 'drop 10 lb' are not drop sets
   let keys = Object.keys(TECH).filter(k => k !== 'match' && TECH[k].re.test(t));
@@ -653,6 +676,10 @@ const blockOf = w => Math.floor((w - 1) / BL()) + 1;
 const wib = w => (w - 1) % BL() + 1;
 const isDeload = w => { const dl = +mesoCfg().deload || 0; return !!dl && wib(w) === dl; };
 const viewWeek = () => { const p = wParse(viewId); return p ? p.w : 1; };
+// v148 (Jack, Nov 16, 2026): deload helpers. dlNow = the open workout is in a deload week; dlRow = a logged set from a deload week.
+const dlNow = () => isDeload(viewWeek());
+const dlRow = r => { const p = wParse(widOf(r)); return !!p && isDeload(p.w); };
+const DL_EFFORT = 'Deload week: easy sets with plenty in reserve. Stop with 4-5 reps left, even if you could do more. No drop sets or myo-reps.';
 const wShort = w => 'B' + blockOf(w) + ' ' + (isDeload(w) ? 'DL' : 'W' + wib(w));
 function workouts() {
   const td = trainDays(), st = wStatus(); let weeks = BL();
@@ -911,14 +938,17 @@ function planFor(ex) {
   return plan;
 }
 function coachPlan(ex, idx) {
-  if (isStretch(ex) || isDeload(viewWeek())) return null;
-  const plan = planFor(ex), p = plan && plan[idx + 1]; if (!p) return null;
+  if (isStretch(ex)) return null;
+  // v148 (Jack, Nov 16): on a deload the program's normal-week plan is skipped, but a week note ('Use 50 lbs') still sets the prefill, so it matches the This week box.
+  const dl = dlNow(); let plan = null;
+  if (dl) weekNotesFor(ex).forEach(n => { if (n.plan) plan = Object.assign(plan || {}, n.plan); }); else plan = planFor(ex);
+  const p = plan && plan[idx + 1]; if (!p) return null;
   const today = rowsFor(ex, true), rr = p.lo && p.hi && p.lo !== p.hi ? p.lo + '-' + p.hi : p.hi ? String(p.hi) : '';
   let reps = p.hi ? String(p.hi) : '';
   if (p.load != null) {
     if (!reps) { const b = suggestNext(ex, idx); reps = b && num(b.load) === p.load && b.reps ? String(b.reps) : String(repRange(ex)[0]); }
     const what = p.label === 'drop' ? 'Use ' + p.load + ' lbs and get ' + (p.hi || reps) + '. This week\'s plan.' : (p.label === 'start' || p.label === 'use') ? 'Use ' + p.load + ' lbs. This week\'s plan.' : 'Use ' + p.load + ' lbs for ' + (rr || reps) + '. This is your ' + p.label + '.';
-    return { load: String(p.load), reps, coach: true, why: what + (idx === 0 && !today.length && p.label === 'top set' ? ' Adjust if warm-ups feel off.' : '') };
+    return { load: String(p.load), reps, coach: true, why: what + (idx === 0 && !today.length && p.label === 'top set' ? ' Adjust if warm-ups feel off.' : '') + (dl ? ' Easy sets with plenty in reserve.' : '') };
   }
   if (p.pct) {
     const unit = Math.max(2.5, stepFor(ex).unit || 5), rnd = v => Math.round(v / unit) * unit, ref = today[p.ref - 1], rp = plan[p.ref];
@@ -993,7 +1023,11 @@ function suggestRaw0(ex, idx, ls) {
     const top = Math.max(0, ...at.map(r => repN(r) || 0));
     const failed = at.some(r => (repN(r) || 0) === top && r.failure_type !== 'not to failure');
     const ramp = num(rows[0].load) != null && num(rows[0].load) < sw ? ' · settled on ' + sw : '';
-    if (dl) return { load: String(Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw)), reps: String(lo), why: 'Use ' + Math.max(0, Math.round(sw * 0.85 / st.unit) * st.unit || sw) + ' lbs. Deload week, so stop 2 to 3 reps short.' };
+    if (dl) { // v148 (Jack, Nov 16): a lift with a top-set plan deloads from its last top set, not the back-off weight (bench 255 top, 225 back-offs -> 215, not 190)
+      const tp = !!(ex.note && ex.note.plan && ex.note.plan[1] && ex.note.plan[1].label === 'top set'), base = tp ? Math.max(sw, ...rows.filter(r => !isWarm(r)).map(r => num(r.load) || 0)) : sw;
+      const dw = Math.max(0, Math.round(base * 0.85 / st.unit) * st.unit || base);
+      return { load: String(dw), reps: String(lo), why: 'Use ' + dw + ' lbs' + (tp ? ', about 85% of your last top set' : '') + '. Deload week: easy sets with plenty in reserve.' };
+    }
     if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'Get ' + (reps + 1) + ' reps. One more than last time.' };
     { // v132 stall detection, v134 copy (Jack, Nov 8): stalled lifts get a motivating push at the same weight, no range change
       const sk = stallOf(ex, ls); if (sk) return { load: String(sw), reps: String(sk.top + 1), stall: true, why: 'Use ' + sw + ' lbs and get ' + (sk.top + 1) + ' to break the stall.' };
@@ -1075,7 +1109,7 @@ function firstGuess(ex, lo, hi, dl, st) {
   if (!own && iso && tw) { const cap = (ex.single || equipType(ex) === 'dumbbell' ? tw : tw / 2) * 1.5; if (pa > cap) pa = cap; }
   let load = fromPerArm(ex, pa); if (dl) load *= 0.85;
   load = Math.max(u, Math.floor(load / u + 0.25) * u); // round to a real increment, leaning lighter
-  return { load: String(load), reps: String(dl ? lo : reps), why: 'Use ' + load + ' lbs. First time, ' + why + '. Stop 2 to 3 reps short.', est: true };
+  return { load: String(load), reps: String(dl ? lo : reps), why: 'Use ' + load + ' lbs. First time, ' + why + '. ' + (dl ? 'Deload week: easy sets with plenty in reserve.' : 'Stop 2 to 3 reps short.'), est: true };
 }
 // Arrows next to logged reps (Jack, Oct 20, 2026): compare to Coach's target for that set (coach plan, else suggestNext after the set rule), not last week.
 // Same weight: reps vs target reps (each side on one-arm sets, any side short = down). Different weight: estimated 1RM vs the target's. No target = no arrow.
@@ -1111,8 +1145,8 @@ const loadFromE1 = (e, n) => (e / (1 + n / 30) + e * (37 - n) / 36) / 2;
 function repModel(ex) {
   if (!ex || ex.bodyweight || isStretch(ex) || /^bodyweight/.test(equipType(ex))) return null;
   let past = [], today = [];
-  try { past = rowsFor(ex, false); } catch (e) {}
-  try { today = rowsFor(ex, true); } catch (e) {}
+  try { past = rowsFor(ex, false).filter(r => !dlRow(r)); } catch (e) {} // v148 (Jack, Nov 16): deload sets are easy on purpose, so they never feed the estimates
+  try { today = dlNow() ? [] : rowsFor(ex, true); } catch (e) {}
   const nowT = Date.parse((S.today || new Date().toISOString().slice(0, 10)) + 'T12:00:00Z'), wk = 7 * 864e5;
   const sess = [...new Set(past.map(widOf))].sort((a, b) => wIndex(b) - wIndex(a));
   const pts = [];
@@ -1734,8 +1768,11 @@ function render() {
   }
   $('sub').textContent = subWeek() + ' - ' + titleGym(titleCase(d.title));
   main.innerHTML = '<div id="meso">' + mesoHTML() + '</div><div id="wstart">' + wstartHTML() + '</div>' + weekBoxHTML(weekNotesFor(null), true) + cardsFor().map((ex, i) => {
-    const n = ex.note, chips = [n.sets].concat(n.plan_txt || []).concat([n.failure, n.rest]).filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
-    const tips = (ex.cue ? [ex.cue] : []).concat(n.extra.filter(x => !PRIMER_RE.test(x))).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
+    const n = ex.note, dl = dlNow() && !isStretch(ex); // v148 (Jack, Nov 16): deload cards say easy sets with plenty in reserve, not 'True failure. Last set: drop set'
+    const chips = (dl ? [n.sets ? String(n.sets).replace(/^(\d+)/, m => String(Math.ceil(+m / 2))) : '', n.failure || (n.plan_txt || []).length ? 'Easy sets, plenty in reserve' : '', n.rest] : [n.sets].concat(n.plan_txt || []).concat([n.failure, n.rest])).filter(Boolean).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
+    const TECH_TXT = /\b(?:drop[- ]?sets?|myo[- ]?reps?|myo[- ]?rep match|run(?:ning)? the rack|rest[- ]pause|failure)\b/i;
+    const cue = dl && ex.cue ? String(ex.cue).replace(/,?\s*(?:and\s+)?(?:stop|go|take it)\s+(?:at|to)\s+(?:technical|true)\s+failure/gi, '').replace(/\s*Last set:[^.]*\.?/gi, '').replace(/\s+([.,])/g, '$1').trim() : ex.cue;
+    const tips = dl ? [DL_EFFORT].concat(cue ? [cue] : []).concat(n.extra.filter(x => !PRIMER_RE.test(x) && !TECH_TXT.test(x))) : (ex.cue ? [ex.cue] : []).concat(n.extra.filter(x => !PRIMER_RE.test(x))).concat(methodOf(ex) === 'match' ? [TECH.match.info] : []);
     const extra = tips.length ? '<ul>' + tips.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '';
     return '<div class="card" id="c' + i + '" data-name="' + esc(ex.canonical) + '"><h2><span class="grip" aria-label="Drag to reorder">&#8801;</span><span class="ttl"><span class="tn">' + (i + 1) + '. ' + esc(ex.canonical) + '</span>' + (ex.muscles ? '<span class="tm">' + esc(ex.muscles) + '</span>' : '') + '</span>' + (ex.video ? '<a class="ico" href="' + esc(ex.video) + '" target="_blank" rel="noopener noreferrer" aria-label="Demo video">' + ICO_V + '</a>' : '<span class="ico off" aria-label="No demo video">' + ICO_V + '</span>') + '<button type="button" class="ico" data-hi="' + i + '" aria-label="History">' + ICO_H + '</button>' + '<button class="menu-btn" data-m="' + i + '" aria-label="Exercise menu">&#8943;</button></h2><div class="cbody">' +
       (ex.swappedFrom ? '<div class="swp">Replaces ' + esc(ex.swappedFrom) + (ex.swapScope === 'block' ? ' for the rest of this block' : ' in this workout') + '</div>' : '') +
@@ -1758,6 +1795,7 @@ function render() {
   main.querySelectorAll('details.cn').forEach(d => d.addEventListener('toggle', () => { const cb = d.querySelector('.cnbtn'); if (cb) cb.setAttribute('aria-label', d.open ? 'Collapse instructions' : 'Expand instructions'); const m = jget(cnKey(), {}); m[d.dataset.cn] = d.open; jset(cnKey(), m); }));
   gymBind(main);
   main.onclick = e => {
+    const dxb = e.target.closest('[data-del]'); if (dxb) { e.stopPropagation(); askDelete(dxb.dataset.del); return; } // v148: X on every logged set row
     const plb = e.target.closest('[data-pl]'); if (plb) { const d = plb.parentElement.querySelector('.wup'); if (d) d.hidden = !d.hidden; return; }
     if (e.target.closest('details.wu') || e.target.closest('details.cn > summary') || e.target.closest('.gymrow')) return;
     const tqb = e.target.closest('[data-tq]'); if (tqb) { openTech(tqb.dataset.tq); return; }
@@ -2520,6 +2558,11 @@ if ($('tundo')) $('tundo').onclick = () => { // v131: the top-bar undo button is
   if (!today.length) return toast('Nothing logged today');
   deleteSet(today[today.length - 1].set_id, true);
 };
+// v148 (Jack, Nov 16): the X on a logged row (warm-up or working) asks first; Yes removes the set from the log and the sheet (the same undo path as delete-last-set), No or a tap outside cancels.
+async function askDelete(sid) {
+  const r = viewRows(true).find(x => x.set_id === sid); if (!r) return;
+  if (await askBox({ title: 'Are you sure you want to delete this set?', body: r.exercise + ': ' + setTxt(r), ok: 'Yes', cancel: 'No', danger: true, outside: true })) deleteSet(sid, false);
+}
 async function deleteSet(sid, ask) {
   const r = viewRows(true).find(x => x.set_id === sid); if (!r) return;
   if (ask && !(await askBox({ title: 'Remove this set?', body: r.exercise + ' ' + setTxt(r), ok: 'Remove', danger: true }))) return;
@@ -2559,7 +2602,7 @@ $('fmrmc').onchange = e => { mrmAdd = e.target.checked; mrmUI(); };
 $('fmrmm').onclick = () => { mrmN = Math.max(1, mrmN - 1); mrmUI(); }; $('fmrmp').onclick = () => { mrmN = Math.min(6, mrmN + 1); mrmUI(); };
 function mrmUI() {
   const ex = formEx, w = $('fmrmw'); if (!w) return;
-  const can = !!ex && !editId && !isStretch(ex) && warmNext == null && ffSel.value !== 'warm-up' && formSetIdx === 0 && !rowsFor(ex, true).length && methodOf(ex) !== 'match' && canLog();
+  const can = !!ex && !editId && !isStretch(ex) && warmNext == null && ffSel.value !== 'warm-up' && formSetIdx === 0 && !rowsFor(ex, true).length && methodOf(ex) !== 'match' && canLog() && !dlNow();
   w.style.display = can ? '' : 'none'; if (!can) { mrmAdd = false; return; }
   $('fmrmb').style.display = ex.added ? 'none' : ''; $('fmrma').style.display = ex.added ? '' : 'none';
   $('fmrmc').checked = mrmAdd; $('fmrmn').style.display = mrmAdd ? '' : 'none'; $('fmrmv').textContent = String(mrmN);
@@ -2758,7 +2801,7 @@ function openForm(i, ts, row) {
   const isMrm = !isStretch(ex) && methodOf(ex) === 'match';
   mrmAdd = false; mrmN = 2;
   ftOptions(row && row.failure_type === 'drop set' ? 'drop set' : null, isMrm && !(row && row.failure_type === 'myo-reps'));
-  ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : prev && FT_OPTS.includes(prev.failure_type) && !(isMrm && prev.failure_type === 'myo-reps') ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
+  ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : dlNow() ? 'not to failure' /* v148: deload sets default to Not to failure */ : prev && FT_OPTS.includes(prev.failure_type) && !(isMrm && prev.failure_type === 'myo-reps') ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
   miniUI();
   if (rowPrefill && !row) {
     if (rowPrefill.load) $('fl').value = rowPrefill.load;
@@ -2766,10 +2809,10 @@ function openForm(i, ts, row) {
     bwLine();
   }
   if (!row && warmNext != null) { // logging a coach warm-up set
-    const w = coachWarm(ex)[warmNext];
-    if (w) { $('fl').value = String(w.w); $('fr').value = String(w.n); ftOptions(); ffSel.value = 'warm-up'; $('fsug').textContent = 'Warm-up ' + (warmNext + 1) + ' of ' + coachWarm(ex).length + ': ' + w.w + ' x ' + w.n + ' (Coach plan). ' + (w.cue ? w.cue + ' ' : '') + 'Logged as a warm-up, so it does not change the working set suggestions.'; setDrops(0); setMini(0); $('fmini').style.display = 'none'; bwLine(); plUpd(); }
+    const w = coachWarm(ex)[warmNext], wd = jget('coach_draft', null), dd = wd && wd.k === wDraftKey(ex, warmNext) ? wd : null; // v148: the slot's own draft (an edited weight kept after Cancel)
+    if (w) { $('fl').value = String(dd && dd.load ? dd.load : w.w); $('fr').value = String(dd && dd.reps ? dd.reps : w.n); ftOptions(); ffSel.value = 'warm-up'; $('fsug').textContent = 'Warm-up ' + (warmNext + 1) + ' of ' + coachWarm(ex).length + ': ' + w.w + ' x ' + w.n + ' (Coach plan). ' + (w.cue ? w.cue + ' ' : '') + 'Logged as a warm-up, so it does not change the working set suggestions.'; setDrops(0); setMini(0); $('fmini').style.display = 'none'; bwLine(); plUpd(); }
   }
-  warmNow = !row && warmNext != null && !!coachWarm(ex)[warmNext]; warmNext = null;
+  warmNow = !row && warmNext != null && !!coachWarm(ex)[warmNext]; warmSlot = warmNow ? warmNext : null; warmNext = null; repWarned = false;
   formBase = row || warmNow || rowPrefill ? null : formSug;
   if (formBase) { const d = jget('coach_draft', null); if (d && d.k === draftKey() && d.load) { $('fl').value = d.load; reEstimate(); } }
   formKey = !row && rowPrefill ? rowPrefill.key : null; rowPrefill = null;
@@ -2804,8 +2847,11 @@ function sheetTop() { // after open, layout, and keyboard: put the popup at its 
 }
 // Rule (Jack, Oct 20, 2026): backing out of a new set without logging leaves the previous rest timer running as if the form was never opened
 // (same start, so elapsed time keeps counting; target unchanged). Only a saved set ends that rest.
-let restSnap = null, warmNow = false;
-function closeForm(fromPop) { if (formEx && !editId && formBase) { flPlates(); const l = $('fl').value.trim(); if (l && l !== String(formBase.load)) { if (!formSug || String(formSug.load) !== l) reEstimate(); const s = formSug && String(formSug.load) === l ? formSug : null; jset('coach_draft', { k: draftKey(), load: l, reps: s ? String(s.reps) : '', why: s ? s.why : '' }); } else LS.removeItem('coach_draft'); }
+let restSnap = null, warmNow = false, warmSlot = null, repWarned = false;
+function closeForm(fromPop) {
+  if (formEx && !editId && warmNow && warmSlot != null) { flPlates(); const w = coachWarm(formEx)[warmSlot], k = wDraftKey(formEx, warmSlot), l = $('fl').value.trim(), r = $('fr').value.trim(), od = jget('coach_draft', null); // v148: warm-ups keep an edited weight after Cancel, like working sets
+    if (w && ((l && l !== String(w.w)) || (r && r !== String(w.n)))) jset('coach_draft', { k, load: l, reps: r }); else if (od && od.k === k) LS.removeItem('coach_draft'); }
+  if (formEx && !editId && formBase) { flPlates(); const l = $('fl').value.trim(); if (l && l !== String(formBase.load)) { if (!formSug || String(formSug.load) !== l) reEstimate(); const s = formSug && String(formSug.load) === l ? formSug : null; jset('coach_draft', { k: draftKey(), load: l, reps: s ? String(s.reps) : '', why: s ? s.why : '' }); } else LS.removeItem('coach_draft'); }
   if (formEx && !editId) { const t = getT(); if (t && t.firstSide) { t.hidden = true; t.firstSide = false; setT(t); } else if (restSnap && (!t || (t.hidden && t.start === restSnap.start))) setT(restSnap); } restSnap = null; $('sheet').classList.remove('open'); stopHold(); formEx = null; editId = null; stopRec(); if (fromPop !== true) popLayer('sheet'); if (S) applyState(S, false); }
 $('fcancel').onclick = closeForm; $('fxc').onclick = closeForm;
 $('fdel').onclick = async () => { const id = editId; if (!(await askBox({ title: 'Delete this set?', ok: 'Delete', danger: true }))) return; closeForm(); deleteSet(id, false); };
@@ -2821,6 +2867,10 @@ $('fsave').onclick = () => {
     reps = L && R && Number(L) !== Number(R) ? L + '/' + R : (L || R);
   }
   if (!reps) { $('ferr').textContent = 'Reps are required.'; return; }
+  if (!editId && warmNow && warmSlot != null && ffSel.value === 'warm-up' && !repWarned) { // v148: a warm-up far above its planned reps asks once
+    const w = coachWarm(ex)[warmSlot], rn = parseInt(reps, 10);
+    if (w && rn > (+w.n || 0) + 2) { repWarned = true; $('ferr').textContent = 'Warm-ups should feel easy. The plan is ' + w.n + ' reps. Tap Save set again to keep ' + rn + '.'; return; }
+  }
   flPlates(); const load = $('fl').value.trim();
   let bw = '', total = '';
   if (ex.bodyweight) { const b = bodyweight(); if (b) { bw = String(b); total = String(Math.round((b + (parseFloat(load) || 0)) * 10) / 10); } }
@@ -2831,6 +2881,7 @@ $('fsave').onclick = () => {
     if (x) fields.notes = (fields.notes ? fields.notes + ' | ' : '') + x;
   }
   if (editId) {
+    try { const er = viewRows(true).find(x => x.set_id === editId); if (er && isWarm(er) && fields.failure_type !== 'warm-up') { const ws = warmSlots(ex), k = Object.keys(ws.bySlot).find(k => ws.bySlot[k].set_id === editId); if (k != null) { const m = jget(wuseKey(ex), {}); m[k] = editId; jset(wuseKey(ex), m); } } } catch (e) {} // v148: a logged warm-up changed to a working set uses up its slot
     const q = getQ(), pi = q.findIndex(x => x.action === 'log' && x.set.set_id === editId);
     if (pi >= 0) { const tg = (String(q[pi].set.notes || '').match(GYM_RE) || [])[0]; Object.assign(q[pi].set, fields); if (tg && !String(q[pi].set.notes).includes(tg.trim())) q[pi].set.notes = ((q[pi].set.notes || '') + ' ' + tg.trim()).trim(); setQ(q); if (!testOn()) flush(); }
     else enqueue({ action: 'edit', set_id: editId, fields });
@@ -2841,6 +2892,7 @@ $('fsave').onclick = () => {
   const firstNoStart = !workoutRows().length && !manualStart();
   if (firstNoStart) jset(WSK(), { wid: viewId, ts: doneTs });
   enqueue({ action: 'log', date: S.today, set });
+  if (warmNow && warmSlot != null && fields.failure_type !== 'warm-up') { const m = jget(wuseKey(ex), {}); m[warmSlot] = set.set_id; jset(wuseKey(ex), m); } // v148: a planned warm-up logged as a working set marks its slot as used
   const nt = nextTarget(ex.canonical); let t = getT();
   if (t && !t.hidden) { t.target = nt.target; t.next = nt.next; t.firstSide = false; t.hidden = !!nt.last; t.exercise = ex.canonical; setT(t); }
   else { t = { start: doneTs, exercise: ex.canonical, target: nt.target, next: nt.next, hidden: !!nt.last }; setT(t); }

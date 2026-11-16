@@ -357,6 +357,8 @@ details.cn:not([open])>summary{margin-bottom:-2px}
 .last:empty{display:none}
 .sets li .s2.prev{color:var(--mut);margin-top:2px}
 #tipw .tipc{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}#tipw .in{z-index:1}
+.sets li .srow>.sdel{justify-self:center;align-self:center;width:30px;height:30px;min-height:0;padding:0;border-radius:50%;border:1px solid var(--line);background:var(--card2);color:var(--mut);font-size:19px;line-height:1;display:flex;align-items:center;justify-content:center}.sets li .srow>.sdel:active{background:#c62828;color:#fff}
+.sets li.wgrp li.wrm.used .val{color:var(--mut);text-decoration:line-through}.sets li.wgrp li.wrm.used .wuse{color:#f2c14e}
 </style>
 </head>
 <body>
@@ -552,8 +554,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=147"></script>
-<script src="exlist.js?v=147"></script>
-<script src="app.js?v=147"></script>
+<script src="parse.js?v=148"></script>
+<script src="exlist.js?v=148"></script>
+<script src="app.js?v=148"></script>
 </body>
 </html>
