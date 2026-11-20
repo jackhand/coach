@@ -463,7 +463,7 @@ details.cn:not([open])>summary{margin-bottom:-2px}
     <label class="painl">Joint pain</label>
     <div class="seg" id="fp"><button type="button" data-p="none">None</button><button type="button" data-p="mild">Mild</button><button type="button" data-p="moderate">Moderate</button><button type="button" data-p="severe">Severe</button></div>
     <label for="fn">Notes</label>
-    <textarea id="fn" rows="2" placeholder="How it felt, left arm, etc."></textarea>
+    <textarea id="fn" rows="4" placeholder="How it felt, left arm, etc."></textarea>
     <div id="ferr" class="err"></div>
     <button class="btn" id="fsave">Save set</button>
     <button class="btn sec" id="fcancel">Cancel</button>
@@ -554,8 +554,8 @@ window.coachFatal = function (msg) {
 window.addEventListener('error', function (e) { if (!window.coachReady) window.coachFatal((e.message || 'Script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
 setTimeout(function () { if (!window.coachReady) window.coachFatal('The app did not start (a file may be missing or out of date).'); }, 8000);
 </script>
-<script src="parse.js?v=148"></script>
-<script src="exlist.js?v=148"></script>
-<script src="app.js?v=148"></script>
+<script src="parse.js?v=149"></script>
+<script src="exlist.js?v=149"></script>
+<script src="app.js?v=149"></script>
 </body>
 </html>

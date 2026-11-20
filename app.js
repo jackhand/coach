@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 148; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 149; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -52,12 +52,14 @@ function askOpen(o, res) {
     const w = $('askw'), inp = $('aski'); let done = false;
     $('askh').textContent = o.title || ''; $('askt').textContent = o.body || ''; $('askt').hidden = !o.body;
     inp.hidden = o.input == null && o.value == null; inp.value = o.value || ''; inp.placeholder = o.input || '';
+    inp.rows = o.rows || 3; inp.style.height = ''; // v149: askBox({rows, grow}) sizes the text box; grow = it gets taller as Jack types (up to about half the screen)
+    const grow = () => { if (!o.grow) return; inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight + 2, Math.round(innerHeight * 0.5)) + 'px'; }; inp.oninput = o.grow ? grow : null;
     $('asky').textContent = o.ok || 'OK'; $('askn').textContent = o.cancel || 'Cancel'; $('asky').classList.toggle('dng', !!o.danger);
     const fin = v => { if (done) return; done = true; w.classList.remove('open'); popLayer('ask'); res(v); };
     $('asky').onclick = () => fin(inp.hidden ? true : inp.value); $('askn').onclick = $('askx').onclick = () => fin(inp.hidden ? false : null);
     w.onclick = o.outside ? (e => { if (e.target === w) fin(inp.hidden ? false : null); }) : null; // v148: tapping outside the window cancels (when asked)
     w.classList.add('open'); pushLayer('ask', () => { if (!done) { done = true; w.classList.remove('open'); res(inp.hidden ? false : null); } });
-    if (!inp.hidden) setTimeout(() => inp.focus({ preventScroll: true }), 50);
+    if (!inp.hidden) setTimeout(() => { grow(); inp.focus({ preventScroll: true }); }, 50);
   }
 }
 function popLayer(name) { // closed from the UI: drop the matching history entry
@@ -334,6 +336,13 @@ function pctWarm(ex) {
 }
 function coachWarm(ex) { if (!ex || isStretch(ex)) return []; const pw = pctWarm(ex); if (pw) return pw; const b = ex.note && ex.note.warmups; if (!b || !b.length) return []; const bar = barWeight(ex); return b.map(x => ({ w: x.w === 'bar' ? bar : x.w, n: x.n })); }
 // v135 (Jack, Nov 9): 'Primer: a, b, c' in the program = short priming drills before the ramp (upper back, bench setup, legs, chest). Warm-up only: tap to check off, never logged or counted.
+// v149 (Jack, Nov 20, 2026): planned warm-up reps for any lift. A planned slot uses its own reps; else the suggested ramp step (first free-weight lift of the day); else 8, 5, 3, 2 for the 1st to 4th warm-up.
+function warmRepPlan(ex, j) {
+  const cw = coachWarm(ex); if (cw[j]) return +cw[j].n || 0;
+  let st = null; try { st = warmFor(ex, cardsFor()); } catch (e) {}
+  if (st && st.steps[j]) return +st.steps[j].n || 0;
+  return [8, 5, 3, 2][Math.min(j, 3)];
+}
 const PRIMER_RE = /^primer\s*:/i;
 function primerOf(ex) { const c = ((ex && ex.note && ex.note.extra) || []).find(x => PRIMER_RE.test(x)); if (!c) return []; return c.replace(PRIMER_RE, '').split(/,\s*(?![^()]*\))/).map(x => x.trim()).filter(Boolean).map(x => x[0].toUpperCase() + x.slice(1)); }
 const primeKey = ex => 'coach_prime_' + P + '_' + ((S && S.today) || '') + '_' + P_.norm(ex.canonical);
@@ -909,7 +918,7 @@ function smallerJump(ex, w) { // the next real weight above w when it is a small
   if (nx != null && nx - w < step) return nx; if (!Array.isArray(st) && st < step) return +(w + st).toFixed(2); return null;
 }
 // Test-mode only hook for the headless equipment tests (no data, no writes).
-if (testOn()) window.__coachT = { basisOf: s => basisOf(s), barUnit, setBarUnit, barTxt, get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
+if (testOn()) window.__coachT = { basisOf: s => basisOf(s), barUnit, setBarUnit, barTxt, get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, tipsFor, tipShow, cardsFor, plannedCount, warmRepPlan, get S() { return S; }, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
 // Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
 const sideReps = r => { const L = parseInt(r.left_reps, 10), Rr = parseInt(r.right_reps, 10); return { L: isFinite(L) ? L : null, R: isFinite(Rr) ? Rr : null }; };
 function repN(r) { const s = sideReps(r), v = [s.L, s.R].filter(x => x != null); return v.length ? Math.min.apply(null, v) : (parseInt(r.reps, 10) || 0); }
@@ -1371,7 +1380,7 @@ $('mdset').onclick = () => { // removes one unlogged planned set; logged sets ar
   if (left <= 0) return msgPop('No unlogged sets left. To delete a logged set, tap it and use Delete.');
   removePlanned(ex.canonical);
 };
-$('mnote').onclick = async () => { const ex = menuEx; closeMenu(); const v = await askBox({ title: 'Note for today', body: ex.canonical, input: 'How it went, machine taken, etc.', value: dayVal(ex, 'note') || '', ok: 'Save' }); if (v != null) { setDayVal(ex, 'note', v.trim()); } };
+$('mnote').onclick = async () => { const ex = menuEx; closeMenu(); const v = await askBox({ title: 'Note for today', body: ex.canonical, input: 'How it went, machine taken, etc.', rows: 6, grow: true, value: dayVal(ex, 'note') || '', ok: 'Save' }); if (v != null) { setDayVal(ex, 'note', v.trim()); } };
 $('mpainb').onclick = async () => {
   const ex = menuEx; closeMenu(); const cur = dayVal(ex, 'pain') || 'none';
   // v119: a tap highlights and saves the level; the window stays open until the X or an outside tap
@@ -1711,14 +1720,22 @@ function stallOf(ex, ls) {
   } catch (e) { return null; }
 }
 const stallMsg = k => 'You have stalled at ' + k.sw + ' lbs for ' + k.top + ' reps two sessions in a row. Push for ' + (k.top + 1) + ' reps at ' + k.sw + ' today, because one more rep is how you break the stall.';
-function tipsFor(ex) { const n = ex.note || {}; let w = []; try { w = weekNotesFor(ex).map(x => x.text); } catch (e) {} const sk = ex.bodyweight || isStretch(ex) ? null : stallOf(ex); return (sk ? [stallMsg(sk)] : []).concat(n.custom ? [n.custom] : []).concat(w).map(x => uniTxt(ex, x)).map(sentence).filter(Boolean); }
+// v149 (Jack, Nov 20): on a deload week the tip pop-up and the last-set tip drop failure and technique sentences ('Take the last set to failure only if the arm is good') and say the deload effort line instead.
+const DL_TIP_RE = /\b(?:true failure|technical failure|to failure|failure|drop[- ]?sets?|myo[- ]?reps?|myo[- ]?rep match|run(?:ning)? the rack|rest[- ]pause|\d\s*-\s*\d\s*reps?\s*short|(?:two|2) to (?:three|3) reps?\s*short)\b/i;
+function dlTips(ex, tips) {
+  if (!dlNow() || isStretch(ex)) return tips;
+  let cut = false; const out = [];
+  tips.forEach(t => { const keep = String(t).split(/(?<=[.!?])\s+/).filter(x => { const bad = DL_TIP_RE.test(x); if (bad) cut = true; return !bad; }).join(' ').trim(); if (keep) out.push(keep); });
+  return cut ? out.concat([DL_EFFORT]) : out;
+}
+function tipsFor(ex) { const n = ex.note || {}; let w = []; try { w = weekNotesFor(ex).map(x => x.text); } catch (e) {} const sk = ex.bodyweight || isStretch(ex) ? null : stallOf(ex); return dlTips(ex, (sk ? [stallMsg(sk)] : []).concat(n.custom ? [n.custom] : []).concat(w).map(x => uniTxt(ex, x)).map(sentence).filter(Boolean)); }
 // v86 (Jack, Oct 21): daily quote, preloaded with the program (the '## Daily quotes' block that build-quotes.py writes into program.md from the Coach Quotes sheet). No fetch at workout start.
 function quoteToday() {
   const s = (S && S.program) || '', d = (S && S.today) || ''; if (!d) return null;
   const m = s.match(new RegExp('^- ' + d + ' \\| (.+?) \\| ?(.*)$', 'm')); return m ? { q: m[1].trim(), a: m[2].trim() } : null;
 }
 function tipShow(ex, force, withQuote) { // force: ignore the seen list. Both triggers (Rule 1 Start, Rule 2 last set) pass force; the seen list no longer suppresses either
-  if (!canLog()) return false;
+  tipAfter = null; if (!canLog()) return false;
   const bq = withQuote && bdayToday(), qt = withQuote ? (bq ? bdayLine(BDAY_PRE, bq) : quoteToday()) : null; if (!ex && !qt) return false;
   const k = 'coach_tips_' + P + '_' + viewId, seen = jget(k, []); if (!qt && !force && seen.includes(ex.canonical)) return false;
   const tips = ex ? tipsFor(ex) : []; if (!tips.length && !qt) return false;
@@ -1726,7 +1743,7 @@ function tipShow(ex, force, withQuote) { // force: ignore the seen list. Both tr
   const qh = qt ? '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>' : '';
   const th = tips.length ? (qt ? '<h4 class="tiph2">Coach tip: ' + esc(ex.canonical) + '</h4>' : '') + tips.map(t => '<p>' + esc(t) + '</p>').join('') : '';
   $('tiph').textContent = qt ? '' : 'Coach tip: ' + ex.canonical; $('tiph').hidden = !!qt; $('tipb').innerHTML = qh + th;
-  tipGuard = Date.now(); $('tipw').classList.add('open'); pushLayer('tip', () => $('tipw').classList.remove('open')); return true;
+  tipGuard = Date.now(); $('tipw').classList.add('open'); pushLayer('tip', () => { $('tipw').classList.remove('open'); const f = tipAfter; tipAfter = null; if (f) setTimeout(f, 250); }); return true;
 }
 function quoteEnd() { // v108 (Jack, Oct 27): a different quote from the same Daily quotes block when the workout ends
   const st = quoteToday(), all = [...((S && S.program) || '').matchAll(/^- \d{4}-\d{2}-\d{2} \| (.+?) \| ?(.*)$/gm)].map(m => ({ q: m[1].trim(), a: m[2].trim() })).filter(x => !st || x.q !== st.q);
@@ -1735,8 +1752,9 @@ function quoteEnd() { // v108 (Jack, Oct 27): a different quote from the same Da
 function endQuoteShow() { const bd = bdayToday(), qt = bd ? bdayLine(BDAY_POST, bd) : quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">' + (bd ? 'Workout finished. Happy birthday, ' + esc(bd.name) + '.' : 'Workout finished. Nice work.') + '</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); tipGuard = Date.now(); $('tipw').classList.add('open'); pushLayer('tip', () => { $('tipw').classList.remove('open'); tipConfettiOff(); });
   if (bd) requestAnimationFrame(() => confetti($('tipc'), 8000)); } // v144: animated confetti behind the post-workout birthday window
 function tipConfettiOff() { const c = $('tipc'); if (c && !c.hidden) { if (confettiStop) confettiStop(); c.hidden = true; } }
-let tipGuard = 0; // v146: ignore a leftover Start-workout tap on the backdrop so the quote stays until Jack closes it
-const tipClose = () => { $('tipw').classList.remove('open'); tipConfettiOff(); popLayer('tip'); };
+let tipGuard = 0, tipAfter = null; // v149: tipAfter = what to do when the open tip window closes (set by firstLogQuote)
+// v146: ignore a leftover Start-workout tap on the backdrop so the quote stays until Jack closes it
+const tipClose = () => { $('tipw').classList.remove('open'); tipConfettiOff(); popLayer('tip'); const f = tipAfter; tipAfter = null; if (f) setTimeout(f, 250); };
 $('tipok').onclick = tipClose; $('tipx').onclick = tipClose; $('tipw').addEventListener('click', e => { if (e.target.id === 'tipw' && Date.now() - tipGuard > 800) tipClose(); });
 // v129 (Jack, Nov 2): the next exercise = the first card from the top (not after the current one) that still has unlogged sets and is not marked skipped,
 // e.g. dips passed over earlier come before the card below the one just finished. Scroll, rest bar Next, and coach tip all use this.
@@ -1842,6 +1860,12 @@ function wstartHTML() {
 // v144 (Jack, Nov 11, 2026): the birthday confetti and pre-workout birthday line show once per workout: on Start workout, or on the first logged set when Start was not tapped.
 const bdayKey = () => 'coach_bdshown_' + P + '_' + viewId;
 function bdayFirstLog(after) { const bd = bdayToday(); if (!bd || !isToday() || LS.getItem(bdayKey())) return false; LS.setItem(bdayKey(), '1'); let n = 0; const go = () => { if (ignorePop && n++ < 20) return setTimeout(go, 30); bdayShow(bd, after); }; go(); return true; } // waits for the set sheet's history entry to close first
+// v149 (Jack, Nov 20, 2026): logging the first set or warm-up of a day without tapping Start workout counts as the start, so the quote of the day and the first coach tip show then, like Start workout does (no birthday: bdayFirstLog handles that).
+function firstLogQuote(after) {
+  if (!isToday()) return false; let n = 0;
+  const go = () => { if (ignorePop && n++ < 20) return setTimeout(go, 30); const nx = nextUp(null); if (tipShow(nx, true, true)) tipAfter = after || null; else if (after) after(); };
+  go(); return true;
+}
 function startWorkout(re) { audio(); jset(WSK(), { wid: viewId, ts: Date.now() }); updWstart(); const bd = re ? null : bdayToday(); if (bd) { LS.setItem(bdayKey(), '1'); bdayShow(bd, () => tipUpcoming(true, false)); return; } /* v140: birthday = confetti and a birthday line instead of the daily quote */ /* v146: no Start workout toast (Jack, Nov 13). The quote stays up until he closes it. */ if (!re) tipUpcoming(true, true); }
 // Reset: stop the workout and clear only this workout's logged sets (after a warning).
 function openReset() { const n = workoutRows().length; $('rstt').textContent = 'This will stop the workout' + (n ? ' and clear the ' + n + (n === 1 ? ' set' : ' sets') + ' you logged in it' : '') + '. Nothing else changes.'; $('rstw').classList.add('open'); pushLayer('rst', () => $('rstw').classList.remove('open')); }
@@ -1941,16 +1965,43 @@ let screenRestored = false;
 function restoreScreen() { if (screenRestored) return; screenRestored = true; let v = ''; try { v = sessionStorage.getItem('coach_screen') || ''; sessionStorage.removeItem('coach_screen'); } catch (e) {}
   if (v === 'settings') setTimeout(() => showSettings(), 0); else if (v.startsWith('prog:')) setTimeout(() => openProg(parseInt(v.slice(5), 10) || 0), 0); }
 let otherFetched = false;
+// v149 (Jack, Nov 20, 2026): the backend sends only the newest 400 logged rows, so older history dropped out of the app (the oldest 68 rows by now).
+// The phone keeps every row it has seen (coach_hist_<profile>) and puts the ones that left the window back in front. A backend with rows_older and hist=1 (Code.gs v7)
+// also lets the phone fetch the rows it never saw, once. Without that backend change nothing breaks; rows seen from now on are simply never lost.
+const HK = p => 'coach_hist_' + p; let histBusy = false;
+function mergeHist(st, save) {
+  try {
+    const p = st.profile || P, rows = st.rows || []; if (!rows.length) return;
+    const h = jget(HK(p), null) || { rows: [], tried: 0 };
+    const have = new Set(rows.map(r => r.set_id)), d0 = rows.map(r => r.date).filter(Boolean).sort()[0] || '';
+    const old = (h.rows || []).filter(r => r && !have.has(r.set_id) && r.date && r.date <= d0); // rows that fell out of the window stay; rows inside it that vanished were deleted
+    st.rows = old.concat(rows);
+    if (save) { jset(HK(p), { rows: st.rows, tried: h.tried || 0 }); histFetch(st, p, old.length); }
+  } catch (e) {}
+}
+async function histFetch(st, p, kept) {
+  const older = +st.rows_older || 0; if (!(older > kept) || histBusy) return;
+  const h = jget(HK(p), { rows: [] }); if (Date.now() - (h.tried || 0) < 3600000) return;
+  histBusy = true; h.tried = Date.now(); jset(HK(p), h);
+  try {
+    const r = await fetch(U + (U.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(K) + '&profile=' + encodeURIComponent(p) + '&hist=1&t=' + Date.now(), { cache: 'no-store', redirect: 'follow' });
+    const j = r.ok ? await r.json() : null;
+    if (j && j.ok && j.hist === true && Array.isArray(j.rows) && p === P && S && S.profile === p) {
+      const have = new Set(S.rows.map(x => x.set_id)), add = j.rows.filter(x => x && !have.has(x.set_id));
+      if (add.length) { S.rows = add.concat(S.rows); jset(HK(p), { rows: S.rows, tried: Date.now() }); sig = ''; applyState(S, false); }
+    }
+  } catch (e) {} finally { histBusy = false; }
+}
 async function load(initial) {
   if (!U || !K) return showSettings();
   if (isLocalProfile(P)) { S = null; $('settings').style.display = 'none'; $('app').style.display = 'block'; profSelRender(); $('sub').textContent = profOf(P).name; $('main').innerHTML = '<div class="empty"><b>' + esc(profOf(P).name) + '</b><br>This profile is saved on this phone only. Ask Coach to add it to the backend to get a program and logging.' + (profOf(P).birthday ? '<div class="pfacts" style="text-align:left;margin-top:12px">' + factsHTML(profOf(P).birthday) + '</div>' : '') + '<button class="btn sec" id="pledit" type="button">Edit profile</button></div>'; $('pledit').onclick = () => openProfile(P); return; } // v140: device-only profile
-  if (initial && !S) { const c = jget('coach_cache_' + P, null); if (c && (!c.profile || c.profile === P)) applyState(c, true); } // instant start, works offline
+  if (initial && !S) { const c = jget('coach_cache_' + P, null); if (c && (!c.profile || c.profile === P)) { mergeHist(c, false); applyState(c, true); } } // instant start, works offline
   const p = P; // v142: the profile this request is for. A reply that lands after a profile switch is cached under its own profile and not applied.
   try {
     const st = await apiGet(p);
     if (!st.ok) { if (st.error === 'unauthorized') return showSettings('Key rejected by the backend.'); throw new Error(st.error); }
     if (st.profile && st.profile !== p) return;
-    jset('coach_cache_' + p, st);
+    jset('coach_cache_' + p, st); mergeHist(st, p === P); // v149: history beyond the 400-row window (the cache above keeps just the window)
     if (!otherFetched && BACKEND_PROFILES.includes(p)) { otherFetched = true; BACKEND_PROFILES.filter(o => o !== p).forEach(o => apiGet(o).then(x => { if (x && x.ok && x.profile === o) { jset('coach_cache_' + o, x); profSelRender(); profListRender(); } }).catch(() => {})); } // v143: the other profile's backend name and birthday for the lists
     if (p !== P) return;
     $('offline').style.display = 'none';
@@ -2611,6 +2662,13 @@ function setDrops(n, keep) { n = Math.max(0, Math.min(9, n | 0)); drops = n; $('
 $('fdm').onclick = () => setDrops(drops - 1); $('fdp').onclick = () => setDrops(drops + 1);
 $('fmm').onclick = () => setMini(minis - 1); $('fmp').onclick = () => setMini(minis + 1);
 ffSel.addEventListener('change', miniUI);
+// v149: choosing Warm-up on any set form (no planned slot) puts the planned warm-up reps in the reps box, unless Jack already typed his own.
+ffSel.addEventListener('change', () => {
+  const ex = formEx; if (ffSel.value !== 'warm-up' || !ex || editId || warmNow || isStretch(ex)) return;
+  const n = String(warmRepPlan(ex, warmRowsToday(ex).length)), g = formSug || {};
+  if (ex.single) { const a = String(g.repsL || g.reps || ''); if (!$('frl').value || $('frl').value === a) $('frl').value = n; const b = String(g.repsR || g.reps || ''); if (!$('frr').value || $('frr').value === b) $('frr').value = n; }
+  else if (!$('fr').value || $('fr').value === String(g.reps == null ? '' : g.reps)) $('fr').value = n;
+});
 let rowPrefill = null, warmNext = null;
 // Tap a suggested weight/reps value: same as the LOG check, then focus that field (synchronously, so the phone keyboard opens).
 function tapValue(name, idx, f) {
@@ -2801,7 +2859,7 @@ function openForm(i, ts, row) {
   const isMrm = !isStretch(ex) && methodOf(ex) === 'match';
   mrmAdd = false; mrmN = 2;
   ftOptions(row && row.failure_type === 'drop set' ? 'drop set' : null, isMrm && !(row && row.failure_type === 'myo-reps'));
-  ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : dlNow() ? 'not to failure' /* v148: deload sets default to Not to failure */ : prev && FT_OPTS.includes(prev.failure_type) && !(isMrm && prev.failure_type === 'myo-reps') ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
+  ffSel.value = row ? (FT.includes(row.failure_type) ? row.failure_type : 'not to failure') : dlNow() || (!stx && !today.length && plannedCount(ex) > 1 && !isMrm) ? 'not to failure' /* v148: deload sets default to Not to failure; v149: so does set 1 of every exercise that has more than one planned set (not myo-rep match, whose first set is the activation set) */ : prev && FT_OPTS.includes(prev.failure_type) && !(isMrm && prev.failure_type === 'myo-reps') && !(!stx && !isMrm && today.length === 1 && prev.failure_type === 'not to failure') /* v149: set 2 follows the program after a Not to failure set 1, it does not inherit it */ ? prev.failure_type : (f.includes('true') ? 'true' : f.includes('technical') ? 'technical' : 'not to failure');
   miniUI();
   if (rowPrefill && !row) {
     if (rowPrefill.load) $('fl').value = rowPrefill.load;
@@ -2867,9 +2925,9 @@ $('fsave').onclick = () => {
     reps = L && R && Number(L) !== Number(R) ? L + '/' + R : (L || R);
   }
   if (!reps) { $('ferr').textContent = 'Reps are required.'; return; }
-  if (!editId && warmNow && warmSlot != null && ffSel.value === 'warm-up' && !repWarned) { // v148: a warm-up far above its planned reps asks once
-    const w = coachWarm(ex)[warmSlot], rn = parseInt(reps, 10);
-    if (w && rn > (+w.n || 0) + 2) { repWarned = true; $('ferr').textContent = 'Warm-ups should feel easy. The plan is ' + w.n + ' reps. Tap Save set again to keep ' + rn + '.'; return; }
+  if (!editId && ffSel.value === 'warm-up' && !repWarned) { // v148: a warm-up far above its planned reps asks once. v149: on every lift, planned slot or not
+    const pn = warmNow && warmSlot != null ? (+(coachWarm(ex)[warmSlot] || {}).n || 0) : warmRepPlan(ex, warmRowsToday(ex).length), rn = Math.max(parseInt(reps, 10) || 0, parseInt(L, 10) || 0, parseInt(R, 10) || 0);
+    if (pn && rn > pn + 2) { repWarned = true; $('ferr').textContent = 'Warm-ups should feel easy. The plan is ' + pn + ' reps. Tap Save set again to keep ' + rn + '.'; return; }
   }
   flPlates(); const load = $('fl').value.trim();
   let bw = '', total = '';
@@ -2900,8 +2958,9 @@ $('fsave').onclick = () => {
   if (mrmAdd && ex.added && formSetIdx === 0) mrmFill(ex, set);
   mrmAdd = false;
   update(); feedback(ex, set, before, prevRest, t ? t.target : 120, formSug);
-  if (firstNoStart && bdayFirstLog(() => { if (nt.last) finishPrompt(); else tipNext(ex); })) return;
-  if (nt.last) finishPrompt(); else tipNext(ex);
+  const aft = () => { if (nt.last) finishPrompt(); else tipNext(ex); };
+  if (firstNoStart && (bdayFirstLog(aft) || firstLogQuote(aft))) return;
+  aft();
 };
 function mrmFill(ex, set) { // set 1 is logged; add the matching sets as myo-rep match sets, then fix the planned count
   const sl = ex.base ? ex.base.canonical : ex.canonical; putSetting(sl, 'method:' + viewId, 'match');
@@ -2943,7 +3002,7 @@ function saveStretch(ex) {
   const nt = nextTarget(ex.canonical);
   setT({ start: Date.now(), exercise: ex.canonical, target: nt.target || 60, next: nt.next, hidden: !!nt.last });
   $('sheet').classList.remove('open'); formEx = null; restSnap = null; LS.removeItem('coach_draft'); stopRec(); popLayer('sheet');
-  update(); if (firstNoStart && bdayFirstLog(() => { if (nt.last) finishPrompt(); })) return; if (nt.last) finishPrompt();
+  update(); const aft = () => { if (nt.last) finishPrompt(); }; if (firstNoStart && (bdayFirstLog(aft) || firstLogQuote(aft))) return; aft();
 }
 // ---------- Feedback toasts ----------
 const JOKES = [
