@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 149; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 150; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -373,9 +373,9 @@ function warmRowsHTML(ex, worked) {
   plan.forEach((w, k) => {
     if (ws.bySlot[k]) { h += logged(ws.bySlot[k]); return; }
     if (ws.used[k] != null) { const n = ws.work.findIndex(r => r.set_id === ws.used[k]) + 1;
-      h += '<li class="plan wrm used"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.nTxt || w.n) + '</span><span></span><span class="lg on" aria-label="Used as a working set">&#10003;</span></div><div class="s2 wuse">Logged as working set ' + n + '</div></li>'; return; }
+      h += '<li class="plan wrm used" data-use="' + esc(ws.used[k]) + '"><div class="srow"><span class="sn">W</span><span class="val">' + esc(w.w) + '</span><span class="val">' + esc(w.nTxt || w.n) + '</span><span></span><span class="lg on" aria-label="Used as a working set">&#10003;</span></div><div class="s2 wuse">Logged as working set ' + n + '</div></li>'; return; }
     const dd = d && d.k === wDraftKey(ex, k) ? d : null, wv = dd && dd.load ? dd.load : w.w, nv = dd && dd.reps ? dd.reps : (w.nTxt || w.n);
-    h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val">' + esc(wv) + '</span><span class="val">' + esc(nv) + '</span><span></span>' +
+    h += '<li class="plan wrm"><div class="srow"><span class="sn">W</span><span class="val" data-f="w">' + esc(wv) + '</span><span class="val" data-f="r">' + esc(nv) + '</span><span></span>' +
       '<button class="lg" data-wu="' + k + '" data-ex="' + name + '" aria-label="Log warm-up ' + (k + 1) + ' of ' + plan.length + '"' + ((k === ws.left[0] || testOn()) && isToday() ? '' : ' disabled') + '></button></div>' + pl(wv) + (w.cue ? '<div class="s2 wcue">' + esc(w.cue) + '</div>' : '') + '</li>';
   });
   h += ws.extra.map(logged).join('');
@@ -688,7 +688,9 @@ const viewWeek = () => { const p = wParse(viewId); return p ? p.w : 1; };
 // v148 (Jack, Nov 16, 2026): deload helpers. dlNow = the open workout is in a deload week; dlRow = a logged set from a deload week.
 const dlNow = () => isDeload(viewWeek());
 const dlRow = r => { const p = wParse(widOf(r)); return !!p && isDeload(p.w); };
-const DL_EFFORT = 'Deload week: easy sets with plenty in reserve. Stop with 4-5 reps left, even if you could do more. No drop sets or myo-reps.';
+const DL_EFFORT = 'Deload week: use your normal weight, about half the sets, easy sets with plenty in reserve. Stop with 4-5 reps left, even if you could do more. No drop sets or myo-reps.';
+// v150 (Jack, Nov 20): deload reps = the best reps at the normal weight minus 4 (so 4-5 are left), never under 3 or over the range.
+const dlReps = (top, lo, hi) => top > 0 ? String(Math.max(3, Math.min(hi, top - 4))) : String(lo);
 const wShort = w => 'B' + blockOf(w) + ' ' + (isDeload(w) ? 'DL' : 'W' + wib(w));
 function workouts() {
   const td = trainDays(), st = wStatus(); let weeks = BL();
@@ -1027,15 +1029,14 @@ function suggestRaw0(ex, idx, ls) {
   const [lo, hi] = repRange(ex), dl = isDeload(viewWeek()), st = stepFor(ex), iso = (ex.types || []).includes('isolation');
   if (ls) {
     const rows = ls.rows, sw = settled(rows);
-    if (sw == null) { const r = rows[Math.min(idx, rows.length - 1)], reps = repN(r) || 0; return { load: r.load, reps: String(dl ? lo : Math.min(hi, reps + 1)), why: 'Use ' + r.load + ' lbs. ' + (dl ? 'Easy deload week.' : 'Beat last time.') }; }
+    if (sw == null) { const r = rows[Math.min(idx, rows.length - 1)], reps = repN(r) || 0; return { load: r.load, reps: dl ? dlReps(reps, lo, hi) : String(Math.min(hi, reps + 1)), why: 'Use ' + r.load + ' lbs. ' + (dl ? 'Deload week: same weight, easy sets.' : 'Beat last time.') }; }
     const at = rows.filter(r => num(r.load) === sw), ref = at[Math.min(idx, at.length - 1)], reps = repN(ref), sr = sideReps(ref);
     const top = Math.max(0, ...at.map(r => repN(r) || 0));
     const failed = at.some(r => (repN(r) || 0) === top && r.failure_type !== 'not to failure');
     const ramp = num(rows[0].load) != null && num(rows[0].load) < sw ? ' · settled on ' + sw : '';
-    if (dl) { // v148 (Jack, Nov 16): a lift with a top-set plan deloads from its last top set, not the back-off weight (bench 255 top, 225 back-offs -> 215, not 190)
-      const tp = !!(ex.note && ex.note.plan && ex.note.plan[1] && ex.note.plan[1].label === 'top set'), base = tp ? Math.max(sw, ...rows.filter(r => !isWarm(r)).map(r => num(r.load) || 0)) : sw;
-      const dw = Math.max(0, Math.round(base * 0.85 / st.unit) * st.unit || base);
-      return { load: String(dw), reps: String(lo), why: 'Use ' + dw + ' lbs' + (tp ? ', about 85% of your last top set' : '') + '. Deload week: easy sets with plenty in reserve.' };
+    if (dl) { // v150 (Jack, Nov 20): same normal working weight on every lift (no 85% drop, no joint exception), about half the sets, 4-5 reps left. A week note weight still wins in coachPlan.
+      const wt = at.filter(r => !isWarm(r)), dtop = Math.max(0, ...wt.map(r => repN(r) || 0));
+      return { load: String(sw), reps: dlReps(dtop, lo, hi), why: 'Use ' + sw + ' lbs, your normal weight. Deload week: easy sets with plenty in reserve.' };
     }
     if (!st.step) return { load: String(sw), reps: String(reps + 1), why: 'Get ' + (reps + 1) + ' reps. One more than last time.' };
     { // v132 stall detection, v134 copy (Jack, Nov 8): stalled lifts get a motivating push at the same weight, no range change
@@ -1116,7 +1117,7 @@ function firstGuess(ex, lo, hi, dl, st) {
   const comp = rel.filter(h => !isIso(h.o));
   if (!own && iso && comp.length) { const cap = Math.max.apply(null, comp.map(h => perArm(h.o, h.b.top))) * 0.25; if (pa > cap) pa = cap; }
   if (!own && iso && tw) { const cap = (ex.single || equipType(ex) === 'dumbbell' ? tw : tw / 2) * 1.5; if (pa > cap) pa = cap; }
-  let load = fromPerArm(ex, pa); if (dl) load *= 0.85;
+  let load = fromPerArm(ex, pa); // v150: no 85% cut on a deload, the estimate is already cautious
   load = Math.max(u, Math.floor(load / u + 0.25) * u); // round to a real increment, leaning lighter
   return { load: String(load), reps: String(dl ? lo : reps), why: 'Use ' + load + ' lbs. First time, ' + why + '. ' + (dl ? 'Deload week: easy sets with plenty in reserve.' : 'Stop 2 to 3 reps short.'), est: true };
 }
@@ -1227,7 +1228,7 @@ function mesoHTML() {
 function mesoGrid() {
   const td = trainDays(); if (!td.length) return '';
   const L = workouts(), nx = loggableId(), b = blockOf(viewWeek()), w0 = (b - 1) * BL() + 1;
-  let h = '<div class="blk">Block ' + b + ' · ' + (isDeload(viewWeek()) ? 'Deload week: lighter, half the sets' : 'Week ' + wib(viewWeek()) + ' of ' + BL()) + '</div><table class="meso"><tr><th></th>' + td.map(d => '<th>' + d[0].toUpperCase() + d.slice(1, 3) + '</th>').join('') + '</tr>';
+  let h = '<div class="blk">Block ' + b + ' · ' + (isDeload(viewWeek()) ? 'Deload week: same weights, half the sets' : 'Week ' + wib(viewWeek()) + ' of ' + BL()) + '</div><table class="meso"><tr><th></th>' + td.map(d => '<th>' + d[0].toUpperCase() + d.slice(1, 3) + '</th>').join('') + '</tr>';
   for (let w = w0; w < w0 + BL(); w++) {
     h += '<tr><th>' + (isDeload(w) ? 'DL' : 'W' + wib(w)) + '</th>' + td.map(d => {
       const id = 'W' + w + '-' + d, x = L.find(y => y.id === id) || { id, st: null };
@@ -1745,9 +1746,17 @@ function tipShow(ex, force, withQuote) { // force: ignore the seen list. Both tr
   $('tiph').textContent = qt ? '' : 'Coach tip: ' + ex.canonical; $('tiph').hidden = !!qt; $('tipb').innerHTML = qh + th;
   tipGuard = Date.now(); $('tipw').classList.add('open'); pushLayer('tip', () => { $('tipw').classList.remove('open'); const f = tipAfter; tipAfter = null; if (f) setTimeout(f, 250); }); return true;
 }
-function quoteEnd() { // v108 (Jack, Oct 27): a different quote from the same Daily quotes block when the workout ends
-  const st = quoteToday(), all = [...((S && S.program) || '').matchAll(/^- \d{4}-\d{2}-\d{2} \| (.+?) \| ?(.*)$/gm)].map(m => ({ q: m[1].trim(), a: m[2].trim() })).filter(x => !st || x.q !== st.q);
-  if (!all.length) return null; const d = String((S && S.today) || '').replace(/\D/g, ''); return all[(+d || 0) % all.length];
+function quoteEnd() { // v150 (Jack, Nov 20): the finish quote comes only from Daily quotes dated before today, so it never previews today's or an upcoming daily quote. Deterministic per date, skips the last 7 finish quotes shown on this phone.
+  const d = String((S && S.today) || ''); if (!d) return null;
+  const all = [...((S && S.program) || '').matchAll(/^- (\d{4}-\d{2}-\d{2}) \| (.+?) \| ?(.*)$/gm)].filter(m => m[1] < d).map(m => ({ q: m[2].trim(), a: m[3].trim() }));
+  if (!all.length) return null;
+  const k = 'coach_endq_' + P, h = jget(k, { d: '', q: '', l: [] });
+  if (h.d === d) { const same = all.find(x => x.q === h.q); if (same) return same; }
+  const n = +d.replace(/\D/g, '') || 0, recent = (h.l || []).slice(-7);
+  let i = (n * 7919) % all.length, pick = all[i];
+  for (let t = 0; t < all.length; t++) { const c = all[(i + t) % all.length]; if (!recent.includes(c.q)) { pick = c; break; } }
+  jset(k, { d, q: pick.q, l: (h.d === d ? (h.l || []) : (h.l || []).concat(h.q ? [h.q] : [])).slice(-30) });
+  return pick;
 }
 function endQuoteShow() { const bd = bdayToday(), qt = bd ? bdayLine(BDAY_POST, bd) : quoteEnd(); $('tiph').textContent = ''; $('tiph').hidden = true; $('tipb').innerHTML = '<p class="fin">' + (bd ? 'Workout finished. Happy birthday, ' + esc(bd.name) + '.' : 'Workout finished. Nice work.') + '</p>' + (!qt ? '' : '<figure class="qt"><blockquote>' + esc(qt.q) + '</blockquote>' + (qt.a ? '<figcaption>' + esc(qt.a) + '</figcaption>' : '') + '</figure>'); tipGuard = Date.now(); $('tipw').classList.add('open'); pushLayer('tip', () => { $('tipw').classList.remove('open'); tipConfettiOff(); });
   if (bd) requestAnimationFrame(() => confetti($('tipc'), 8000)); } // v144: animated confetti behind the post-workout birthday window
@@ -1821,6 +1830,11 @@ function render() {
     if (e.target.closest('#wreset')) { openReset(); return; }
     const tf = e.target.closest('li.plan:not(.wrm) [data-f]');
     if (tf) { const lb = tf.closest('li').querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, tf.dataset.f); return; }
+    { // v150 (Jack, Nov 20): tapping the weight or reps of a planned warm-up row opens its log window, like a working set. A warm-up that became a working set opens that set.
+      const ur = e.target.closest('li.plan.wrm.used[data-use]'); if (ur && !e.target.closest('button')) { openEdit(ur.dataset.use); return; }
+      const wr = !e.target.closest('button') && !e.target.closest('a') && e.target.closest('li.plan.wrm:not(.prm):not(.used)');
+      if (wr) { const wb = wr.querySelector('[data-wu]'); if (wb && !wb.disabled) { const ex = cardsFor().find(x => x.canonical === wb.dataset.ex), vf = e.target.closest('[data-f]'); warmNext = +wb.dataset.wu; logRow(wb.dataset.ex, 0, wr);
+        if (ex && $('sheet').classList.contains('open')) { const el = $(vf && vf.dataset.f === 'r' ? 'fr' : 'fl'); if (el) { el.focus({ preventScroll: true }); try { el.select(); } catch (er) {} } } } return; } }
     // v115: tapping anywhere else in a planned row (even with no estimate) opens the log window.
     const pr = !e.target.closest('button') && e.target.closest('li.plan:not(.wrm)');
     if (pr) { const lb = pr.querySelector('[data-log]'); if (lb && !lb.disabled) tapValue(lb.dataset.ex, +lb.dataset.log, 'w'); return; }
