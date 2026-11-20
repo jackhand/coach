@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 150; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 151; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -261,8 +261,11 @@ function equipType(ex) {
   return window.CoachEquipType({ name: nm, equip: ex.equip || (c && c.equip) || '', bodyweight: ex.bodyweight });
 }
 const PLATE_T = { barbell: 1, hexbar: 1, ez: 1, smith: 1 }, BAR_DEF = { barbell: 45, hexbar: 45, ez: 45, smith: 45 }; // v85: Smith gets plate math too; set its real bar weight per exercise
-const BAR_NAME = { barbell: 'bar', hexbar: 'hex bar', ez: 'EZ bar', smith: 'Smith bar' };
-const plateT = ex => !!ex && !isStretch(ex) && (!!PLATE_T[equipType(ex)] || barSaved(ex) > 0); // a saved or seeded bar weight turns on plate math (e.g. Smith shrug 10 lb)
+const BAR_NAME = { barbell: 'bar', hexbar: 'hex bar', ez: 'EZ bar', smith: 'Smith bar', machine_plate: 'sled' };
+// v151 (Jack, Nov 20): plate-loaded machines ('machine_plate': Machine chest press, Machine incline press, Hammer Strength, hack squat, leg press) get the same plate math as a bar,
+// with plates on both sides and a per-machine sled/starting weight that defaults to 0 (so the logged weight is plates only unless a sled weight is saved). Progression steps are unchanged (stepFor keeps its own table).
+const isPM = ex => !!ex && equipType(ex) === 'machine_plate';
+const plateT = ex => !!ex && !isStretch(ex) && (!!PLATE_T[equipType(ex)] || isPM(ex) || barSaved(ex) > 0); // a saved or seeded bar weight turns on plate math (e.g. Smith shrug 10 lb)
 // Bar weight: per-exercise equipment setup can say e.g. "55 lb bar" or "bar weight 55"; else the type default.
 // Rule (Jack, Oct 20, 2026; v85): every bar exercise has its own bar weight, edited only in the plate builder (not on the card). Default 45; once changed it is saved per exercise
 // in settings (scope = exercise, key 'bar') so it syncs. Hex bar shrug uses Jack's open hex bar, 55 lb, until a saved value says otherwise.
@@ -271,12 +274,12 @@ function barSaved(ex) { if (!ex) return NaN; const v = parseFloat(getSetting(ex.
 function barWeight(ex) {
   const bs = barSaved(ex); if (bs > 0) return bs;
   const t = equipType(ex), s = String((ex && setupFor(ex)) || '');
-  const m = s.match(/\b(\d+(?:\.\d+)?)\s*(?:lb|lbs)\s*(?:hex |trap |ez |smith )?bar\b/i) || s.match(/\bbar\s*(?:weight|wt)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
-  const v = m ? parseFloat(m[1]) : NaN; return v > 0 && v < 200 ? v : (BAR_DEF[t] || BAR);
+  const m = s.match(/\b(\d+(?:\.\d+)?)\s*(?:lb|lbs)\s*(?:hex |trap |ez |smith )?(?:bar|sled|carriage)\b/i) || s.match(/\b(?:bar|sled)\s*(?:weight|wt)\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  const v = m ? parseFloat(m[1]) : NaN; return v > 0 && v < 200 ? v : (t === 'machine_plate' ? 0 : (BAR_DEF[t] || BAR)); // v151: a plate machine's sled weight defaults to 0
 }
 // v86 (Jack, Oct 21): one shared formatter groups repeated plates: [45,45,5] -> '45x2 + 5'. Every plate text goes through platesFor/platesShort.
 function plateGroup(list) { const g = []; list.forEach(p => { const l = g[g.length - 1]; if (l && l.p === p) l.n++; else g.push({ p, n: 1 }); }); return g.map(x => x.p + (x.n > 1 ? 'x' + x.n : '')).join(' + '); }
-function platesFor(w, bar) { bar = bar || BAR; let side = (w - bar) / 2; if (!(side > 0)) return w > 0 && w <= bar ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return plateGroup(out) + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
+function platesFor(w, bar) { bar = bar == null ? BAR : bar; let side = (w - bar) / 2; if (!(side > 0)) return w > 0 && w <= bar ? 'Empty bar' : ''; const out = []; for (const p of PLATES) while (side >= p - 1e-9) { out.push(p); side -= p; } return plateGroup(out) + ' per side' + (side > 0.01 ? ' (+' + (Math.round(side * 2 * 10) / 10) + ' lb left over)' : ''); }
 const platesShort = (w, bar) => { const p = platesFor(+w, bar); return p ? p.replace(' per side', ' /side') : ''; };
 // v139 (Jack, Nov 10): the plates line names the assumed bar. v140 (Jack, Nov 10): plates first, then the bar, and always just 'bar' (never 'hex bar'): '45x2 /side + 55 lb bar'.
 // v140 (Jack approved the kg-bar mockup, Nov 10): the bar can be entered in kg; it is stored and used in lb, so totals, plates and logged loads stay in pounds.
@@ -289,10 +292,10 @@ function barUnit(ex) { // remembered per exercise at the current gym, else per b
   const u2 = getSetting('barunit', equipType(ex) + ':' + gid); return u2 === 'kg' || u2 === 'lb' ? u2 : 'lb';
 }
 function setBarUnit(ex, unit) { if (!ex || (unit !== 'kg' && unit !== 'lb')) return; const gid = gymScopeId(); putSetting(ex.canonical, 'barunit:' + gid, unit); putSetting('barunit', equipType(ex) + ':' + gid, unit); }
-const barTxt = ex => { const b = barWeight(ex); return barUnit(ex) === 'kg' ? fmtKg(b / KG_LB) + ' kg (' + fmtLb(b) + ' lb) bar' : fmtLb(b) + ' lb bar'; };
-const plateLine = (ex, w) => { if (!(plateT(ex) && +w > 0)) return ''; const p = platesShort(w, barWeight(ex)), bn = barTxt(ex); return !p ? '' : p === 'Empty bar' ? bn + ' (empty)' : p + ' + ' + bn; };
+const barTxt = ex => { const b = barWeight(ex), nm = isPM(ex) ? 'sled' : 'bar'; return barUnit(ex) === 'kg' ? fmtKg(b / KG_LB) + ' kg (' + fmtLb(b) + ' lb) ' + nm : fmtLb(b) + ' lb ' + nm; };
+const plateLine = (ex, w) => { if (!(plateT(ex) && +w > 0)) return ''; const p = platesShort(w, barWeight(ex)), bn = barTxt(ex); if (isPM(ex) && !(barWeight(ex) > 0)) return p; /* v151: sled 0 = plates only */ return !p ? '' : p === 'Empty bar' ? bn + ' (empty)' : p + ' + ' + bn; };
 // Warm-up kind: 'plate' (bar types), 'dumbbell', or '' (no ramp).
-const eqKind = ex => plateT(ex) ? 'plate' : equipType(ex) === 'dumbbell' ? 'dumbbell' : '';
+const eqKind = ex => plateT(ex) && !isPM(ex) ? 'plate' : equipType(ex) === 'dumbbell' ? 'dumbbell' : '';
 function warmFor(ex, list) {
   if (isStretch(ex) || ex.bodyweight || coachWarm(ex).length) return null;
   const k = eqKind(ex); if (!k) return null;
@@ -1746,8 +1749,11 @@ function tipShow(ex, force, withQuote) { // force: ignore the seen list. Both tr
   $('tiph').textContent = qt ? '' : 'Coach tip: ' + ex.canonical; $('tiph').hidden = !!qt; $('tipb').innerHTML = qh + th;
   tipGuard = Date.now(); $('tipw').classList.add('open'); pushLayer('tip', () => { $('tipw').classList.remove('open'); const f = tipAfter; tipAfter = null; if (f) setTimeout(f, 250); }); return true;
 }
-function quoteEnd() { // v150 (Jack, Nov 20): the finish quote comes only from Daily quotes dated before today, so it never previews today's or an upcoming daily quote. Deterministic per date, skips the last 7 finish quotes shown on this phone.
+function quoteEnd() { // v151: dated finish quote first. v150 (Jack, Nov 20): the finish quote comes only from Daily quotes dated before today, so it never previews today's or an upcoming daily quote. Deterministic per date, skips the last 7 finish quotes shown on this phone.
   const d = String((S && S.today) || ''); if (!d) return null;
+  { // v151 (Jack, Nov 20): the dated finish quote from the '## Daily finish quotes' block (a different quote every day, never a start quote) comes first; the past-dated pick below is only the fallback when a date is missing.
+    const fm = ((S && S.program) || '').match(new RegExp('^- finish ' + d + ' \\| (.+?) \\| ?(.*)$', 'm')); if (fm) return { q: fm[1].trim(), a: fm[2].trim() };
+  }
   const all = [...((S && S.program) || '').matchAll(/^- (\d{4}-\d{2}-\d{2}) \| (.+?) \| ?(.*)$/gm)].filter(m => m[1] < d).map(m => ({ q: m[2].trim(), a: m[3].trim() }));
   if (!all.length) return null;
   const k = 'coach_endq_' + P, h = jget(k, { d: '', q: '', l: [] });
@@ -1806,7 +1812,7 @@ function render() {
       (dayVal(ex, 'pain') ? '<div class="pain">Joint pain today: ' + esc(dayVal(ex, 'pain')) + '</div>' : '') +
       (dayVal(ex, 'note') ? '<div class="dnote">Note: ' + esc(dayVal(ex, 'note')) + '</div>' : '') +
       '<details class="note cn" data-cn="' + esc(ex.canonical) + '"' + (cnOpen(ex) ? ' open' : '') + '><summary><b>Instructions</b><span class="cnbtn" role="img" aria-label="' + (cnOpen(ex) ? 'Collapse instructions' : 'Expand instructions') + '"><span class="circ"><span class="chev"></span></span></span></summary><div class="chips">' + chips + '</div>' + extra + '</details>' + weekBoxHTML((() => { const sk = ex.bodyweight || isStretch(ex) ? null : stallOf(ex); return (sk ? [{ text: stallMsg(sk), stall: true }] : []).concat(weekNotesFor(ex)); })()) +
-      '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb bar)' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
+      '<div class="setup" data-su="' + i + '"><b>Setup:</b> <span id="su' + i + '">' + esc(setupFor(ex) || (isPM(ex) ? 'tap to add (seat, handles, sled weight like "50 lb sled")' : plateT(ex) ? 'tap to add (bar weight, e.g. 45 lb bar)' : 'tap to add (seat, pins, angle)')) + '</span> <span class="ed">edit</span></div>' +
       warmHTML(ex, i, cardsFor()) +
       '<div class="last" id="l' + i + '">' + esc(lastTime(ex)) + '</div>' +
       '<ul class="sets" id="s' + i + '">' + setsHTML(ex) + '</ul>' +
@@ -1953,7 +1959,7 @@ function weekBoxHTML(ns, day) {
 }
 async function editSetup(i) {
   const ex = cardsFor()[i]; const cur = setupFor(ex);
-  const v = await askBox({ title: 'Equipment setup', ok: 'Save', value: cur || '', input: 'Seat, pins, angle', body: ex.canonical + (plateT(ex) ? ' (seat, pins, angle; bar weight like "45 lb bar" sets plate math, now ' + barWeight(ex) + ' lb):' : ' (seat, pins, bench angle):') });
+  const v = await askBox({ title: 'Equipment setup', ok: 'Save', value: cur || '', input: 'Seat, pins, angle', body: ex.canonical + (isPM(ex) ? ' (seat, handles; sled weight like "50 lb sled" sets plate math, now ' + barWeight(ex) + ' lb):' : plateT(ex) ? ' (seat, pins, angle; bar weight like "45 lb bar" sets plate math, now ' + barWeight(ex) + ' lb):' : ' (seat, pins, bench angle):') });
   if (v == null) return;
   putSetting(ex.canonical, 'equipment', v.trim()); $('su' + i).textContent = v.trim() || 'tap to add (seat, pins, angle)'; if (plateT(ex)) render();
 }
@@ -2724,7 +2730,7 @@ function bwLine() {
 function plUpd() { const t = plateLine(formEx, $('fl').value.trim()); $('fpl').textContent = t ? 'Plates: ' + t : ''; const bb = plateT(formEx); $('pbt').style.display = bb ? '' : 'none'; $('fl').inputMode = bb ? 'text' : 'decimal'; $('fl').placeholder = bb ? 'e.g. 185 or 4x45 2x25' : ''; if (!bb) $('pbx').hidden = true; }
 // Plate-first: tap plates (one per side each), chips remove, total = bar weight (barWeight) + 2 x plates.
 let pbList = []; // one entry per pair (one plate each side)
-function pbRender() { const tot = barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + '</button>').join('') || '<span class="s2">Empty bar (' + barTxt(formEx).replace(/ bar$/, '') + '). Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + fmtLb(tot) + ' lb' + (pbList.length ? ': ' + plateGroup(pbList) + ' /side + ' + barTxt(formEx) : ''); }
+function pbRender() { const tot = barWeight(formEx) + 2 * pbList.reduce((a, b) => a + b, 0), cnt = {}; pbList.forEach(p => cnt[p] = (cnt[p] || 0) + 2); $('pbc').innerHTML = Object.keys(cnt).map(Number).sort((a, b) => b - a).map(p => '<button type="button" class="pchip" data-pr="' + p + '" aria-label="Remove a pair of ' + p + 's">' + cnt[p] + ' x ' + p + '</button>').join('') || '<span class="s2">' + (isPM(formEx) ? 'No plates yet (sled ' + barTxt(formEx).replace(/ sled$/, '') + ').' : 'Empty bar (' + barTxt(formEx).replace(/ bar$/, '') + ').') + ' Each tap adds a pair (one plate per side).</span>'; $('pbtot').textContent = 'Total ' + fmtLb(tot) + ' lb' + (pbList.length ? ': ' + plateGroup(pbList) + ' /side' + (isPM(formEx) && !(barWeight(formEx) > 0) ? '' : ' + ' + barTxt(formEx)) : ''); }
 // v85 (Jack, Oct 20, 2026): the plate builder has a Bar weight field at the top. It edits the same per-exercise bar setting as the card row and recalculates live.
 // v140: compact lb | kg toggle on the Bar weight row. Kg entry converts to lb instantly; the unit is remembered per exercise and bar type at the current gym.
 function pbConv(typed) {
@@ -2735,22 +2741,23 @@ function pbConv(typed) {
 function pbBarShow() {
   const unit = barUnit(formEx), lb = barWeight(formEx);
   $('pbbw').value = unit === 'kg' ? fmtKg(lb / KG_LB) : fmtLb(lb);
+  { const nm = isPM(formEx) ? 'Sled weight' : 'Bar weight', lb0 = document.querySelector('label[for="pbbw"]'); if (lb0) lb0.textContent = nm; $('pbbm').setAttribute('aria-label', nm + ' minus ' + (unit === 'kg' ? '1 kg' : '5')); $('pbbp').setAttribute('aria-label', nm + ' plus ' + (unit === 'kg' ? '1 kg' : '5')); }
   $('pbulb').classList.toggle('on', unit === 'lb'); $('pbulb').setAttribute('aria-pressed', unit === 'lb' ? 'true' : 'false');
   $('pbukg').classList.toggle('on', unit === 'kg'); $('pbukg').setAttribute('aria-pressed', unit === 'kg' ? 'true' : 'false');
-  $('pbbm').setAttribute('aria-label', unit === 'kg' ? 'Bar weight minus 1 kg' : 'Bar weight minus 5'); $('pbbp').setAttribute('aria-label', unit === 'kg' ? 'Bar weight plus 1 kg' : 'Bar weight plus 5');
   pbConv();
 }
 function pbBarSet(v) {
   const unit = barUnit(formEx), n = parseFloat(v);
-  if (unit === 'kg') { if (!formEx || !(n > 0 && n < 100)) { pbBarShow(); return; } const lb = Math.round(n * KG_LB * 10) / 10; if (lb !== barWeight(formEx)) putSetting(formEx.canonical, 'bar', String(lb)); }
-  else { if (!formEx || !(n > 0 && n < 200)) { pbBarShow(); return; } if (n !== barWeight(formEx)) putSetting(formEx.canonical, 'bar', String(n)); }
+  const lo0 = isPM(formEx) ? 0 : 1e-9; // v151: a sled weight can be 0
+  if (unit === 'kg') { if (!formEx || !(n >= lo0 && n < 100)) { pbBarShow(); return; } const lb = Math.round(n * KG_LB * 10) / 10; if (lb !== barWeight(formEx)) putSetting(formEx.canonical, 'bar', String(lb)); }
+  else { if (!formEx || !(n >= lo0 && n < 200)) { pbBarShow(); return; } if (n !== barWeight(formEx)) putSetting(formEx.canonical, 'bar', String(n)); }
   pbBarShow(); pbRender(); plUpd(); bwLine();
 }
 function pbSetUnit(unit) { if (!formEx || (unit !== 'kg' && unit !== 'lb') || unit === barUnit(formEx)) return; setBarUnit(formEx, unit); pbBarShow(); pbRender(); plUpd(); if (S) { sig = ''; } }
 $('pbbw').addEventListener('change', () => pbBarSet($('pbbw').value));
 $('pbbw').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); pbBarSet($('pbbw').value); } });
 $('pbbw').addEventListener('input', () => { if (barUnit(formEx) !== 'kg') return; const n = parseFloat($('pbbw').value); if (n > 0 && n < 100) pbConv(n); });
-$('pbbm').onclick = () => { if (barUnit(formEx) === 'kg') pbBarSet(Math.max(1, (parseFloat($('pbbw').value) || 0) - 1)); else pbBarSet(Math.max(5, barWeight(formEx) - 5)); };
+$('pbbm').onclick = () => { if (barUnit(formEx) === 'kg') pbBarSet(Math.max(1, (parseFloat($('pbbw').value) || 0) - 1)); else pbBarSet(Math.max(isPM(formEx) ? 0 : 5, barWeight(formEx) - 5)); };
 $('pbbp').onclick = () => { if (barUnit(formEx) === 'kg') pbBarSet((parseFloat($('pbbw').value) || 0) + 1); else pbBarSet(barWeight(formEx) + 5); };
 $('pbulb').onclick = () => pbSetUnit('lb'); $('pbukg').onclick = () => pbSetUnit('kg');
 $('pbt').onclick = () => { const x = $('pbx'); x.hidden = !x.hidden; if (!x.hidden) { pbList = []; pbBarShow(); pbRender(); } $('pbtl').textContent = x.hidden ? 'Build from plates' : 'Hide plate builder'; $('pbt').classList.toggle('on', !x.hidden); };
