@@ -71,6 +71,9 @@
     const [a, b] = splitName(body); if (!b) return null;
     if (/^all( days)?$|^every day$/i.test(a)) name = ''; else if (DAYN.test(a) && !day) day = a.toLowerCase(); else name = a;
     const o = { w, day, name, key: name ? norm(stripParens(name)) : '', key2: name ? norm(name) : '', text: b };
+    // v153 (Jack, Nov 23, 2026): a week note can carry the same coach set plan as a program line ('Top set: 260 x 3-5, technical failure.
+    // Back-offs: 2 x 6-8 at 230.' or 'Set 2: ...'), so a week's top set and back-offs override the program line for that week only.
+    const cn = parseNote(b); if (cn.plan) { o.plan = cn.plan; return o; }
     const sm = b.match(/\b(?:starts?\s+at|drop\s+to)\s+(\d+(?:\.\d+)?)\s*(?:lbs?)?\b/i); if (sm) { const gm = b.match(/\bget\s+(\d+)\b/i); o.plan = { 1: { label: /^drop/i.test(sm[0]) ? 'drop' : 'start', load: +sm[1], lo: null, hi: gm ? +gm[1] : null } }; }
     else { // v107 (Jack, Oct 24): 'Stay at 180 lbs' / 'Use 160 lbs' set the weight for every working set, so the pre-fill matches the tip.
       const um = b.match(/\b(?:stay\s+at|use)\s+(\d+(?:\.\d+)?)\s*lbs?\b(?!\s*(?:dumbbells?|dbs?)\b)/i);

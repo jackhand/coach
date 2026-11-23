@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 152; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 153; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -925,7 +925,7 @@ function smallerJump(ex, w) { // the next real weight above w when it is a small
   if (nx != null && nx - w < step) return nx; if (!Array.isArray(st) && st < step) return +(w + st).toFixed(2); return null;
 }
 // Test-mode only hook for the headless equipment tests (no data, no writes).
-if (testOn()) window.__coachT = { basisOf: s => basisOf(s), barUnit, setBarUnit, barTxt, get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, tipsFor, tipShow, cardsFor, plannedCount, warmRepPlan, get S() { return S; }, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
+if (testOn()) window.__coachT = { basisOf: s => basisOf(s), barUnit, setBarUnit, barTxt, get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, tipsFor, tipShow, cardsFor, plannedCount, warmRepPlan, suggest: (ex, i) => suggest(ex, i), evenArms, get S() { return S; }, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
 // Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
 const sideReps = r => { const L = parseInt(r.left_reps, 10), Rr = parseInt(r.right_reps, 10); return { L: isFinite(L) ? L : null, R: isFinite(Rr) ? Rr : null }; };
 function repN(r) { const s = sideReps(r), v = [s.L, s.R].filter(x => x != null); return v.length ? Math.min.apply(null, v) : (parseInt(r.reps, 10) || 0); }
@@ -980,8 +980,16 @@ function coachPlan(ex, idx) {
 // Not to failure = no drop. RP documents same load across sets, logged reps per set and no fixed formula; the 10% is the typical drop-off at 0-1 RIR with 2-3 min rest.
 const fatDrop = (n, ft) => !n || ft === 'not to failure' || ft === 'warm-up' ? 0 : Math.max(1, Math.round(n * 0.1));
 // v131 (Jack, Nov 3): same weight as the last set keeps the original rep target. A short last set only adds a down arrow; the target is re-estimated only when the weight changes.
+// v153 (Jack, Nov 23, 2026): single-arm lifts get one rep target for both arms, the nearest common rep (average, .5 rounds up: L9/R8 -> 9 each),
+// unless the two arms' estimates are ARM_SPLIT (3) or more reps apart, then each side keeps its own target.
+const ARM_SPLIT = 3;
+function evenArms(ex, r) {
+  if (!r || !ex || !ex.single || isStretch(ex) || r.repsL == null || r.repsR == null) return r;
+  const L = num(r.repsL), R = num(r.repsR); if (L == null || R == null || Math.abs(L - R) >= ARM_SPLIT) return r;
+  const o = Object.assign({}, r, { reps: String(Math.round((L + R) / 2)) }); delete o.repsL; delete o.repsR; return o;
+}
 function suggest(ex, idx) {
-  let r = suggest0(ex, idx); const today = rowsFor(ex, true);
+  let r = evenArms(ex, suggest0(ex, idx)); const today = rowsFor(ex, true);
   if (r && !r.coach && !isStretch(ex) && !ex.bodyweight && num(r.load) > 0) { const w = num(r.load), sw = snapW(ex, w); if (sw !== w) r = Object.assign({}, r, { load: String(sw), why: String(r.why || '').replace('Use ' + w + ' lbs', 'Use ' + sw + ' lbs') }); }
   if (!r || isStretch(ex) || !today.length || idx < today.length) return r;
   const last = today[today.length - 1], lr = repN(last);
@@ -1010,7 +1018,8 @@ function suggestNext(ex, idx) {
   for (let j = idx + 1; j < n; j++) {
     const l = suggestRaw(ex, j); if (!l || num(l.load) !== num(b.load) || num(l.load) == null) continue;
     if (num(l.reps) > num(o.reps) || (o.repsL != null && l.repsL != null) ) {
-      o = Object.assign({}, o, { reps: up(o.reps, l.reps) }, o.repsL != null && l.repsL != null ? { repsL: up(o.repsL, l.repsL), repsR: up(o.repsR, l.repsR) } : {});
+      // v153: a later set with one target for both arms raises each side too (sides 7/9 then 10 later = 10/10, not 7/9).
+      o = Object.assign({}, o, { reps: up(o.reps, l.reps) }, o.repsL != null ? { repsL: up(o.repsL, l.repsL != null ? l.repsL : l.reps), repsR: up(o.repsR, l.repsR != null ? l.repsR : l.reps) } : {});
       if (num(l.reps) > num(b.reps)) o.why = 'Use ' + o.load + ' lbs and get ' + o.reps + '. Same goal on every set.';
     }
   }
