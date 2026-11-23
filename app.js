@@ -4,7 +4,7 @@ try {
 const P_ = window.CoachParse;
 const $ = id => document.getElementById(id);
 // Single source for the version label. Bump with the ?v= asset queries in index.html and the coach-shell cache name in sw.js.
-const APP_VERSION = 153; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
+const APP_VERSION = 154; // Bump with every release, together with sw.js CACHE and every ?v= in sw.js and index.html.
 // v106: no pinch-to-zoom (Jack, Oct 22). iOS Safari ignores user-scalable=no, so block its gesture events and two-finger moves too.
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', e => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
@@ -696,6 +696,13 @@ const dlRow = r => { const p = wParse(widOf(r)); return !!p && isDeload(p.w); };
 const DL_EFFORT = 'Deload week: use your normal weight, about half the sets, easy sets with plenty in reserve. Stop with 4-5 reps left, even if you could do more. No drop sets or myo-reps.';
 // v150 (Jack, Nov 20): deload reps = the best reps at the normal weight minus 4 (so 4-5 are left), never under 3 or over the range.
 const dlReps = (top, lo, hi) => top > 0 ? String(Math.max(3, Math.min(hi, top - 4))) : String(lo);
+// v154 (Jack, Nov 23, 2026): deload return. The first program week after a deload week eases main lifts (not isolation, not bodyweight) back in:
+// about 80-85% (82.5%, snapped to real weights) of the pre-deload top working weight, for fewer reps (the bottom of the range). A week note that
+// sets the target still wins. The second week back returns to normal progression, based on the pre-deload sessions (eased sets are not the basis).
+const BACK_PCT = 0.825;
+const isBack = w => w > 1 && !isDeload(w) && isDeload(w - 1);
+const backNow = () => isBack(viewWeek());
+const isMainLift = ex => !!ex && !(ex.types || []).includes('isolation') && !ex.bodyweight && !isStretch(ex) && !!(stepFor(ex) || {}).step;
 const wShort = w => 'B' + blockOf(w) + ' ' + (isDeload(w) ? 'DL' : 'W' + wib(w));
 function workouts() {
   const td = trainDays(), st = wStatus(); let weeks = BL();
@@ -839,6 +846,11 @@ function lastSession(ex, before) {
   if (!isDeload(viewWeek())) { const nd = rs.filter(r => { const p = wParse(widOf(r)); return !p || !isDeload(p.w); }); if (nd.length) rs = nd; }
   // v139: the basis is picked from the recent history (up to 6 sessions), not blindly the newest one.
   const by = {}; rs.forEach(r => { const w = widOf(r); (by[w] = by[w] || []).push(r); });
+  if (!isDeload(viewWeek()) && !backNow() && isMainLift(ex)) { // v154: eased first-week-back sessions (settled under 90% of the best earlier one) are not the basis
+    const ks = Object.keys(by).sort((x, y) => wIndex(x) - wIndex(y)); let best = 0; const drop = [];
+    ks.forEach(k => { const p = wParse(k), sw = settled(by[k].filter(r => !isWarm(r))) || 0; if (p && isBack(p.w) && best > 0 && sw < best * 0.9) drop.push(k); else if (!(p && isDeload(p.w))) best = Math.max(best, sw); });
+    if (drop.length && drop.length < ks.length) drop.forEach(k => delete by[k]);
+  }
   const sess = Object.keys(by).sort((x, y) => wIndex(y) - wIndex(x)).slice(0, HIST_N).map(w => ({ date: w, rows: by[w] }));
   const pick = basisOf(sess);
   return Object.assign({ date: sess[pick.i].date, rows: sess[pick.i].rows }, pick.skipped ? { skipped: pick.skipped } : {});
@@ -925,7 +937,7 @@ function smallerJump(ex, w) { // the next real weight above w when it is a small
   if (nx != null && nx - w < step) return nx; if (!Array.isArray(st) && st < step) return +(w + st).toFixed(2); return null;
 }
 // Test-mode only hook for the headless equipment tests (no data, no writes).
-if (testOn()) window.__coachT = { basisOf: s => basisOf(s), barUnit, setBarUnit, barTxt, get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, tipsFor, tipShow, cardsFor, plannedCount, warmRepPlan, suggest: (ex, i) => suggest(ex, i), evenArms, get S() { return S; }, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
+if (testOn()) window.__coachT = { basisOf: s => basisOf(s), barUnit, setBarUnit, barTxt, get days() { return days; }, get viewId() { return viewId; }, open: id => openWorkout(id), equipType, plateT, plateLine, barWeight, warmFor: (ex, l) => warmFor(ex, l || [ex]), stepFor, eqFactor, eqOf: c => eqOf(c), platesFor, techFor: d => techFor({ canonical: 'zz test', details: d }), tqShow, tipsFor, tipShow, cardsFor, plannedCount, warmRepPlan, suggest: (ex, i) => suggest(ex, i), evenArms, isBack, isMainLift, get S() { return S; }, rerender: () => { sig = ''; render(); }, dragging: () => !!drag };
 // Per-side reps stay per side. Main reps is 'L/R' when sides differ; math uses the weaker side.
 const sideReps = r => { const L = parseInt(r.left_reps, 10), Rr = parseInt(r.right_reps, 10); return { L: isFinite(L) ? L : null, R: isFinite(Rr) ? Rr : null }; };
 function repN(r) { const s = sideReps(r), v = [s.L, s.R].filter(x => x != null); return v.length ? Math.min.apply(null, v) : (parseInt(r.reps, 10) || 0); }
@@ -957,7 +969,7 @@ function coachPlan(ex, idx) {
   if (isStretch(ex)) return null;
   // v148 (Jack, Nov 16): on a deload the program's normal-week plan is skipped, but a week note ('Use 50 lbs') still sets the prefill, so it matches the This week box.
   const dl = dlNow(); let plan = null;
-  if (dl) weekNotesFor(ex).forEach(n => { if (n.plan) plan = Object.assign(plan || {}, n.plan); }); else plan = planFor(ex);
+  if (dl || (backNow() && isMainLift(ex))) weekNotesFor(ex).forEach(n => { if (n.plan) plan = Object.assign(plan || {}, n.plan); }); else plan = planFor(ex); // v154: first week back, only a week note overrides the ease-back target
   const p = plan && plan[idx + 1]; if (!p) return null;
   const today = rowsFor(ex, true), rr = p.lo && p.hi && p.lo !== p.hi ? p.lo + '-' + p.hi : p.hi ? String(p.hi) : '';
   let reps = p.hi ? String(p.hi) : '';
@@ -1048,6 +1060,10 @@ function suggestRaw0(ex, idx, ls) {
     const top = Math.max(0, ...at.map(r => repN(r) || 0));
     const failed = at.some(r => (repN(r) || 0) === top && r.failure_type !== 'not to failure');
     const ramp = num(rows[0].load) != null && num(rows[0].load) < sw ? ' · settled on ' + sw : '';
+    if (backNow() && isMainLift(ex)) { // v154 deload return: about 80-85% of the pre-deload top working weight, fewer reps
+      const pre = Math.max(0, ...rows.filter(r => !isWarm(r)).map(r => num(r.load) || 0));
+      if (pre > 0) { const w = snapW(ex, pre * BACK_PCT) || pre * BACK_PCT, pr = Math.max(0, ...rows.filter(r => !isWarm(r) && num(r.load) === pre).map(r => repN(r) || 0)), n = Math.max(3, Math.min(lo, pr || lo)); return { load: String(w), reps: String(n), back: true, why: 'Use ' + w + ' lbs for ' + n + '. First week back after the deload: about 80-85% of your pre-deload top weight (' + pre + ' lbs) with fewer reps, so your joints and nervous system ease back in.' }; }
+    }
     if (dl) { // v150 (Jack, Nov 20): same normal working weight on every lift (no 85% drop, no joint exception), about half the sets, 4-5 reps left. A week note weight still wins in coachPlan.
       const wt = at.filter(r => !isWarm(r)), dtop = Math.max(0, ...wt.map(r => repN(r) || 0));
       return { load: String(sw), reps: dlReps(dtop, lo, hi), why: 'Use ' + sw + ' lbs, your normal weight. Deload week: easy sets with plenty in reserve.' };
